@@ -1,0 +1,18 @@
+[package]
+name = "onomy_tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "common"
+path = "src/lib/common.rs"
+
+[[bin]]
+name = "chain_upgrade_test"
+path = "src/bin/chain_upgrade_test.rs"
+
+
+[dependencies]
+# TODO we will use a git link in the mid term
+super_orchestrator = { path = "../super_orchestrator" }
