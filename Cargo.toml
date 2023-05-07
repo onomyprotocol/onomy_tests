@@ -12,7 +12,11 @@ path = "src/lib/common.rs"
 name = "chain_upgrade_test"
 path = "src/bin/chain_upgrade_test.rs"
 
+[[bin]]
+name = "chain_upgrade_test_entrypoint"
+path = "src/bin/chain_upgrade_test_entrypoint.rs"
 
 [dependencies]
 # TODO we will use a git link in the mid term
 super_orchestrator = { path = "../super_orchestrator" }
+tokio = { version = "1.28", features = ["full"] }
