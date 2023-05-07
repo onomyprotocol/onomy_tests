@@ -6,8 +6,8 @@ use super_orchestrator::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    //let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
-    let container_build_target = "x86_64-unknown-linux-gnu";
+    let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
     let entrypoint = "chain_upgrade_test_entrypoint";
 
@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
         "--bin",
         &entrypoint,
         "--target",
-        &container_build_target,
+        &container_target,
     ])
     .ci_mode(true)
     .run_to_completion()
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
             "main",
             ONOMY_BASE,
             &[],
-            &format!("./target/{entrypoint}/release"),
+            &format!("./target/{container_target}/release/{entrypoint}"),
             &[],
         )],
         false,
