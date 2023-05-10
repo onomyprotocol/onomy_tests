@@ -18,6 +18,7 @@ path = "src/bin/chain_upgrade_test_entrypoint.rs"
 
 [dependencies]
 env_logger = "0.10"
+lazy_static = "1.4"
 log = "0.4"
 # TODO we will use a git link in the mid term
 super_orchestrator = { path = "../super_orchestrator" }

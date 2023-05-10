@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use common::ONOMY_BASE;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     Command, Result,
@@ -34,7 +33,8 @@ async fn main() -> Result<()> {
         "test",
         vec![Container::new(
             "main",
-            ONOMY_BASE,
+            Some(dockerfile),
+            "main_build",
             &[],
             &format!("./target/{container_target}/release/{entrypoint}"),
             &[],
