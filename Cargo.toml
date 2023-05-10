@@ -17,6 +17,8 @@ name = "chain_upgrade_test_entrypoint"
 path = "src/bin/chain_upgrade_test_entrypoint.rs"
 
 [dependencies]
+env_logger = "0.10"
+log = "0.4"
 # TODO we will use a git link in the mid term
 super_orchestrator = { path = "../super_orchestrator" }
 tokio = { version = "1.28", features = ["full"] }

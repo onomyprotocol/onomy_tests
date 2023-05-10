@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use common::ONOMY_BASE;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
@@ -6,6 +8,10 @@ use super_orchestrator::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
@@ -16,9 +22,9 @@ async fn main() -> Result<()> {
         "build",
         "--release",
         "--bin",
-        &entrypoint,
+        entrypoint,
         "--target",
-        &container_target,
+        container_target,
     ])
     .ci_mode(true)
     .run_to_completion()
@@ -39,5 +45,10 @@ async fn main() -> Result<()> {
     );
     cn.run().await?;
 
+    let ids = cn.get_ids();
+    cn.wait_with_timeout(ids, Duration::from_secs(5))
+        .await
+        .unwrap();
+    let _ = dbg!(cn);
     Ok(())
 }
