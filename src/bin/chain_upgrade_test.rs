@@ -26,7 +26,6 @@ async fn main() -> Result<()> {
         "--target",
         container_target,
     ])
-    .ci_mode(true)
     .run_to_completion()
     .await?
     .assert_success()?;
@@ -43,7 +42,7 @@ async fn main() -> Result<()> {
         false,
         logs_dir,
     );
-    cn.run().await?;
+    cn.run(true).await?;
 
     let ids = cn.get_ids();
     cn.wait_with_timeout(ids, Duration::from_secs(5))
