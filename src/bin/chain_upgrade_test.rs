@@ -11,7 +11,8 @@ async fn main() -> Result<()> {
         .filter_level(log::LevelFilter::Info)
         .init();
 
-    let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    //let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    let dockerfile = "./dockerfiles/onomy_base.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
     let entrypoint = "chain_upgrade_test_entrypoint";
@@ -48,6 +49,5 @@ async fn main() -> Result<()> {
     cn.wait_with_timeout(ids, Duration::from_secs(5))
         .await
         .unwrap();
-    let _ = dbg!(cn);
     Ok(())
 }
