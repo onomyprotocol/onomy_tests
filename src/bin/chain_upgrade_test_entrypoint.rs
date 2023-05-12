@@ -3,8 +3,13 @@ use std::env;
 use common::nom;
 use lazy_static::lazy_static;
 use serde_json::{json, Value};
-use super_orchestrator::{acquire_file_path, get_separated_val, sh, Command, MapAddError, Result};
-use tokio::{fs::OpenOptions, io::AsyncReadExt};
+use super_orchestrator::{
+    acquire_file_path, close_file, get_separated_val, sh, Command, MapAddError, Result,
+};
+use tokio::{
+    fs::OpenOptions,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -38,16 +43,29 @@ async fn main() -> Result<()> {
     genesis_file.read_to_string(&mut genesis_s).await?;
 
     // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("stake", "anom");
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     println!("\n\n{genesis_s}\n\n");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    let denom_metadata = json!([{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken", "description": "A non-staking test token", "denom_units": [{"denom": "footoken", "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},{"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom", "description": "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom", "exponent": 18}]}]);
+    let denom_metadata = json!(
+        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
+        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
+        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
+        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
+        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
+        "exponent": 18}]}]
+    );
 
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
     let gov_period: Value = GOV_PERIOD.as_str().into();
     genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    let genesis_s = serde_json::to_string(&genesis)?;
+    // write back
+    genesis_file.set_len(0).await?;
+    genesis_file.write_all(genesis_s.as_bytes()).await?;
+    close_file(genesis_file).await?;
 
     sh("cosmovisor run keys add validator", &[]).await?;
     sh("cosmovisor run add-genesis-account validator", &[&nom(
@@ -63,9 +81,9 @@ async fn main() -> Result<()> {
         .run_to_completion()
         .await?
         .stdout;
-    let eth_addr = get_separated_val(&eth_keys, "\n", "address", ":")?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
     // skip the first "INF" line
-    let orch_addr = Command::new("cosmovisor run keys show orchestrator -a", &[])
+    let orch_addr = &Command::new("cosmovisor run keys show orchestrator -a", &[])
         .run_to_completion()
         .await?
         .stdout
@@ -78,7 +96,71 @@ async fn main() -> Result<()> {
     )])
     .await?;
 
-    //sh("cosmovisor", &["run", "gravity", "gentx", "validator"]).await?;
+    sh("cosmovisor run gravity gentx validator", &[
+        &nom(1.0e6),
+        eth_addr,
+        orch_addr,
+        "--chain-id",
+        chain_id,
+    ])
+    .await?;
+    sh("cosmovisor run gravity collect-gentxs", &[]).await?;
+    sh("cosmovisor run collect-gentxs", &[]).await?;
+
+    // done preparing
+    /*
+    //let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period
+    // 1", &[]).run().await?;
+
+    let upgrade_height = "10";
+    let proposal_id = "1";
+    let gas_args = [
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ]
+    .as_slice();
+
+    let upgrade_version = ONOMY_UPGRADE_VERSION.as_str();
+    let description = &format!("\"upgrade {upgrade_version}\"");
+    sh(
+        "cosmovisor run tx gov submit-proposal software-upgrade",
+        &[
+            [
+                upgrade_version,
+                "--title",
+                description,
+                "--description",
+                description,
+                "--upgrade-height",
+                upgrade_height,
+            ]
+            .as_slice(),
+            gas_args,
+        ]
+        .concat(),
+    )
+    .await?;
+    sh(
+        "cosmovisor run tx gov deposit",
+        &[[proposal_id, &nom(2000.0)].as_slice(), gas_args].concat(),
+    )
+    .await?;
+    sh(
+        "cosmovisor run tx gov vote",
+        &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
+    )
+    .await?;*/
+
+    //cosmovisor.terminate().await?;
+
+    tokio::time::sleep(common::TIMEOUT).await;
 
     Ok(())
 }

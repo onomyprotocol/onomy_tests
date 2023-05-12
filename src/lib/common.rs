@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use awint::awi::*;
-use super_orchestrator::{MapAddError, Result};
 
 pub const ONOMY_BASE: &str = "fedora:38";
+pub const TIMEOUT: Duration = Duration::from_secs(1000000);
 
 /// Given `units_of_nom` in units of NOM, returns a string of the decimal number
 /// of aNOM appended with "anom"

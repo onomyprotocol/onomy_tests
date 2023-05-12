@@ -1,5 +1,4 @@
-use std::time::Duration;
-
+use common::TIMEOUT;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     Command, Result,
@@ -46,8 +45,6 @@ async fn main() -> Result<()> {
     cn.run(true).await?;
 
     let ids = cn.get_ids();
-    cn.wait_with_timeout(ids, Duration::from_secs(100))
-        .await
-        .unwrap();
+    cn.wait_with_timeout(ids, TIMEOUT).await.unwrap();
     Ok(())
 }
