@@ -36,11 +36,13 @@ async fn main() -> Result<()> {
         acquire_file_path(&format!("{}/config/genesis.json", *DAEMON_HOME)).await?;
     let mut genesis_file = OpenOptions::new()
         .read(true)
-        .write(true)
-        .open(genesis_file_path)
+        .open(&genesis_file_path)
         .await?;
     let mut genesis_s = String::new();
     genesis_file.read_to_string(&mut genesis_s).await?;
+    // when we write back, we ill just reopen as truncated, `set_len` has too many
+    // problems
+    close_file(genesis_file).await?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
@@ -62,8 +64,12 @@ async fn main() -> Result<()> {
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     let genesis_s = serde_json::to_string(&genesis)?;
-    // write back
-    genesis_file.set_len(0).await?;
+    // write back, just reopen
+    let mut genesis_file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(&genesis_file_path)
+        .await?;
     genesis_file.write_all(genesis_s.as_bytes()).await?;
     close_file(genesis_file).await?;
 
