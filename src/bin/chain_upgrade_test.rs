@@ -1,14 +1,12 @@
 use common::TIMEOUT;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    Command, Result,
+    std_init, Command, Result,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    std_init()?;
 
     let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
     //let dockerfile = "./dockerfiles/onomy_base.dockerfile";
@@ -36,6 +34,7 @@ async fn main() -> Result<()> {
             Some(dockerfile),
             "main_build",
             &[],
+            &[("./logs", "/logs")],
             &format!("./target/{container_target}/release/{entrypoint}"),
             &[],
         )],

@@ -27,7 +27,7 @@ lazy_static = "1.4"
 log = "0.4"
 serde_json = "1.0"
 # TODO we will use a git link in the mid term
-super_orchestrator = { path = "../super_orchestrator", default-features = false, features = ["serde_json_support"] }
+super_orchestrator = { path = "../super_orchestrator", default-features = false, features = ["serde_json_support", "env_logger_support", "ctrlc_support"] }
 tokio = { version = "1.28", features = ["full"] }
 #ron = { version = "0.8", default-features = false }
 #serde = {version = "1.0",features = ["derive"]}

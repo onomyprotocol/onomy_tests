@@ -4,8 +4,8 @@ use common::nom;
 use lazy_static::lazy_static;
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command, MapAddError,
-    Result, STD_DELAY, STD_TRIES,
+    acquire_file_path, close_file, get_separated_val, sh, std_init, wait_for_ok, Command,
+    LogFileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 use tokio::{
     fs::OpenOptions,
@@ -23,9 +23,13 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    std_init()?;
+    let cosmovisor_log = Some(LogFileOptions::new(
+        "/logs",
+        "chain_upgrade_test_entrypoint_cosmovisor.log",
+        true,
+        true,
+    ));
 
     // NOTE: this is stuff you would not want to run in production
 
@@ -117,6 +121,8 @@ async fn main() -> Result<()> {
 
     // done preparing
     let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period  1", &[])
+        .stderr_log(&cosmovisor_log)
+        .stdout_log(&cosmovisor_log)
         .run()
         .await?;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh("cosmovisor run status", &[])).await?;
