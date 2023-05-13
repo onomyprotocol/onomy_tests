@@ -1,14 +1,16 @@
-use std::env;
+use std::{env, time::Duration};
 
 use common::nom;
 use lazy_static::lazy_static;
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_file_path, close_file, get_separated_val, sh, Command, MapAddError, Result,
+    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command, MapAddError,
+    Result, STD_DELAY, STD_TRIES,
 };
 use tokio::{
     fs::OpenOptions,
     io::{AsyncReadExt, AsyncWriteExt},
+    time::sleep,
 };
 
 lazy_static! {
@@ -114,9 +116,14 @@ async fn main() -> Result<()> {
     sh("cosmovisor run collect-gentxs", &[]).await?;
 
     // done preparing
-    /*
-    //let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period
-    // 1", &[]).run().await?;
+    let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period  1", &[])
+        .run()
+        .await?;
+    wait_for_ok(STD_TRIES, STD_DELAY, || sh("cosmovisor run status", &[])).await?;
+
+    // note: there seems to be some race condition where the submit proposal happens
+    // too soon even though status is showing as good
+    sleep(Duration::from_secs(5)).await;
 
     let upgrade_height = "10";
     let proposal_id = "1";
@@ -162,11 +169,10 @@ async fn main() -> Result<()> {
         "cosmovisor run tx gov vote",
         &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
-    .await?;*/
-
-    //cosmovisor.terminate().await?;
+    .await?;
 
     tokio::time::sleep(common::TIMEOUT).await;
+    cosmovisor.terminate().await?;
 
     Ok(())
 }
