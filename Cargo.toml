@@ -21,13 +21,13 @@ name = "chain_upgrade_test_entrypoint"
 path = "src/bin/chain_upgrade_test_entrypoint.rs"
 
 [dependencies]
+awint = { version = "0.10", default-features = false, features = ["std"] }
 env_logger = "0.10"
 lazy_static = "1.4"
 log = "0.4"
+serde_json = "1.0"
 # TODO we will use a git link in the mid term
 super_orchestrator = { path = "../super_orchestrator", default-features = false, features = ["serde_json_support"] }
 tokio = { version = "1.28", features = ["full"] }
-serde_json = "1.0"
-awint = { version = "0.10", default-features = false, features = ["std"] }
 #ron = { version = "0.8", default-features = false }
 #serde = {version = "1.0",features = ["derive"]}
