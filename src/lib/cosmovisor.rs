@@ -1,6 +1,7 @@
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_file_path, close_file, get_separated_val, sh, Command, MapAddError, Result,
+    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command, CommandRunner,
+    LogFileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 use tokio::{
     fs::OpenOptions,
@@ -13,6 +14,7 @@ use crate::nom;
 /// NOTE: this is intended to be run inside containers only
 pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     let chain_id = "onomy";
+    let global_min_self_delegation = "225000000000000000000000";
     sh("cosmovisor run config chain-id", &[chain_id]).await?;
     sh("cosmovisor run config keyring-backend test", &[]).await?;
     sh("cosmovisor run init --overwrite", &[chain_id]).await?;
@@ -59,7 +61,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 
     // min_global_self_delegation
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
-        json!("225000000000000000000000");
+        global_min_self_delegation.into();
 
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
@@ -106,10 +108,39 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
         orch_addr,
         "--chain-id",
         chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
     ])
     .await?;
     sh("cosmovisor run gravity collect-gentxs", &[]).await?;
     sh("cosmovisor run collect-gentxs", &[]).await?;
 
     Ok(())
+}
+
+/// This starts cosmovisor (with the logs going to
+/// "/logs/entrypoint_cosmovisor.log") and waits for height 1
+pub async fn cosmovisor_start() -> Result<CommandRunner> {
+    let cosmovisor_log = Some(LogFileOptions::new(
+        "/logs",
+        "entrypoint_cosmovisor.log",
+        true,
+        true,
+    ));
+
+    let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period  1", &[])
+        .stderr_log(&cosmovisor_log)
+        .stdout_log(&cosmovisor_log)
+        .run()
+        .await?;
+    // wait for status to be ok and daemon to be running
+    println!("waiting for daemon to run");
+    wait_for_ok(STD_TRIES, STD_DELAY, || sh("cosmovisor run status", &[])).await?;
+    println!("waiting for block height to increase");
+    /*wait_for_ok(STD_TRIES, STD_DELAY, || {
+        //sh("cosmovisor ")
+        Ok(())
+    }).await?;*/
+
+    Ok(cosmovisor)
 }

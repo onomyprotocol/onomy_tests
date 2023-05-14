@@ -3,7 +3,8 @@ use std::env;
 use common::cosmovisor::cosmovisor_setup;
 use lazy_static::lazy_static;
 use super_orchestrator::{
-    sh, std_init, wait_for_ok, Command, LogFileOptions, Result, STD_DELAY, STD_TRIES,
+    get_separated_val, sh, std_init, wait_for_ok, Command, LogFileOptions, Result, STD_DELAY,
+    STD_TRIES,
 };
 use tokio::time::sleep;
 
@@ -18,12 +19,6 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result<()> {
     std_init()?;
-    let cosmovisor_log = Some(LogFileOptions::new(
-        "/logs",
-        "chain_upgrade_test_entrypoint_cosmovisor.log",
-        true,
-        true,
-    ));
 
     cosmovisor_setup(DAEMON_HOME.as_str(), GOV_PERIOD.as_str()).await?;
 
@@ -34,6 +29,37 @@ async fn main() -> Result<()> {
         .run()
         .await?;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh("cosmovisor run status", &[])).await?;
+
+    let validator_addr = get_separated_val(
+        &sh("cosmovisor run keys show validator", &[]).await?,
+        "\n",
+        "address",
+        ":",
+    )?;
+    let addr_bytes = get_separated_val(
+        &sh("cosmovisor run keys parse", &[&validator_addr]).await?,
+        "\n",
+        "bytes",
+        ":",
+    )?;
+    let valoper_addr = format!(
+        "onomyvaloper1{}",
+        get_separated_val(
+            &sh("cosmovisor run keys parse", &[&addr_bytes]).await?,
+            "\n",
+            "- onomyvaloper",
+            "1"
+        )?
+    );
+    println!(
+        "{}",
+        sh("cosmovisor run query staking delegations-to", &[
+            &valoper_addr
+        ])
+        .await?
+    );
+
+    //
 
     sleep(common::TIMEOUT).await;
     cosmovisor.terminate().await?;
