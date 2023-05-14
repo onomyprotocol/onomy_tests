@@ -8,10 +8,10 @@ use super_orchestrator::{
 async fn main() -> Result<()> {
     std_init()?;
 
-    let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    let dockerfile = "./dockerfiles/single_node.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
-    let entrypoint = "chain_upgrade_test_entrypoint";
+    let entrypoint = "single_node_entrypoint";
 
     // build internal runner
     Command::new("cargo", &[
