@@ -1,11 +1,11 @@
-use std::{env, time::Duration};
+use std::env;
 
 use common::{
-    cosmovisor::{cosmovisor, cosmovisor_setup, cosmovisor_start},
-    nom,
+    cosmovisor::{cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator, wait_for_height},
+    nom, ONE_SEC,
 };
 use lazy_static::lazy_static;
-use super_orchestrator::{std_init, Result};
+use super_orchestrator::{std_init, Result, STD_TRIES};
 use tokio::time::sleep;
 
 lazy_static! {
@@ -20,15 +20,12 @@ lazy_static! {
 async fn main() -> Result<()> {
     std_init()?;
 
+    let upgrade_height = "15";
+    let proposal_id = "1";
+
     cosmovisor_setup(DAEMON_HOME.as_str(), GOV_PERIOD.as_str()).await?;
     let mut cosmovisor_runner = cosmovisor_start().await?;
 
-    // note: there seems to be some race condition where the submit proposal happens
-    // too soon even though status is showing as good
-    sleep(Duration::from_secs(5)).await;
-
-    let upgrade_height = "10";
-    let proposal_id = "1";
     let gas_args = [
         "--gas",
         "auto",
@@ -72,6 +69,11 @@ async fn main() -> Result<()> {
         &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
     .await?;
+
+    wait_for_height(STD_TRIES, ONE_SEC, 10).await?;
+    dbg!(super_orchestrator::DisplayStr(&get_delegations_to_validator().await?));
+    wait_for_height(STD_TRIES, ONE_SEC, 16).await?;
+    dbg!(super_orchestrator::DisplayStr(&get_delegations_to_validator().await?));
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

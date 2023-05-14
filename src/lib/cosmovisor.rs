@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde_json::{json, Value};
 use super_orchestrator::{
     acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command, CommandRunner,
@@ -116,6 +118,29 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     Ok(())
 }
 
+/// Note that this interprets "null" height as 0
+pub async fn get_height() -> Result<u64> {
+    let block_s = cosmovisor("query block", &[]).await?;
+    let block: Value = serde_json::from_str(&block_s)?;
+    let height = &block["block"]["header"]["height"].to_string();
+    Ok(height
+        .to_string()
+        .trim_matches('"')
+        .parse::<u64>()
+        .unwrap_or(0))
+}
+
+pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Result<()> {
+    async fn height_is_greater_than(height: u64) -> Result<()> {
+        if get_height().await? > height {
+            Ok(())
+        } else {
+            ().map_add_err(|| ())
+        }
+    }
+    wait_for_ok(num_tries, delay, || height_is_greater_than(height)).await
+}
+
 /// This starts cosmovisor (with the logs going to
 /// "/logs/entrypoint_cosmovisor.log") and waits for height 1
 pub async fn cosmovisor_start() -> Result<CommandRunner> {
@@ -135,17 +160,32 @@ pub async fn cosmovisor_start() -> Result<CommandRunner> {
     println!("waiting for daemon to run");
     wait_for_ok(STD_TRIES, ONE_SEC, || cosmovisor("status", &[])).await?;
     println!("waiting for block height to increase");
-    async fn is_block_height_ge_1() -> Result<()> {
-        let block_s = cosmovisor("query block", &[]).await?;
-        let block: Value = serde_json::from_str(&block_s)?;
-        let height = &block["block"]["header"]["height"].to_string();
-        if height.to_string().trim_matches('"').parse::<u64>()? > 0 {
-            Ok(())
-        } else {
-            ().map_add_err(|| ())
-        }
-    }
-    wait_for_ok(STD_TRIES, ONE_SEC, is_block_height_ge_1).await?;
+    wait_for_height(STD_TRIES, ONE_SEC, 1).await?;
 
     Ok(cosmovisor_runner)
+}
+
+pub async fn get_delegations_to_validator() -> Result<String> {
+    let validator_addr = get_separated_val(
+        &cosmovisor("keys show validator", &[]).await?,
+        "\n",
+        "address",
+        ":",
+    )?;
+    let addr_bytes = get_separated_val(
+        &cosmovisor("keys parse", &[&validator_addr]).await?,
+        "\n",
+        "bytes",
+        ":",
+    )?;
+    let valoper_addr = format!(
+        "onomyvaloper1{}",
+        get_separated_val(
+            &cosmovisor("keys parse", &[&addr_bytes]).await?,
+            "\n",
+            "- onomyvaloper",
+            "1"
+        )?
+    );
+    cosmovisor("query staking delegations-to", &[&valoper_addr]).await
 }
