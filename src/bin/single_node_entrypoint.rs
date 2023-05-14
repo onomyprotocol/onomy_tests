@@ -1,11 +1,8 @@
 use std::env;
 
-use common::cosmovisor::cosmovisor_setup;
+use common::cosmovisor::{cosmovisor, cosmovisor_setup, cosmovisor_start};
 use lazy_static::lazy_static;
-use super_orchestrator::{
-    get_separated_val, sh, std_init, wait_for_ok, Command, LogFileOptions, Result, STD_DELAY,
-    STD_TRIES,
-};
+use super_orchestrator::{get_separated_val, std_init, Result};
 use tokio::time::sleep;
 
 lazy_static! {
@@ -19,25 +16,17 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result<()> {
     std_init()?;
-
     cosmovisor_setup(DAEMON_HOME.as_str(), GOV_PERIOD.as_str()).await?;
-
-    // done preparing
-    let mut cosmovisor = Command::new("cosmovisor run start --inv-check-period  1", &[])
-        .stderr_log(&cosmovisor_log)
-        .stdout_log(&cosmovisor_log)
-        .run()
-        .await?;
-    wait_for_ok(STD_TRIES, STD_DELAY, || sh("cosmovisor run status", &[])).await?;
+    let mut cosmovisor_runner = cosmovisor_start().await?;
 
     let validator_addr = get_separated_val(
-        &sh("cosmovisor run keys show validator", &[]).await?,
+        &cosmovisor("keys show validator", &[]).await?,
         "\n",
         "address",
         ":",
     )?;
     let addr_bytes = get_separated_val(
-        &sh("cosmovisor run keys parse", &[&validator_addr]).await?,
+        &cosmovisor("keys parse", &[&validator_addr]).await?,
         "\n",
         "bytes",
         ":",
@@ -45,7 +34,7 @@ async fn main() -> Result<()> {
     let valoper_addr = format!(
         "onomyvaloper1{}",
         get_separated_val(
-            &sh("cosmovisor run keys parse", &[&addr_bytes]).await?,
+            &cosmovisor("keys parse", &[&addr_bytes]).await?,
             "\n",
             "- onomyvaloper",
             "1"
@@ -53,16 +42,13 @@ async fn main() -> Result<()> {
     );
     println!(
         "{}",
-        sh("cosmovisor run query staking delegations-to", &[
-            &valoper_addr
-        ])
-        .await?
+        cosmovisor("query staking delegations-to", &[&valoper_addr]).await?
     );
 
     //
 
     sleep(common::TIMEOUT).await;
-    cosmovisor.terminate().await?;
+    cosmovisor_runner.terminate().await?;
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use common::TIMEOUT;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    std_init, Command, Result,
+    sh, std_init, Result,
 };
 
 #[tokio::main]
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     let entrypoint = "chain_upgrade_test_entrypoint";
 
     // build internal runner
-    Command::new("cargo", &[
+    sh("cargo", &[
         "build",
         "--release",
         "--bin",
@@ -22,9 +22,7 @@ async fn main() -> Result<()> {
         "--target",
         container_target,
     ])
-    .run_to_completion()
-    .await?
-    .assert_success()?;
+    .await?;
 
     let mut cn = ContainerNetwork::new(
         "test",

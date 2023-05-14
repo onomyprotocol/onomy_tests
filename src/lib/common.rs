@@ -4,6 +4,7 @@ pub mod cosmovisor;
 use awint::awi::*;
 
 pub const ONOMY_BASE: &str = "fedora:38";
+pub const ONE_SEC: Duration = Duration::from_secs(1);
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
 
 /// Given `units_of_nom` in units of NOM, returns a string of the decimal number
