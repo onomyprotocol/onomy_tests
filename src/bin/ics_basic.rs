@@ -8,10 +8,10 @@ use super_orchestrator::{
 async fn main() -> Result<()> {
     std_init()?;
 
-    let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    let dockerfile = "./dockerfiles/provider.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
-    let entrypoint = "chain_upgrade_test_entrypoint";
+    let entrypoint = "ics_basic_entrypoint";
 
     // build internal runner
     sh("cargo build --release --bin", &[
@@ -19,6 +19,15 @@ async fn main() -> Result<()> {
         "--target",
         container_target,
     ])
+    .await?;
+
+    // build binary
+    //sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
+    // copy (docker cannot use files from outside cwd)
+    sh(
+        "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+        &[],
+    )
     .await?;
 
     let mut cn = ContainerNetwork::new(

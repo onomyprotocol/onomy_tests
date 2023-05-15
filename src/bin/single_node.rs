@@ -14,10 +14,7 @@ async fn main() -> Result<()> {
     let entrypoint = "single_node_entrypoint";
 
     // build internal runner
-    sh("cargo", &[
-        "build",
-        "--release",
-        "--bin",
+    sh("cargo build --release --bin", &[
         entrypoint,
         "--target",
         container_target,

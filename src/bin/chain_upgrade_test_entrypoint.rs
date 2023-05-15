@@ -1,7 +1,10 @@
 use std::env;
 
 use common::{
-    cosmovisor::{cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator, wait_for_height},
+    cosmovisor::{
+        cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator,
+        wait_for_height,
+    },
     nom, ONE_SEC,
 };
 use lazy_static::lazy_static;
@@ -13,7 +16,6 @@ lazy_static! {
     static ref DAEMON_HOME: String = env::var("DAEMON_HOME").unwrap();
     static ref ONOMY_CURRENT_VERSION: String = env::var("ONOMY_CURRENT_VERSION").unwrap();
     static ref ONOMY_UPGRADE_VERSION: String = env::var("ONOMY_UPGRADE_VERSION").unwrap();
-    static ref GOV_PERIOD: String = env::var("GOV_PERIOD").unwrap();
 }
 
 #[tokio::main]
@@ -22,8 +24,9 @@ async fn main() -> Result<()> {
 
     let upgrade_height = "15";
     let proposal_id = "1";
+    let gov_period = "30s";
 
-    cosmovisor_setup(DAEMON_HOME.as_str(), GOV_PERIOD.as_str()).await?;
+    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start().await?;
 
     let gas_args = [
@@ -71,9 +74,13 @@ async fn main() -> Result<()> {
     .await?;
 
     wait_for_height(STD_TRIES, ONE_SEC, 10).await?;
-    dbg!(super_orchestrator::DisplayStr(&get_delegations_to_validator().await?));
+    dbg!(super_orchestrator::DisplayStr(
+        &get_delegations_to_validator().await?
+    ));
     wait_for_height(STD_TRIES, ONE_SEC, 16).await?;
-    dbg!(super_orchestrator::DisplayStr(&get_delegations_to_validator().await?));
+    dbg!(super_orchestrator::DisplayStr(
+        &get_delegations_to_validator().await?
+    ));
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

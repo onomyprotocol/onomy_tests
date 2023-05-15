@@ -8,18 +8,6 @@ publish = false
 name = "common"
 path = "src/lib/common.rs"
 
-[[bin]]
-name = "tmp"
-path = "src/bin/tmp.rs"
-
-[[bin]]
-name = "chain_upgrade_test"
-path = "src/bin/chain_upgrade_test.rs"
-
-[[bin]]
-name = "chain_upgrade_test_entrypoint"
-path = "src/bin/chain_upgrade_test_entrypoint.rs"
-
 [dependencies]
 awint = { version = "0.10", default-features = false, features = ["std"] }
 env_logger = "0.10"

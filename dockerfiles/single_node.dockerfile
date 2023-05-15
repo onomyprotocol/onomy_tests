@@ -18,5 +18,3 @@ RUN cosmovisor init $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/o
 
 # some commands don't like if the data directory does not exist
 RUN mkdir $DAEMON_HOME/data
-
-ENV GOV_PERIOD="30s"

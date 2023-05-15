@@ -1,6 +1,6 @@
 use std::env;
 
-use common::cosmovisor::{cosmovisor_setup, cosmovisor_start, get_delegations_to_validator};
+use common::cosmovisor::{cosmovisor_start, get_delegations_to_validator, provider_setup};
 use lazy_static::lazy_static;
 use super_orchestrator::{std_init, Result};
 use tokio::time::sleep;
@@ -15,7 +15,7 @@ lazy_static! {
 async fn main() -> Result<()> {
     std_init()?;
     let gov_period = "30s";
-    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    provider_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start().await?;
 
     dbg!(get_delegations_to_validator().await?);

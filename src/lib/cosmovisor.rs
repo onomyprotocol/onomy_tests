@@ -118,6 +118,84 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     Ok(())
 }
 
+/// NOTE: this is stuff you would not want to run in production.
+/// NOTE: this is intended to be run inside containers only
+pub async fn provider_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+    let chain_id = "onomy";
+    let global_min_self_delegation = "225000000000000000000000";
+    cosmovisor("config chain-id", &[chain_id]).await?;
+    cosmovisor("config keyring-backend test", &[]).await?;
+    cosmovisor("init --overwrite", &[chain_id]).await?;
+
+    let genesis_file_path =
+        acquire_file_path(&format!("{}/config/genesis.json", daemon_home)).await?;
+    let mut genesis_file = OpenOptions::new()
+        .read(true)
+        .open(&genesis_file_path)
+        .await?;
+    let mut genesis_s = String::new();
+    genesis_file.read_to_string(&mut genesis_s).await?;
+    // when we write back, we ill just reopen as truncated, `set_len` has too many
+    // problems
+    close_file(genesis_file).await?;
+
+    // rename all "stake" to "anom"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    println!("\n\n{genesis_s}\n\n");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    // put in the test `footoken` and the staking `anom`
+    let denom_metadata = json!(
+        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
+        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
+        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
+        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
+        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
+        "exponent": 18}]}]
+    );
+    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+
+    // decrease the governing period for fast tests
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // init DAO balance
+    let treasury_balance = json!([{"denom": "anom", "amount": "100000000000000000000000000"}]);
+    genesis["app_state"]["dao"]["treasury_balance"] = treasury_balance;
+
+    // disable community_tax
+    genesis["app_state"]["distribution"]["params"]["community_tax"] = json!("0");
+
+    // min_global_self_delegation
+    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
+        global_min_self_delegation.into();
+
+    // write back genesis, just reopen
+    let genesis_s = serde_json::to_string(&genesis)?;
+    let mut genesis_file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(&genesis_file_path)
+        .await?;
+    genesis_file.write_all(genesis_s.as_bytes()).await?;
+    close_file(genesis_file).await?;
+
+    cosmovisor("keys add validator", &[]).await?;
+    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("gentx validator", &[
+        &nom(1.0e6),
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
+    ])
+    .await?;
+    cosmovisor("collect-gentxs", &[]).await?;
+
+    Ok(())
+}
+
 /// Note that this interprets "null" height as 0
 pub async fn get_height() -> Result<u64> {
     let block_s = cosmovisor("query block", &[]).await?;
