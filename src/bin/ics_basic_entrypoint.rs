@@ -14,7 +14,7 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result<()> {
     std_init()?;
-    let gov_period = "30s";
+    let gov_period = "20s";
     provider_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start().await?;
 

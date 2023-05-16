@@ -6,7 +6,7 @@ ENV PATH=$PATH:/root/go/bin
 
 ENV DAEMON_NAME="onomyd"
 ENV DAEMON_HOME="/root/.onomy"
-ENV ONOMY_CURRENT_VERSION=v1.0.3.2
+ENV ONOMY_CURRENT_VERSION=v1.0.3.4
 
 ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_CURRENT_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
 

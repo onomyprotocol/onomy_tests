@@ -22,12 +22,17 @@ lazy_static! {
 async fn main() -> Result<()> {
     std_init()?;
 
-    let upgrade_height = "15";
+    // as long as none of our operations are delayed longer than a block, this works
+    let upgrade_height = "5";
     let proposal_id = "1";
-    let gov_period = "30s";
+    let gov_period = "4s";
 
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start().await?;
+
+    dbg!(super_orchestrator::DisplayStr(
+        &get_delegations_to_validator().await?
+    ));
 
     let gas_args = [
         "--gas",
@@ -73,11 +78,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    wait_for_height(STD_TRIES, ONE_SEC, 10).await?;
-    dbg!(super_orchestrator::DisplayStr(
-        &get_delegations_to_validator().await?
-    ));
-    wait_for_height(STD_TRIES, ONE_SEC, 16).await?;
+    wait_for_height(STD_TRIES, ONE_SEC, 5).await?;
     dbg!(super_orchestrator::DisplayStr(
         &get_delegations_to_validator().await?
     ));

@@ -209,14 +209,14 @@ pub async fn get_height() -> Result<u64> {
 }
 
 pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Result<()> {
-    async fn height_is_greater_than(height: u64) -> Result<()> {
-        if get_height().await? > height {
+    async fn height_is_ge(height: u64) -> Result<()> {
+        if get_height().await? >= height {
             Ok(())
         } else {
             ().map_add_err(|| ())
         }
     }
-    wait_for_ok(num_tries, delay, || height_is_greater_than(height)).await
+    wait_for_ok(num_tries, delay, || height_is_ge(height)).await
 }
 
 /// This starts cosmovisor (with the logs going to
