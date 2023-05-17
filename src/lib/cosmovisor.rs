@@ -195,8 +195,8 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
 }
 
 pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
-    let chain_id = "onomy";
-    let global_min_self_delegation = "225000000000000000000000";
+    let chain_id = "market";
+    let min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
     cosmovisor("config keyring-backend test", &[]).await?;
     cosmovisor("init --overwrite", &[chain_id]).await?;
@@ -230,14 +230,14 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     genesis_file.write_all(genesis_s.as_bytes()).await?;
     close_file(genesis_file).await?;
 
-    cosmovisor("keys add marketd_validator", &[]).await?;
-    cosmovisor("add-genesis-account marketd_validator", &[&nom(2.0e6)]).await?;
-    cosmovisor("gentx marketd_validator", &[
+    cosmovisor("keys add validator", &[]).await?;
+    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("gentx validator", &[
         &nom(1.0e6),
         "--chain-id",
         chain_id,
         "--min-self-delegation",
-        global_min_self_delegation,
+        min_self_delegation,
     ])
     .await?;
     cosmovisor("collect-gentxs", &[]).await?;

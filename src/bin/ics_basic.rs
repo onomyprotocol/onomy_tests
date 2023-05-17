@@ -15,7 +15,6 @@ use tokio::time::sleep;
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
     static ref DAEMON_HOME: String = env::var("DAEMON_HOME").unwrap();
-    static ref ONOMY_CURRENT_VERSION: String = env::var("ONOMY_CURRENT_VERSION").unwrap();
 }
 
 /// Runs ics_basic
@@ -56,6 +55,7 @@ async fn container_runner() -> Result<()> {
         container_target,
     ])
     .await?;
+
     /*
         // build binaries
         sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
@@ -111,17 +111,18 @@ async fn onomyd() -> Result<()> {
     onomyd_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd.log").await?;
 
-    sleep(common::TIMEOUT).await;
+    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
     Ok(())
 }
 
 async fn marketd() -> Result<()> {
     let gov_period = "20s";
-    //marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
-    //let mut cosmovisor_runner = cosmovisor_start().await?;
+    marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
 
-    sleep(common::TIMEOUT).await;
-    //cosmovisor_runner.terminate().await?;
+    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_marketd.log").await?;
+
+    sleep(TIMEOUT).await;
+    cosmovisor_runner.terminate().await?;
     Ok(())
 }
