@@ -2,7 +2,7 @@ use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{cosmovisor_setup, cosmovisor_start, get_delegations_to_validator},
+    cosmovisor::{cosmovisor_start, marketd_setup, onomyd_setup},
     TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -56,21 +56,22 @@ async fn container_runner() -> Result<()> {
         container_target,
     ])
     .await?;
-
-    // build binaries
-    sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
-    sh("make --directory ./../market/ build", &[]).await?;
-    // copy to dockerfile resources (docker cannot use files from outside cwd)
-    sh(
-        "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
-        &[],
-    )
-    .await?;
-    sh(
-        "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
-        &[],
-    )
-    .await?;
+    /*
+        // build binaries
+        sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
+        sh("make --directory ./../market/ build", &[]).await?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(
+            "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+            &[],
+        )
+        .await?;
+        sh(
+            "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
+            &[],
+        )
+        .await?;
+    */
 
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
     let mut cn = ContainerNetwork::new(
@@ -107,10 +108,8 @@ async fn container_runner() -> Result<()> {
 
 async fn onomyd() -> Result<()> {
     let gov_period = "20s";
-    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
-    let mut cosmovisor_runner = cosmovisor_start().await?;
-
-    dbg!(get_delegations_to_validator().await?);
+    onomyd_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd.log").await?;
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -119,12 +118,10 @@ async fn onomyd() -> Result<()> {
 
 async fn marketd() -> Result<()> {
     let gov_period = "20s";
-    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
-    let mut cosmovisor_runner = cosmovisor_start().await?;
-
-    dbg!(get_delegations_to_validator().await?);
+    //marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    //let mut cosmovisor_runner = cosmovisor_start().await?;
 
     sleep(common::TIMEOUT).await;
-    cosmovisor_runner.terminate().await?;
+    //cosmovisor_runner.terminate().await?;
     Ok(())
 }

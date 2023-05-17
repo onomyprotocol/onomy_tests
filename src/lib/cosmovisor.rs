@@ -41,13 +41,12 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
         .await?;
     let mut genesis_s = String::new();
     genesis_file.read_to_string(&mut genesis_s).await?;
-    // when we write back, we ill just reopen as truncated, `set_len` has too many
+    // when we write back, we will just reopen as truncated, `set_len` has too many
     // problems
     close_file(genesis_file).await?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    println!("\n\n{genesis_s}\n\n");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
     // put in the test `footoken` and the staking `anom`
@@ -120,7 +119,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
-pub async fn provider_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
@@ -135,13 +134,12 @@ pub async fn provider_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
         .await?;
     let mut genesis_s = String::new();
     genesis_file.read_to_string(&mut genesis_s).await?;
-    // when we write back, we ill just reopen as truncated, `set_len` has too many
+    // when we write back, we will just reopen as truncated, `set_len` has too many
     // problems
     close_file(genesis_file).await?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    println!("\n\n{genesis_s}\n\n");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
     // put in the test `footoken` and the staking `anom`
@@ -196,6 +194,57 @@ pub async fn provider_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+    let chain_id = "onomy";
+    let global_min_self_delegation = "225000000000000000000000";
+    cosmovisor("config chain-id", &[chain_id]).await?;
+    cosmovisor("config keyring-backend test", &[]).await?;
+    cosmovisor("init --overwrite", &[chain_id]).await?;
+
+    let genesis_file_path =
+        acquire_file_path(&format!("{}/config/genesis.json", daemon_home)).await?;
+    let mut genesis_file = OpenOptions::new()
+        .read(true)
+        .open(&genesis_file_path)
+        .await?;
+    let mut genesis_s = String::new();
+    genesis_file.read_to_string(&mut genesis_s).await?;
+    // when we write back, we will just reopen as truncated, `set_len` has too many
+    // problems
+    close_file(genesis_file).await?;
+
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    // decrease the governing period for fast tests
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // write back genesis, just reopen
+    let genesis_s = serde_json::to_string(&genesis)?;
+    let mut genesis_file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(&genesis_file_path)
+        .await?;
+    genesis_file.write_all(genesis_s.as_bytes()).await?;
+    close_file(genesis_file).await?;
+
+    cosmovisor("keys add marketd_validator", &[]).await?;
+    cosmovisor("add-genesis-account marketd_validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("gentx marketd_validator", &[
+        &nom(1.0e6),
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
+    ])
+    .await?;
+    cosmovisor("collect-gentxs", &[]).await?;
+
+    Ok(())
+}
+
 /// Note that this interprets "null" height as 0
 pub async fn get_height() -> Result<u64> {
     let block_s = cosmovisor("query block", &[]).await?;
@@ -219,15 +268,9 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
     wait_for_ok(num_tries, delay, || height_is_ge(height)).await
 }
 
-/// This starts cosmovisor (with the logs going to
-/// "/logs/entrypoint_cosmovisor.log") and waits for height 1
-pub async fn cosmovisor_start() -> Result<CommandRunner> {
-    let cosmovisor_log = Some(LogFileOptions::new(
-        "/logs",
-        "entrypoint_cosmovisor.log",
-        true,
-        true,
-    ));
+/// This starts cosmovisor and waits for height 1
+pub async fn cosmovisor_start(log_file_name: &str) -> Result<CommandRunner> {
+    let cosmovisor_log = Some(LogFileOptions::new("/logs", log_file_name, true, true));
 
     let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &[])
         .stderr_log(&cosmovisor_log)
