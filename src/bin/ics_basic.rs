@@ -78,9 +78,9 @@ async fn container_runner() -> Result<()> {
         "test",
         vec![
             Container::new(
-                "onomyd",
+                "main",
                 Some("./dockerfiles/onomyd.dockerfile"),
-                "onomyd_build",
+                "main",
                 &[],
                 &[("./logs", "/logs")],
                 entrypoint,
@@ -89,7 +89,7 @@ async fn container_runner() -> Result<()> {
             Container::new(
                 "marketd",
                 Some("./dockerfiles/marketd.dockerfile"),
-                "marketd_build",
+                "marketd",
                 &[],
                 &[("./logs", "/logs")],
                 entrypoint,
@@ -102,7 +102,7 @@ async fn container_runner() -> Result<()> {
     cn.run(true).await?;
 
     let ids = cn.get_ids();
-    cn.wait_with_timeout(ids, TIMEOUT).await.unwrap();
+    cn.wait_with_timeout(ids, true, TIMEOUT).await.unwrap();
     Ok(())
 }
 

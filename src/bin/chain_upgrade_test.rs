@@ -38,6 +38,6 @@ async fn main() -> Result<()> {
     cn.run(true).await?;
 
     let ids = cn.get_ids();
-    cn.wait_with_timeout(ids, TIMEOUT).await.unwrap();
+    cn.wait_with_timeout(ids, true, TIMEOUT).await.unwrap();
     Ok(())
 }
