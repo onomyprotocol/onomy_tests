@@ -56,22 +56,22 @@ async fn container_runner() -> Result<()> {
     ])
     .await?;
 
-    /*
-        // build binaries
-        sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
-        sh("make --directory ./../market/ build", &[]).await?;
-        // copy to dockerfile resources (docker cannot use files from outside cwd)
-        sh(
-            "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
-            &[],
-        )
-        .await?;
-        sh(
-            "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
-            &[],
-        )
-        .await?;
-    */
+    // FIXME fall back to 971000347e9dce20e27b37208a0305c27ef1c458
+
+    // build binaries
+    sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
+    sh("make --directory ./../market/ build", &[]).await?;
+    // copy to dockerfile resources (docker cannot use files from outside cwd)
+    sh(
+        "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+        &[],
+    )
+    .await?;
+    sh(
+        "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
+        &[],
+    )
+    .await?;
 
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
     let mut cn = ContainerNetwork::new(

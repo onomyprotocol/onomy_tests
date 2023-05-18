@@ -221,10 +221,21 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str, denom: &str) -> 
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // for consumer chain genesis
-    genesis["app_state"]["ccvconsumer"]["new_chain"] = true.into();
+    //genesis["app_state"]["ccvconsumer"]["new_chain"] = true.into();
+
+    // FIXME overwriting
+    let file_path = acquire_file_path(&format!("/logs/consu.json")).await?;
+    let mut file = OpenOptions::new().read(true).open(&file_path).await?;
+    let mut s = String::new();
+    file.read_to_string(&mut s).await?;
+    // when we write back, we will just reopen as truncated, `set_len` has too many
+    // problems
+    close_file(file).await?;
+    let genesis: Value = serde_json::from_str(&s)?;
 
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
+    println!("\n\n{genesis_s}\n\n");
     let mut genesis_file = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -233,7 +244,7 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str, denom: &str) -> 
     genesis_file.write_all(genesis_s.as_bytes()).await?;
     close_file(genesis_file).await?;
 
-    cosmovisor("keys add validator", &[]).await?;
+    /*cosmovisor("keys add validator", &[]).await?;
     cosmovisor("add-genesis-account validator", &[&token18(2.0e6, denom)]).await?;
     cosmovisor("gentx validator", &[
         &token18(1.0e6, denom),
@@ -243,7 +254,7 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str, denom: &str) -> 
         min_self_delegation,
     ])
     .await?;
-    cosmovisor("collect-gentxs", &[]).await?;
+    cosmovisor("collect-gentxs", &[]).await?;*/
 
     Ok(())
 }
