@@ -1,14 +1,15 @@
+use core::slice::SlicePattern;
 use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{cosmovisor_start, marketd_setup, onomyd_setup},
+    cosmovisor::{cosmovisor, cosmovisor_start, marketd_setup, onomyd_setup},
     TIMEOUT,
 };
 use lazy_static::lazy_static;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    sh, std_init, MapAddError, Result,
+    get_separated_val, sh, std_init, MapAddError, Result,
 };
 use tokio::time::sleep;
 
@@ -59,19 +60,21 @@ async fn container_runner() -> Result<()> {
     // FIXME fall back to 971000347e9dce20e27b37208a0305c27ef1c458
 
     // build binaries
-    sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
-    sh("make --directory ./../market/ build", &[]).await?;
-    // copy to dockerfile resources (docker cannot use files from outside cwd)
-    sh(
-        "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
-        &[],
-    )
-    .await?;
-    sh(
-        "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
-        &[],
-    )
-    .await?;
+    /*
+        sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
+        sh("make --directory ./../market/ build", &[]).await?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(
+            "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+            &[],
+        )
+        .await?;
+        sh(
+            "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
+            &[],
+        )
+        .await?;
+    */
 
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
     let mut cn = ContainerNetwork::new(
@@ -112,6 +115,74 @@ async fn onomyd() -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd.log").await?;
 
     // TODO stepsStartConsumerChain
+
+    let proposal_id = "1";
+
+    /*
+    // note: must somehow get the hashes and spawn time in, may need to change height
+        {
+            "title": "Propose the addition of a new chain",
+            "description": "add consumer chain market",
+            "chain_id": "market",
+            "initial_height": {
+                "revision_height": 1
+            },
+            "genesis_hash": "Z2VuX2hhc2g=",
+            "binary_hash": "YmluX2hhc2g=",
+            "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
+            "consumer_redistribution_fraction": "0.75",
+            "blocks_per_distribution_transmission": 1000,
+            "historical_entries": 10000,
+            "ccv_timeout_period": 2419200000000000,
+            "transfer_timeout_period": 3600000000000,
+            "unbonding_period": 1728000000000000,
+            "deposit": "2000000000000000000000anom"
+        }
+     */
+    //cosmovisor run tx gov submit-proposal consumer-addition
+    // /logs/consumer_add_proposal.json --gas auto --gas-adjustment 1.3 -y -b block
+    // --from validator
+    let gas_args = [
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ]
+    .as_slice();
+    cosmovisor(
+        "cosmovisor run tx gov submit-proposal consumer-addition /logs/consumer_add_proposal.json",
+        gas_args,
+    )
+    .await?;
+    // we can go ahead and get the consensus key assignment done (can this be done
+    // later?)
+    let validator_addr = get_separated_val(
+        &cosmovisor("keys show validator", &[]).await?,
+        "\n",
+        "address",
+        ":",
+    )?;
+    // use validator_addr for consumer-pubkey
+    //cosmovisor run tx provider assign-consensus-key market [consumer-pubkey]
+    // [flags]
+    cosmovisor(
+        "cosmovisor run tx provider assign-consensus-key market",
+        &[[validator_addr.as_str()].as_slice(), gas_args].concat(),
+    )
+    .await?;
+    // the deposit is done as part of the chain addition proposal
+    cosmovisor(
+        "tx gov vote",
+        &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
+    )
+    .await?;
+
+    let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
