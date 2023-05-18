@@ -1,4 +1,3 @@
-use core::slice::SlicePattern;
 use std::env;
 
 use clap::Parser;
@@ -7,6 +6,7 @@ use common::{
     TIMEOUT,
 };
 use lazy_static::lazy_static;
+use serde_json::Value;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val, sh, std_init, MapAddError, Result,
@@ -89,7 +89,7 @@ async fn container_runner() -> Result<()> {
                 entrypoint,
                 &["--entrypoint", "onomyd"],
             ),
-            Container::new(
+            /*Container::new(
                 "marketd",
                 Some("./dockerfiles/marketd.dockerfile"),
                 "marketd",
@@ -97,7 +97,7 @@ async fn container_runner() -> Result<()> {
                 &[("./logs", "/logs")],
                 entrypoint,
                 &["--entrypoint", "marketd"],
-            ),
+            ),*/
         ],
         false,
         logs_dir,
@@ -155,24 +155,31 @@ async fn onomyd() -> Result<()> {
     ]
     .as_slice();
     cosmovisor(
-        "cosmovisor run tx gov submit-proposal consumer-addition /logs/consumer_add_proposal.json",
+        "tx gov submit-proposal consumer-addition /logs/consumer_add_proposal.json",
         gas_args,
     )
     .await?;
     // we can go ahead and get the consensus key assignment done (can this be done
     // later?)
-    let validator_addr = get_separated_val(
-        &cosmovisor("keys show validator", &[]).await?,
+
+    // we need to get the ed25519 consensus key
+    // it seems the consensus key set is entirely separate TODO for now we just grab
+    // any key
+
+    // this is wrong on many levels, the design is not making this easy
+    let tmp_s = get_separated_val(
+        &cosmovisor("query tendermint-validator-set", &[]).await?,
         "\n",
-        "address",
+        "value",
         ":",
     )?;
-    // use validator_addr for consumer-pubkey
-    //cosmovisor run tx provider assign-consensus-key market [consumer-pubkey]
-    // [flags]
+    let mut consensus_pubkey = r#"{"@type":"/cosmos.crypto.ed25519.PubKey","key":""#.to_owned();
+    consensus_pubkey.push_str(&tmp_s);
+    consensus_pubkey.push_str("\"}}");
+
     cosmovisor(
-        "cosmovisor run tx provider assign-consensus-key market",
-        &[[validator_addr.as_str()].as_slice(), gas_args].concat(),
+        "tx provider assign-consensus-key market",
+        &[[consensus_pubkey.as_str()].as_slice(), gas_args].concat(),
     )
     .await?;
     // the deposit is done as part of the chain addition proposal
@@ -183,6 +190,8 @@ async fn onomyd() -> Result<()> {
     .await?;
 
     let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
+
+    println!("\n\n\n\n{consumer_genesis}");
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
