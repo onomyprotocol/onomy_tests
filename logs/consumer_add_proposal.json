@@ -3,7 +3,7 @@
     "description": "add consumer chain market",
     "chain_id": "market",
     "initial_height": {
-        "revision_height": 1
+        "revision_height": 10
     },
     "genesis_hash": "Z2VuX2hhc2g=",
     "binary_hash": "YmluX2hhc2g=",

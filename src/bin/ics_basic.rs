@@ -2,14 +2,14 @@ use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{cosmovisor, cosmovisor_start, marketd_setup, onomyd_setup},
+    cosmovisor::{cosmovisor, cosmovisor_start, marketd_setup, onomyd_setup, wait_for_height},
     TIMEOUT,
 };
 use lazy_static::lazy_static;
 use serde_json::Value;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    get_separated_val, sh, std_init, MapAddError, Result,
+    get_separated_val, sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 
@@ -188,6 +188,8 @@ async fn onomyd() -> Result<()> {
         &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
     .await?;
+
+    wait_for_height(STD_TRIES, STD_DELAY, 10).await?;
 
     let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
 
