@@ -6,7 +6,6 @@ use common::{
     TIMEOUT,
 };
 use lazy_static::lazy_static;
-use serde_json::Value;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val, sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
@@ -101,11 +100,9 @@ async fn container_runner() -> Result<()> {
         ],
         false,
         logs_dir,
-    );
-    cn.run(true).await?;
-
-    let ids = cn.get_ids();
-    cn.wait_with_timeout(ids, true, TIMEOUT).await.unwrap();
+    )?;
+    cn.run_all(true).await?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
     Ok(())
 }
 

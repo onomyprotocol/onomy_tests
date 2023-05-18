@@ -9,7 +9,6 @@ use common::{
 };
 use lazy_static::lazy_static;
 use super_orchestrator::{std_init, Result, STD_TRIES};
-use tokio::time::sleep;
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -82,8 +81,8 @@ async fn main() -> Result<()> {
     dbg!(super_orchestrator::DisplayStr(
         &get_delegations_to_validator().await?
     ));
+    // TODO check that the upgrade was successful
 
-    sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
 
     Ok(())

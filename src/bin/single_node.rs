@@ -34,10 +34,8 @@ async fn main() -> Result<()> {
         )],
         false,
         logs_dir,
-    );
-    cn.run(true).await?;
-
-    let ids = cn.get_ids();
-    cn.wait_with_timeout(ids, true, TIMEOUT).await.unwrap();
+    )?;
+    cn.run_all(true).await?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
     Ok(())
 }
