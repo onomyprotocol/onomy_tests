@@ -111,6 +111,8 @@ async fn onomyd() -> Result<()> {
     onomyd_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd.log").await?;
 
+    // TODO stepsStartConsumerChain
+
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
     Ok(())
@@ -118,7 +120,7 @@ async fn onomyd() -> Result<()> {
 
 async fn marketd() -> Result<()> {
     let gov_period = "20s";
-    marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    marketd_setup(DAEMON_HOME.as_str(), gov_period, "stake").await?;
 
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_marketd.log").await?;
 

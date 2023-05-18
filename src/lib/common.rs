@@ -10,6 +10,12 @@ pub const TIMEOUT: Duration = Duration::from_secs(1000);
 /// Given `units_of_nom` in units of NOM, returns a string of the decimal number
 /// of aNOM appended with "anom"
 pub fn nom(units_of_nom: f64) -> String {
+    token18(units_of_nom, "anom")
+}
+
+/// Converts `units_of_nom` to an integer with its units being 1e-18, and adds
+/// on `denom` as a suffix
+pub fn token18(units_of_nom: f64, denom: &str) -> String {
     // we need 60 bits plus 54 bits for the full repr, round up to 128
     let mut f = FP::new(false, inlawi!(0u128), 0).unwrap();
     FP::f64_(&mut f, units_of_nom);
@@ -18,7 +24,7 @@ pub fn nom(units_of_nom: f64) -> String {
     f.set_fp(f.fp() - 64);
     f.digit_cin_mul_(0, 10usize.pow(18));
     let mut s = FP::to_str_general(&f, 10, false, 1, 1, 4096).unwrap().0;
-    s.push_str("anom");
+    s.push_str(denom);
     s
 }
 

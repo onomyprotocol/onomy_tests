@@ -10,7 +10,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
-use crate::{nom, ONE_SEC};
+use crate::{nom, token18, ONE_SEC};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -194,7 +194,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+pub async fn marketd_setup(daemon_home: &str, gov_period: &str, denom: &str) -> Result<()> {
     let chain_id = "market";
     let min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
@@ -220,6 +220,9 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
+    // for consumer chain genesis
+    genesis["app_state"]["ccvconsumer"]["new_chain"] = true.into();
+
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
     let mut genesis_file = OpenOptions::new()
@@ -231,9 +234,9 @@ pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     close_file(genesis_file).await?;
 
     cosmovisor("keys add validator", &[]).await?;
-    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("add-genesis-account validator", &[&token18(2.0e6, denom)]).await?;
     cosmovisor("gentx validator", &[
-        &nom(1.0e6),
+        &token18(1.0e6, denom),
         "--chain-id",
         chain_id,
         "--min-self-delegation",
