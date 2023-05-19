@@ -7,10 +7,11 @@ use common::{
 };
 use lazy_static::lazy_static;
 use super_orchestrator::{
+    acquire_dir_path, acquire_file_path, close_file,
     docker::{Container, ContainerNetwork},
     get_separated_val, sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::time::sleep;
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, time::sleep};
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -34,7 +35,8 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entrypoint {
         match s.as_str() {
-            "onomyd" => onomyd().await,
+            "onomyd_step0" => onomyd_step0().await,
+            "onomyd_step1" => onomyd_step1().await,
             "marketd" => marketd().await,
             _ => format!("entrypoint \"{s}\" is not recognized").map_add_err(|| ()),
         }
@@ -75,41 +77,66 @@ async fn container_runner() -> Result<()> {
         .await?;
     */
 
+    let resource_dir_path = acquire_dir_path("./resources").await?;
+    let mut consumer_genesis_file_path = resource_dir_path.clone();
+    consumer_genesis_file_path.push("consumer_genesis_file.json");
+    let consumer_genesis_file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(consumer_genesis_file_path)
+        .await?;
+    close_file(consumer_genesis_file).await?;
+
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
+    let volumes = &[("./logs", "/logs"), ("./resources", "/resources")];
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
-                "main",
+                "onomyd_step0",
                 Some("./dockerfiles/onomyd.dockerfile"),
-                "main",
+                None,
                 &[],
-                &[("./logs", "/logs")],
+                volumes,
                 entrypoint,
-                &["--entrypoint", "onomyd"],
+                &["--entrypoint", "onomyd_step0"],
             ),
-            /*Container::new(
+            Container::new(
+                "onomyd_step1",
+                Some("./dockerfiles/onomyd.dockerfile"),
+                None,
+                &[],
+                volumes,
+                entrypoint,
+                &["--entrypoint", "onomyd_step1"],
+            ),
+            Container::new(
                 "marketd",
                 Some("./dockerfiles/marketd.dockerfile"),
-                "marketd",
+                None,
                 &[],
-                &[("./logs", "/logs")],
+                volumes,
                 entrypoint,
                 &["--entrypoint", "marketd"],
-            ),*/
+            ),
         ],
         false,
         logs_dir,
     )?;
-    cn.run_all(true).await?;
+    cn.run(&["onomyd_step0"], true).await?;
+    cn.wait_with_timeout(&mut vec!["onomyd_step0".to_owned()], true, TIMEOUT)
+        .await?;
+    cn.run(&["onomyd_step1", "marketd"], true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
     Ok(())
 }
 
-async fn onomyd() -> Result<()> {
+/// Sets up chain, proposals, and consumer genesis
+async fn onomyd_step0() -> Result<()> {
     let gov_period = "20s";
     onomyd_setup(DAEMON_HOME.as_str(), gov_period).await?;
-    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd.log").await?;
+    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd_step0.log").await?;
 
     // TODO stepsStartConsumerChain
 
@@ -190,7 +217,25 @@ async fn onomyd() -> Result<()> {
 
     let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
 
-    println!("\n\n\n\n{consumer_genesis}");
+    // write to resource file for marketd to pick up
+    let consumer_genesis_file_path =
+        acquire_file_path("./resources/consumer_genesis_file.json").await?;
+    let mut consumer_genesis_file = OpenOptions::new()
+        .write(true)
+        .open(consumer_genesis_file_path)
+        .await?;
+    consumer_genesis_file
+        .write_all(consumer_genesis.as_bytes())
+        .await?;
+    close_file(consumer_genesis_file).await?;
+
+    cosmovisor_runner.terminate().await?;
+    Ok(())
+}
+
+/// Restarts chain
+async fn onomyd_step1() -> Result<()> {
+    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd_step1.log").await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -199,8 +244,7 @@ async fn onomyd() -> Result<()> {
 
 async fn marketd() -> Result<()> {
     let gov_period = "20s";
-    marketd_setup(DAEMON_HOME.as_str(), gov_period, "stake").await?;
-
+    marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_marketd.log").await?;
 
     sleep(TIMEOUT).await;

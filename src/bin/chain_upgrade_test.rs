@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
         vec![Container::new(
             "main",
             Some(dockerfile),
-            "main_build",
+            None,
             &[],
             &[("./logs", "/logs")],
             &format!("./target/{container_target}/release/{entrypoint}"),
