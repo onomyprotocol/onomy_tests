@@ -7,11 +7,13 @@ use common::{
 };
 use lazy_static::lazy_static;
 use super_orchestrator::{
-    acquire_dir_path, acquire_file_path, close_file,
+    acquire_dir_path, close_file,
     docker::{Container, ContainerNetwork},
-    get_separated_val, sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
+    get_separated_val,
+    net_message::NetMessenger,
+    sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, time::sleep};
+use tokio::{fs::OpenOptions, time::sleep};
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -35,8 +37,7 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entrypoint {
         match s.as_str() {
-            "onomyd_step0" => onomyd_step0().await,
-            "onomyd_step1" => onomyd_step1().await,
+            "onomyd" => onomyd().await,
             "marketd" => marketd().await,
             _ => format!("entrypoint \"{s}\" is not recognized").map_add_err(|| ()),
         }
@@ -94,22 +95,13 @@ async fn container_runner() -> Result<()> {
         "test",
         vec![
             Container::new(
-                "onomyd_step0",
+                "onomyd",
                 Some("./dockerfiles/onomyd.dockerfile"),
                 None,
                 &[],
                 volumes,
                 entrypoint,
-                &["--entrypoint", "onomyd_step0"],
-            ),
-            Container::new(
-                "onomyd_step1",
-                Some("./dockerfiles/onomyd.dockerfile"),
-                None,
-                &[],
-                volumes,
-                entrypoint,
-                &["--entrypoint", "onomyd_step1"],
+                &["--entrypoint", "onomyd"],
             ),
             Container::new(
                 "marketd",
@@ -124,16 +116,12 @@ async fn container_runner() -> Result<()> {
         false,
         logs_dir,
     )?;
-    cn.run(&["onomyd_step0"], true).await?;
-    cn.wait_with_timeout(&mut vec!["onomyd_step0".to_owned()], true, TIMEOUT)
-        .await?;
-    cn.run(&["onomyd_step1", "marketd"], true).await?;
-    cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
+    cn.run_all(true).await?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await?;
     Ok(())
 }
 
-/// Sets up chain, proposals, and consumer genesis
-async fn onomyd_step0() -> Result<()> {
+async fn onomyd() -> Result<()> {
     let gov_period = "20s";
     onomyd_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd_step0.log").await?;
@@ -217,8 +205,12 @@ async fn onomyd_step0() -> Result<()> {
 
     let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
 
+    let mut nm = NetMessenger::connect("http://marketd:26000").await?;
+
+    nm.send::<String>(&consumer_genesis).await?;
+
     // write to resource file for marketd to pick up
-    let consumer_genesis_file_path =
+    /*let consumer_genesis_file_path =
         acquire_file_path("./resources/consumer_genesis_file.json").await?;
     let mut consumer_genesis_file = OpenOptions::new()
         .write(true)
@@ -227,17 +219,8 @@ async fn onomyd_step0() -> Result<()> {
     consumer_genesis_file
         .write_all(consumer_genesis.as_bytes())
         .await?;
-    close_file(consumer_genesis_file).await?;
+    close_file(consumer_genesis_file).await?;*/
 
-    cosmovisor_runner.terminate().await?;
-    Ok(())
-}
-
-/// Restarts chain
-async fn onomyd_step1() -> Result<()> {
-    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_onomyd_step1.log").await?;
-
-    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
     Ok(())
 }
@@ -246,6 +229,10 @@ async fn marketd() -> Result<()> {
     let gov_period = "20s";
     marketd_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor_marketd.log").await?;
+
+    let mut nm = NetMessenger::listen_single_connect("http://onomyd:26000", TIMEOUT).await?;
+    let consumer_genesis: String = nm.recv().await?;
+    dbg!(consumer_genesis);
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
