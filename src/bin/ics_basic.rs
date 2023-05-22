@@ -7,6 +7,7 @@ use common::{
 };
 use lazy_static::lazy_static;
 use log::info;
+use serde_json::Value;
 use super_orchestrator::{
     acquire_dir_path, acquire_file_path, close_file,
     docker::{Container, ContainerNetwork},
@@ -14,7 +15,11 @@ use super_orchestrator::{
     net_message::{wait_for_ok_lookup_host, NetMessenger},
     sh, std_init, Error, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, time::sleep};
+use tokio::{
+    fs::OpenOptions,
+    io::{AsyncReadExt, AsyncWriteExt},
+    time::sleep,
+};
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -228,22 +233,16 @@ async fn onomyd_runner() -> Result<()> {
 
     wait_for_height(STD_TRIES, ONE_SEC, 5).await?;
 
-    let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
-    // get us away from this worse-of-two-evils format
-    let deserializer = serde_yaml::Deserializer::from_str(&consumer_genesis);
-    let mut tmp = vec![];
-    let mut serializer = serde_json::Serializer::new(&mut tmp);
-    serde_transcode::transcode(deserializer, &mut serializer).unwrap();
-    let consumer_genesis = String::from_utf8(tmp)
-        .map_err(|e| Error::boxed(Box::new(e) as Box<dyn std::error::Error>))
-        .map_add_err(|| ())?;
+    let ccvconsumer_state =
+        cosmovisor("query provider consumer-genesis market -o json", &[]).await?;
 
-    info!("consumer_genesis:\n{consumer_genesis}\n\n");
+    info!("ccvconsumer_state:\n{ccvconsumer_state}\n\n");
 
+    // send to `marketd`
     let host = "marketd:26000";
     wait_for_ok_lookup_host(STD_TRIES, STD_DELAY, host).await?;
     let mut nm = NetMessenger::connect(host, TIMEOUT).await?;
-    nm.send::<String>(&consumer_genesis).await?;
+    nm.send::<String>(&ccvconsumer_state).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -256,14 +255,31 @@ async fn marketd_runner() -> Result<()> {
     cosmovisor("config chain-id", &[chain_id]).await?;
     cosmovisor("config keyring-backend test", &[]).await?;
     cosmovisor("init --overwrite", &[chain_id]).await?;
+    let genesis_file_path =
+        acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
 
     let host = "0.0.0.0:26000";
     let mut nm = NetMessenger::listen_single_connect(host, TIMEOUT).await?;
-    let genesis_s: String = nm.recv().await?;
+    let ccvconsumer_state_s: String = nm.recv().await?;
 
-    // overwrite genesis
-    let genesis_file_path =
-        acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
+    let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
+
+    // add `ccvconsumer_state` to genesis
+
+    let mut genesis_file = OpenOptions::new()
+        .read(true)
+        .open(&genesis_file_path)
+        .await?;
+    let mut genesis_s = String::new();
+    genesis_file.read_to_string(&mut genesis_s).await?;
+    close_file(genesis_file).await?;
+
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    let genesis_s = genesis.to_string();
+
+    info!("genesis: {genesis_s}");
+
     let mut genesis_file = OpenOptions::new()
         .write(true)
         .truncate(true)
