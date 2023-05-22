@@ -2,10 +2,9 @@ use clap::Parser;
 use common::TIMEOUT;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    net_message::NetMessenger,
-    sh, std_init, MapAddError, Result,
+    net_message::{wait_for_ok_lookup_host, NetMessenger},
+    sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::time::sleep;
 
 /// Runs ics_basic
 #[derive(Parser, Debug)]
@@ -70,7 +69,8 @@ async fn container_runner() -> Result<()> {
                 &["--entrypoint", "tmp1"],
             ),
         ],
-        false,
+        // TODO see issue on `ContainerNetwork` struct documentation
+        true,
         logs_dir,
     )?;
     cn.run_all(true).await?;
@@ -79,23 +79,22 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn tmp0() -> Result<()> {
-    for addr in tokio::net::lookup_host("localhost:3000").await? {
-        println!("socket address is {}", addr);
-    }
-
+    let host = "tmp1:26000";
+    wait_for_ok_lookup_host(STD_TRIES, STD_DELAY, host)
+        .await
+        .map_add_err(|| ())?;
+    let mut nm = NetMessenger::connect(host, TIMEOUT)
+        .await
+        .map_add_err(|| ())?;
     let s = "hello world".to_owned();
-    let mut nm = NetMessenger::connect("marketd:26000").await?;
     nm.send::<String>(&s).await?;
-
-    sleep(TIMEOUT).await;
     Ok(())
 }
 
 async fn tmp1() -> Result<()> {
-    let mut nm = NetMessenger::listen_single_connect("onomyd:26000", TIMEOUT).await?;
+    let host = "0.0.0.0:26000";
+    let mut nm = NetMessenger::listen_single_connect(host, TIMEOUT).await?;
     let s: String = nm.recv().await?;
-    dbg!(s);
-
-    sleep(TIMEOUT).await;
+    assert_eq!(&s, "hello world");
     Ok(())
 }

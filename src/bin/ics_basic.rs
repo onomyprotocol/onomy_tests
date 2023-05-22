@@ -205,7 +205,7 @@ async fn onomyd() -> Result<()> {
 
     let consumer_genesis = cosmovisor("query provider consumer-genesis market", &[]).await?;
 
-    let mut nm = NetMessenger::connect("http://marketd:26000").await?;
+    let mut nm = NetMessenger::connect("http://marketd:26000", TIMEOUT).await?;
 
     nm.send::<String>(&consumer_genesis).await?;
 
