@@ -10,7 +10,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
-use crate::{nom, token18, ONE_SEC};
+use crate::{nom, ONE_SEC};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -190,36 +190,6 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     ])
     .await?;
     cosmovisor("collect-gentxs", &[]).await?;
-
-    Ok(())
-}
-
-pub async fn marketd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
-    let chain_id = "market";
-    cosmovisor("config chain-id", &[chain_id]).await?;
-    cosmovisor("config keyring-backend test", &[]).await?;
-    cosmovisor("init --overwrite", &[chain_id]).await?;
-
-    let consumer_genesis_file_path =
-        acquire_file_path("./resources/consumer_genesis_file.json").await?;
-    let mut consumer_genesis_file = OpenOptions::new()
-        .read(true)
-        .open(consumer_genesis_file_path)
-        .await?;
-    let mut genesis_s = String::new();
-    consumer_genesis_file.read_to_string(&mut genesis_s).await?;
-    close_file(consumer_genesis_file).await?;
-
-    // overwrite genesis file
-    let genesis_file_path =
-        acquire_file_path(&format!("{}/config/genesis.json", daemon_home)).await?;
-    let mut genesis_file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(&genesis_file_path)
-        .await?;
-    genesis_file.write_all(genesis_s.as_bytes()).await?;
-    close_file(genesis_file).await?;
 
     Ok(())
 }
