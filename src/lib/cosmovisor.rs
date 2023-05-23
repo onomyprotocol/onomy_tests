@@ -217,11 +217,42 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
     wait_for_ok(num_tries, delay, || height_is_ge(height)).await
 }
 
+// TODO
+// This is just a simple wrapper struct to facilitate checked message passing
+//#[derive(Debug, Clone, Decode, Encode)]
+//pub struct PersistentPeer {
+//    pub lkj: u32
+//}
+
+pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
+    let s = cosmovisor("tendermint show-node-id", &[]).await?;
+    let tendermint_id = s.trim();
+    Ok(format!("{tendermint_id}@{hostname}:26656"))
+}
+
 /// This starts cosmovisor and waits for height 1
-pub async fn cosmovisor_start(log_file_name: &str) -> Result<CommandRunner> {
+///
+/// If `listen`, then `--p2p.laddr` is used on the standard"tcp://0.0.0.0:26656"
+///
+/// `peer` should be the `tendermint_id@host_ip:port` of the peer
+pub async fn cosmovisor_start(
+    log_file_name: &str,
+    listen: bool,
+    peer: Option<String>,
+) -> Result<CommandRunner> {
     let cosmovisor_log = Some(LogFileOptions::new("/logs", log_file_name, true, true));
 
-    let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &[])
+    let mut args = vec![];
+    if listen {
+        args.push("--p2p.laddr");
+        args.push("tcp://0.0.0.0:26656");
+    }
+    if let Some(ref peer) = peer {
+        args.push("--p2p.persistent_peers");
+        args.push(peer);
+    }
+
+    let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &args)
         .stderr_log(&cosmovisor_log)
         .stdout_log(&cosmovisor_log)
         .run()

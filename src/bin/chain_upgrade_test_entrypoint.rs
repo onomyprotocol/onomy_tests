@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     let gov_period = "4s";
 
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
-    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log").await?;
+    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
 
     dbg!(super_orchestrator::DisplayStr(
         &get_delegations_to_validator().await?
