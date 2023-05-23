@@ -2,7 +2,7 @@ use clap::Parser;
 use common::TIMEOUT;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    net_message::{wait_for_ok_lookup_host, NetMessenger},
+    net_message::NetMessenger,
     sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 
@@ -80,10 +80,7 @@ async fn container_runner() -> Result<()> {
 
 async fn tmp0() -> Result<()> {
     let host = "tmp1:26000";
-    wait_for_ok_lookup_host(STD_TRIES, STD_DELAY, host)
-        .await
-        .map_add_err(|| ())?;
-    let mut nm = NetMessenger::connect(host, TIMEOUT)
+    let mut nm = NetMessenger::connect(STD_TRIES, STD_DELAY, host)
         .await
         .map_add_err(|| ())?;
     let s = "hello world".to_owned();

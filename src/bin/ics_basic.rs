@@ -2,9 +2,7 @@ use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{
-        cosmovisor, cosmovisor_start, get_persistent_peer_info, onomyd_setup, wait_for_height,
-    },
+    cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
     ONE_SEC, TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -14,7 +12,7 @@ use super_orchestrator::{
     acquire_dir_path, acquire_file_path, close_file,
     docker::{Container, ContainerNetwork},
     get_separated_val,
-    net_message::{wait_for_ok_lookup_host, NetMessenger},
+    net_message::NetMessenger,
     sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 use tokio::{
@@ -119,18 +117,15 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn onomyd_runner() -> Result<()> {
-    let hostname = "onomyd";
+    //let hostname = "onomyd";
     let consumer_hostname = "marketd:26000";
-    wait_for_ok_lookup_host(STD_TRIES, STD_DELAY, consumer_hostname).await?;
-    let mut nm = NetMessenger::connect(consumer_hostname, TIMEOUT).await?;
+    let mut nm = NetMessenger::connect(STD_TRIES, STD_DELAY, consumer_hostname)
+        .await
+        .map_add_err(|| ())?;
 
     let gov_period = "4s";
     let daemon_home = DAEMON_HOME.as_str();
     onomyd_setup(daemon_home, gov_period).await?;
-
-    // send our peer info over
-    nm.send::<String>(&get_persistent_peer_info(hostname).await?)
-        .await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
 
@@ -237,6 +232,7 @@ async fn onomyd_runner() -> Result<()> {
     consensus_pubkey.push_str(&tmp_s);
     consensus_pubkey.push_str("\"}}");
 
+    // do this before getting the consumer-genesis
     cosmovisor(
         "tx provider assign-consensus-key market",
         &[[consensus_pubkey.as_str()].as_slice(), gas_args].concat(),
@@ -270,12 +266,7 @@ async fn marketd_runner() -> Result<()> {
     let genesis_file_path =
         acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
 
-    // acquire tendermint peer
-    let peer: String = nm.recv().await?;
-    dbg!(&peer);
-
     let ccvconsumer_state_s: String = nm.recv().await?;
-    dbg!(&ccvconsumer_state_s);
 
     let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
 
@@ -303,7 +294,7 @@ async fn marketd_runner() -> Result<()> {
     genesis_file.write_all(genesis_s.as_bytes()).await?;
     close_file(genesis_file).await?;
 
-    let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, Some(peer)).await?;
+    let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
