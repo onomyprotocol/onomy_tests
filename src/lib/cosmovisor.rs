@@ -244,8 +244,11 @@ pub async fn cosmovisor_start(
 
     let mut args = vec![];
     if listen {
-        args.push("--p2p.laddr");
-        args.push("tcp://0.0.0.0:26656");
+        // TODO this is actually the default?
+        //args.push("--p2p.laddr");
+        //args.push("tcp://0.0.0.0:26656");
+        args.push("--rpc.laddr");
+        args.push("tcp://0.0.0.0:26657");
     }
     if let Some(ref peer) = peer {
         args.push("--p2p.persistent_peers");
