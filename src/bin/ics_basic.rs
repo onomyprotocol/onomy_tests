@@ -14,7 +14,7 @@ use super_orchestrator::{
     net_message::NetMessenger,
     sh, std_init, FileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::time::sleep;
+use tokio::{fs::remove_file, time::sleep};
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -86,6 +86,8 @@ async fn container_runner() -> Result<()> {
         ("./resources/mnemonic.txt", "/root/.hermes/mnemonic.txt"),
     ];
     // TODO is this how we should share keys?
+    // remove files
+    remove_file("./resources/keyring-test/validator.info").await?;
     let mut onomyd_volumes = volumes.clone();
     onomyd_volumes.push(("./resources/keyring-test", "/root/.onomy/keyring-test"));
     let mut marketd_volumes = volumes.clone();

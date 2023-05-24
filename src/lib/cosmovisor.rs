@@ -160,7 +160,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
         .last()
         .map_add_err(|| "no last line")?
         .trim();
-    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
+    FileOptions::write_str("/root/.hermes/mnemonic.txt", mnemonic).await?;
 
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
     cosmovisor("gentx validator", &[
