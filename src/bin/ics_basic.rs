@@ -85,11 +85,16 @@ async fn container_runner() -> Result<()> {
     */
 
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
-    let volumes: &[(&str, &str); 3] = &[
+    let volumes = vec![
         ("./logs", "/logs"),
         ("./resources/config.toml", "/root/.hermes/config.toml"),
         ("./resources/mnemonic.txt", "/root/.hermes/mnemonic.txt"),
     ];
+    // TODO is this how we should share keys?
+    let mut onomyd_volumes = volumes.clone();
+    onomyd_volumes.push(("./resources/keyring-test", "/root/.onomy/keyring-test"));
+    let mut marketd_volumes = volumes.clone();
+    marketd_volumes.push(("./resources/keyring-test", "/root/.onomy_market/keyring-test"));
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
@@ -98,7 +103,7 @@ async fn container_runner() -> Result<()> {
                 Some("./dockerfiles/onomyd.dockerfile"),
                 None,
                 &[],
-                volumes,
+                &onomyd_volumes,
                 entrypoint,
                 &["--entrypoint", "onomyd"],
             ),
@@ -107,7 +112,7 @@ async fn container_runner() -> Result<()> {
                 Some("./dockerfiles/marketd.dockerfile"),
                 None,
                 &[],
-                volumes,
+                &marketd_volumes,
                 entrypoint,
                 &["--entrypoint", "marketd"],
             ),
@@ -167,7 +172,8 @@ async fn onomyd_runner() -> Result<()> {
         "description": "add consumer chain market",
         "chain_id": "market",
         "initial_height": {
-            "revision_height": 5
+            "revision_number": 0,
+            "revision_height": 1
         },
         "genesis_hash": "Z2VuX2hhc2g=",
         "binary_hash": "YmluX2hhc2g=",
@@ -225,14 +231,7 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    // we can go ahead and get the consensus key assignment done (can this be done
-    // later?)
-
-    // we need to get the ed25519 consensus key
-    // it seems the consensus key set is entirely separate TODO for now we just grab
-    // any key
-
-    // this is wrong on many levels, the design is not making this easy
+    // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not some random thing from teh validator set
     let tmp_s = get_separated_val(
         &cosmovisor("query tendermint-validator-set", &[]).await?,
         "\n",
@@ -242,6 +241,8 @@ async fn onomyd_runner() -> Result<()> {
     let mut consensus_pubkey = r#"{"@type":"/cosmos.crypto.ed25519.PubKey","key":""#.to_owned();
     consensus_pubkey.push_str(&tmp_s);
     consensus_pubkey.push_str("\"}}");
+
+    println!("ccvkey: {consensus_pubkey}");
 
     // do this before getting the consumer-genesis
     cosmovisor(
@@ -259,6 +260,20 @@ async fn onomyd_runner() -> Result<()> {
 
     // send to `marketd`
     nm.send::<String>(&ccvconsumer_state).await?;
+
+    let genesis_file_path =
+        acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
+    let mut genesis_file = OpenOptions::new()
+        .read(true)
+        .open(&genesis_file_path)
+        .await?;
+    let mut genesis_s = String::new();
+    genesis_file.read_to_string(&mut genesis_s).await?;
+    close_file(genesis_file).await?;
+    //println!("genesis: {genesis_s}");
+    let genesis: Value = serde_json::from_str(&genesis_s)?;
+    nm.send::<String>(&genesis["app_state"]["auth"]["accounts"].to_string()).await?;
+    nm.send::<String>(&genesis["app_state"]["bank"].to_string()).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -278,8 +293,13 @@ async fn marketd_runner() -> Result<()> {
         acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
 
     let ccvconsumer_state_s: String = nm.recv().await?;
-
     let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
+
+    let accounts_s: String = nm.recv().await?;
+    let accounts: Value = serde_json::from_str(&accounts_s)?;
+
+    let bank_s: String = nm.recv().await?;
+    let bank: Value = serde_json::from_str(&bank_s)?;
 
     // add `ccvconsumer_state` to genesis
 
@@ -293,6 +313,8 @@ async fn marketd_runner() -> Result<()> {
 
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    genesis["app_state"]["auth"]["accounts"] = accounts;
+    genesis["app_state"]["bank"] = bank;
     let genesis_s = genesis.to_string();
 
     info!("genesis: {genesis_s}");
@@ -306,6 +328,22 @@ async fn marketd_runner() -> Result<()> {
     close_file(genesis_file).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
+
+    // need
+    // $DAEMON_HOME/data/priv_validator_state.json # good
+    // $DAEMON_HOME/config/node_key.json # {"priv_key":{"type":"tendermint/PrivKeyEd25519","value":"ZPJdDf6VM0AOpp9RA4o1TWfsJ8FlKAqRYetfz+JY6k0ocKr28vNQyxMM2XLVCl38XoSkqSjaxH4aJaXt98nKGw=="}}
+    // $DAEMON_HOME/config/priv_validator_key.json
+    // {
+    //   "address": "B84FF2E45DC827E00316F7E521DC326D85025916",
+    //   "pub_key": {
+    //     "type": "tendermint/PubKeyEd25519",
+    //     "value": "w0tuY2qwu+uMA6eS430yEJITssJgGAXsyCFCbNkKM7g="
+    //   },
+    //   "priv_key": {
+    //     "type": "tendermint/PrivKeyEd25519",
+    //     "value": "72qperDW+FVH+uxpDCC1HeRtGDW46UdroUqLL1Eoaj7DS25jarC764wDp5LjfTIQkhOywmAYBezIIUJs2QozuA=="
+    // }
+    // also need keyring (/keyring-test/) to be able to do transactions
 
     // verified:
 

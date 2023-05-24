@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_dir_path, acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command,
-    CommandRunner, LogFileOptions, MapAddError, Result, STD_TRIES,
+    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command,
+    CommandRunner, FileOptions, MapAddError, Result, STD_TRIES,
 };
 use tokio::{
     fs::OpenOptions,
@@ -266,7 +266,7 @@ pub async fn cosmovisor_start(
     listen: bool,
     peer: Option<String>,
 ) -> Result<CommandRunner> {
-    let cosmovisor_log = Some(LogFileOptions::new("/logs", log_file_name, true, true));
+    let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
     if listen {
