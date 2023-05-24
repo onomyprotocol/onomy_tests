@@ -2,12 +2,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command,
-    CommandRunner, FileOptions, MapAddError, Result, STD_TRIES,
-};
-use tokio::{
-    fs::OpenOptions,
-    io::{AsyncReadExt, AsyncWriteExt},
+    get_separated_val, sh, wait_for_ok, Command, CommandRunner, FileOptions, MapAddError, Result,
+    STD_TRIES,
 };
 
 use crate::{nom, ONE_SEC};
@@ -32,18 +28,9 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     cosmovisor("config chain-id", &[chain_id]).await?;
     cosmovisor("config keyring-backend test", &[]).await?;
     cosmovisor("init --overwrite", &[chain_id]).await?;
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
-    let genesis_file_path =
-        acquire_file_path(&format!("{}/config/genesis.json", daemon_home)).await?;
-    let mut genesis_file = OpenOptions::new()
-        .read(true)
-        .open(&genesis_file_path)
-        .await?;
-    let mut genesis_s = String::new();
-    genesis_file.read_to_string(&mut genesis_s).await?;
-    // when we write back, we will just reopen as truncated, `set_len` has too many
-    // problems
-    close_file(genesis_file).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
@@ -78,13 +65,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
-    let mut genesis_file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(&genesis_file_path)
-        .await?;
-    genesis_file.write_all(genesis_s.as_bytes()).await?;
-    close_file(genesis_file).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     cosmovisor("keys add validator", &[]).await?;
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
@@ -129,17 +110,8 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     cosmovisor("config keyring-backend test", &[]).await?;
     cosmovisor("init --overwrite", &[chain_id]).await?;
 
-    let genesis_file_path =
-        acquire_file_path(&format!("{}/config/genesis.json", daemon_home)).await?;
-    let mut genesis_file = OpenOptions::new()
-        .read(true)
-        .open(&genesis_file_path)
-        .await?;
-    let mut genesis_s = String::new();
-    genesis_file.read_to_string(&mut genesis_s).await?;
-    // when we write back, we will just reopen as truncated, `set_len` has too many
-    // problems
-    close_file(genesis_file).await?;
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
@@ -174,13 +146,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
 
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
-    let mut genesis_file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(&genesis_file_path)
-        .await?;
-    genesis_file.write_all(genesis_s.as_bytes()).await?;
-    close_file(genesis_file).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -194,17 +160,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
         .last()
         .map_add_err(|| "no last line")?
         .trim();
-    let mut mnemonic_path = acquire_dir_path("/root/.hermes").await?;
-    mnemonic_path.push("mnemonic.txt");
-    let mut mnemonic_file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(mnemonic_path)
-        .await
-        .map_add_err(|| ())?;
-    mnemonic_file.write_all(mnemonic.as_bytes()).await?;
-    close_file(mnemonic_file).await?;
+    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
 
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
     cosmovisor("gentx validator", &[

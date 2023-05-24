@@ -9,17 +9,12 @@ use lazy_static::lazy_static;
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    acquire_dir_path, acquire_file_path, close_file,
     docker::{Container, ContainerNetwork},
     get_separated_val,
     net_message::NetMessenger,
-    sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
+    sh, std_init, FileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::{
-    fs::OpenOptions,
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
+use tokio::time::sleep;
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -94,7 +89,10 @@ async fn container_runner() -> Result<()> {
     let mut onomyd_volumes = volumes.clone();
     onomyd_volumes.push(("./resources/keyring-test", "/root/.onomy/keyring-test"));
     let mut marketd_volumes = volumes.clone();
-    marketd_volumes.push(("./resources/keyring-test", "/root/.onomy_market/keyring-test"));
+    marketd_volumes.push((
+        "./resources/keyring-test",
+        "/root/.onomy_market/keyring-test",
+    ));
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
@@ -137,8 +135,6 @@ async fn onomyd_runner() -> Result<()> {
     onomyd_setup(daemon_home, gov_period).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
-
-    let config_dir_path = acquire_dir_path(&format!("{daemon_home}/config")).await?;
 
     // TODO stepsStartConsumerChain
 
@@ -187,16 +183,10 @@ async fn onomyd_runner() -> Result<()> {
         "deposit": "2000000000000000000000anom"
     }"#;
     // we will just place the file under the config folder
-    let mut proposal_file_path = config_dir_path.clone();
-    proposal_file_path.push("consumer_add_proposal.json");
-    let mut proposal_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&proposal_file_path)
-        .await?;
-    proposal_file.write_all(proposal_s.as_bytes()).await?;
-    close_file(proposal_file).await?;
+    let proposal_file_path = format!("{daemon_home}/config/consumer_add_proposal.json");
+    FileOptions::write_str(&proposal_file_path, proposal_s)
+        .await
+        .map_add_err(|| ())?;
 
     let gas_args = [
         "--gas",
@@ -212,7 +202,7 @@ async fn onomyd_runner() -> Result<()> {
     .as_slice();
     cosmovisor(
         "tx gov submit-proposal consumer-addition",
-        &[&[proposal_file_path.to_str().unwrap()], gas_args].concat(),
+        &[&[proposal_file_path.as_str()], gas_args].concat(),
     )
     .await?;
     // the deposit is done as part of the chain addition proposal
@@ -231,7 +221,8 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not some random thing from teh validator set
+    // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not
+    // some random thing from teh validator set
     let tmp_s = get_separated_val(
         &cosmovisor("query tendermint-validator-set", &[]).await?,
         "\n",
@@ -261,19 +252,14 @@ async fn onomyd_runner() -> Result<()> {
     // send to `marketd`
     nm.send::<String>(&ccvconsumer_state).await?;
 
-    let genesis_file_path =
-        acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
-    let mut genesis_file = OpenOptions::new()
-        .read(true)
-        .open(&genesis_file_path)
-        .await?;
-    let mut genesis_s = String::new();
-    genesis_file.read_to_string(&mut genesis_s).await?;
-    close_file(genesis_file).await?;
+    let genesis_s =
+        FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json")).await?;
     //println!("genesis: {genesis_s}");
     let genesis: Value = serde_json::from_str(&genesis_s)?;
-    nm.send::<String>(&genesis["app_state"]["auth"]["accounts"].to_string()).await?;
-    nm.send::<String>(&genesis["app_state"]["bank"].to_string()).await?;
+    nm.send::<String>(&genesis["app_state"]["auth"]["accounts"].to_string())
+        .await?;
+    nm.send::<String>(&genesis["app_state"]["bank"].to_string())
+        .await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -289,8 +275,7 @@ async fn marketd_runner() -> Result<()> {
     cosmovisor("config chain-id", &[chain_id]).await?;
     cosmovisor("config keyring-backend test", &[]).await?;
     cosmovisor("init --overwrite", &[chain_id]).await?;
-    let genesis_file_path =
-        acquire_file_path(&format!("{daemon_home}/config/genesis.json")).await?;
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     let ccvconsumer_state_s: String = nm.recv().await?;
     let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
@@ -303,13 +288,7 @@ async fn marketd_runner() -> Result<()> {
 
     // add `ccvconsumer_state` to genesis
 
-    let mut genesis_file = OpenOptions::new()
-        .read(true)
-        .open(&genesis_file_path)
-        .await?;
-    let mut genesis_s = String::new();
-    genesis_file.read_to_string(&mut genesis_s).await?;
-    close_file(genesis_file).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
@@ -319,20 +298,16 @@ async fn marketd_runner() -> Result<()> {
 
     info!("genesis: {genesis_s}");
 
-    let mut genesis_file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(&genesis_file_path)
-        .await?;
-    genesis_file.write_all(genesis_s.as_bytes()).await?;
-    close_file(genesis_file).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
 
     // need
     // $DAEMON_HOME/data/priv_validator_state.json # good
-    // $DAEMON_HOME/config/node_key.json # {"priv_key":{"type":"tendermint/PrivKeyEd25519","value":"ZPJdDf6VM0AOpp9RA4o1TWfsJ8FlKAqRYetfz+JY6k0ocKr28vNQyxMM2XLVCl38XoSkqSjaxH4aJaXt98nKGw=="}}
-    // $DAEMON_HOME/config/priv_validator_key.json
+    // $DAEMON_HOME/config/node_key.json #
+    // {"priv_key":{"type":"tendermint/PrivKeyEd25519","value":"
+    // ZPJdDf6VM0AOpp9RA4o1TWfsJ8FlKAqRYetfz+JY6k0ocKr28vNQyxMM2XLVCl38XoSkqSjaxH4aJaXt98nKGw=="
+    // }} $DAEMON_HOME/config/priv_validator_key.json
     // {
     //   "address": "B84FF2E45DC827E00316F7E521DC326D85025916",
     //   "pub_key": {
@@ -341,7 +316,8 @@ async fn marketd_runner() -> Result<()> {
     //   },
     //   "priv_key": {
     //     "type": "tendermint/PrivKeyEd25519",
-    //     "value": "72qperDW+FVH+uxpDCC1HeRtGDW46UdroUqLL1Eoaj7DS25jarC764wDp5LjfTIQkhOywmAYBezIIUJs2QozuA=="
+    //     "value":
+    // "72qperDW+FVH+uxpDCC1HeRtGDW46UdroUqLL1Eoaj7DS25jarC764wDp5LjfTIQkhOywmAYBezIIUJs2QozuA=="
     // }
     // also need keyring (/keyring-test/) to be able to do transactions
 
