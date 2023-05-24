@@ -85,7 +85,11 @@ async fn container_runner() -> Result<()> {
     */
 
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
-    let volumes = &[("./logs", "/logs"), ("./resources/config.toml", "/root/.hermes/config.toml")];
+    let volumes: &[(&str, &str); 3] = &[
+        ("./logs", "/logs"),
+        ("./resources/config.toml", "/root/.hermes/config.toml"),
+        ("./resources/mnemonic.txt", "/root/.hermes/mnemonic.txt"),
+    ];
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
@@ -212,7 +216,14 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    // In the mean time get the consensus key assignement done
+    // In the mean time get the hermes setup and consensus key assignement done
+
+    // this uses what is set by `onomyd_setup`
+    sh(
+        "hermes keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
+        &[],
+    )
+    .await?;
 
     // we can go ahead and get the consensus key assignment done (can this be done
     // later?)
@@ -322,30 +333,36 @@ async fn marketd_runner() -> Result<()> {
     //hermes query client state --chain onomy --client 07-tendermint-0
     //hermes query client status --chain onomy --client 07-tendermint-0
 
-    //hermes query clients --host-chain market
+    // # this is done on onomyd
+    //sh("hermes keys add --chain onomy --mnemonic-file
+    // /root/.hermes/mnemonic.txt", &[]).await?;
 
+    //hermes query clients --host-chain market
 
     // end verified
 
+    // # this should be it
+    // hermes create connection --a-chain market --a-client 07-tendermint-0
+    // --b-client 07-tendermint-0
+
     //hermes query client state --chain market --client 07-tendermint-0
 
-    // hermes create connection --a-chain onomy --a-client 07-tendermint-0 --b-client 07-tendermint-0
+    // hermes create client --host-chain onomy --reference-chain market
+    // hermes create client --host-chain market --reference-chain onomy
+    // hermes query client state --chain onomy --client 07-tendermint-0
+    // hermes query client state --chain market --client 07-tendermint-0
 
+    //  hermes create connection --a-chain onomy --a-client 07-tendermint-0
+    // --b-client 07-tendermint-0
 
-// hermes create client --host-chain onomy --reference-chain market
-// hermes create client --host-chain market --reference-chain onomy
-// hermes query client state --chain onomy --client 07-tendermint-0
-// hermes query client state --chain market --client 07-tendermint-0
-
-//  hermes create connection --a-chain onomy --a-client 07-tendermint-0 --b-client 07-tendermint-0
-
-    // hermes create connection --a-chain market --a-client 07-tendermint-0 --b-client 07-tendermint-1
-    // TODO check connection num
-    // hermes create channel --order ordered --a-chain market --a-connection connection-0 --a-port consumer --b-port provider --channel-version 1
+    // hermes create connection --a-chain market --a-client 07-tendermint-0
+    // --b-client 07-tendermint-1 TODO check connection num
+    // hermes create channel --order ordered --a-chain market --a-connection
+    // connection-0 --a-port consumer --b-port provider --channel-version 1
     // hermes start
 
-
-    // hermes tx chan-open-try --dst-chain onomy --src-chain market --dst-connection connection-0 --dst-port provider --src-port consumer --src-channel channel-0
+    // hermes tx chan-open-try --dst-chain onomy --src-chain market --dst-connection
+    // connection-0 --dst-port provider --src-port consumer --src-channel channel-0
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

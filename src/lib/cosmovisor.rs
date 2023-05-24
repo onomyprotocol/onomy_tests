@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use super_orchestrator::{
-    acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command, CommandRunner,
-    LogFileOptions, MapAddError, Result, STD_TRIES,
+    acquire_dir_path, acquire_file_path, close_file, get_separated_val, sh, wait_for_ok, Command,
+    CommandRunner, LogFileOptions, MapAddError, Result, STD_TRIES,
 };
 use tokio::{
     fs::OpenOptions,
@@ -119,6 +119,9 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
+///
+/// This additionally puts the single validator mnemonic in
+/// `/root/.hermes/mnemonic.txt`
 pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
@@ -179,7 +182,30 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     genesis_file.write_all(genesis_s.as_bytes()).await?;
     close_file(genesis_file).await?;
 
-    cosmovisor("keys add validator", &[]).await?;
+    // we need the stderr to get the mnemonic
+    let comres = Command::new("cosmovisor run keys add validator", &[])
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let mnemonic = comres
+        .stderr
+        .trim()
+        .lines()
+        .last()
+        .map_add_err(|| "no last line")?
+        .trim();
+    let mut mnemonic_path = acquire_dir_path("/root/.hermes").await?;
+    mnemonic_path.push("mnemonic.txt");
+    let mut mnemonic_file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(mnemonic_path)
+        .await
+        .map_add_err(|| ())?;
+    mnemonic_file.write_all(mnemonic.as_bytes()).await?;
+    close_file(mnemonic_file).await?;
+
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
     cosmovisor("gentx validator", &[
         &nom(1.0e6),
