@@ -262,6 +262,15 @@ async fn onomyd_runner() -> Result<()> {
         .await?;
     nm.send::<String>(&genesis["app_state"]["bank"].to_string())
         .await?;
+    nm.send::<String>(
+        &FileOptions::read_to_string(&format!("{daemon_home}/config/node_key.json")).await?,
+    )
+    .await?;
+    nm.send::<String>(
+        &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
+            .await?,
+    )
+    .await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -301,6 +310,17 @@ async fn marketd_runner() -> Result<()> {
     info!("genesis: {genesis_s}");
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+
+    FileOptions::write_str(
+        &format!("{daemon_home}/config/node_key.json"),
+        &nm.recv::<String>().await?,
+    )
+    .await?;
+    FileOptions::write_str(
+        &format!("{daemon_home}/config/priv_validator_key.json"),
+        &nm.recv::<String>().await?,
+    )
+    .await?;
 
     let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
 
