@@ -101,9 +101,8 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
-/// This additionally puts the single validator mnemonic in
-/// `/root/.hermes/mnemonic.txt`
-pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+/// This additionally returns the single validator mnemonic
+pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
@@ -159,8 +158,8 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
         .lines()
         .last()
         .map_add_err(|| "no last line")?
-        .trim();
-    FileOptions::write_str("/root/.hermes/mnemonic.txt", mnemonic).await?;
+        .trim()
+        .to_owned();
 
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
     cosmovisor("gentx validator", &[
@@ -173,7 +172,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
     .await?;
     cosmovisor("collect-gentxs", &[]).await?;
 
-    Ok(())
+    Ok(mnemonic)
 }
 
 /// Note that this interprets "null" height as 0

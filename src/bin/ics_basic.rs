@@ -12,9 +12,9 @@ use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val,
     net_message::NetMessenger,
-    sh, std_init, FileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
+    remove_files_in_dir, sh, std_init, FileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
-use tokio::{fs::remove_file, time::sleep};
+use tokio::time::sleep;
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
         match s.as_str() {
             "onomyd" => onomyd_runner().await,
             "marketd" => marketd_runner().await,
+            "hermes" => hermes_runner().await,
             _ => format!("entrypoint \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
@@ -79,15 +80,11 @@ async fn container_runner() -> Result<()> {
         .await?;
     */
 
+    // prepare volumed resources
+    remove_files_in_dir("./resources/keyring-test/", &["address", "info"]).await?;
+
     let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
-    let volumes = vec![
-        ("./logs", "/logs"),
-        ("./resources/config.toml", "/root/.hermes/config.toml"),
-        ("./resources/mnemonic.txt", "/root/.hermes/mnemonic.txt"),
-    ];
-    // TODO is this how we should share keys?
-    // remove files
-    remove_file("./resources/keyring-test/validator.info").await?;
+    let volumes = vec![("./logs", "/logs")];
     let mut onomyd_volumes = volumes.clone();
     onomyd_volumes.push(("./resources/keyring-test", "/root/.onomy/keyring-test"));
     let mut marketd_volumes = volumes.clone();
@@ -116,6 +113,15 @@ async fn container_runner() -> Result<()> {
                 entrypoint,
                 &["--entrypoint", "marketd"],
             ),
+            Container::new(
+                "hermes",
+                Some("./dockerfiles/hermes.dockerfile"),
+                None,
+                &[],
+                &volumes,
+                entrypoint,
+                &["--entrypoint", "hermes"],
+            ),
         ],
         true,
         logs_dir,
@@ -132,37 +138,17 @@ async fn onomyd_runner() -> Result<()> {
         .await
         .map_add_err(|| ())?;
 
+    let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
+        .await
+        .map_add_err(|| ())?;
+
     let gov_period = "4s";
     let daemon_home = DAEMON_HOME.as_str();
-    onomyd_setup(daemon_home, gov_period).await?;
+    let mnemonic = onomyd_setup(daemon_home, gov_period).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
 
-    // TODO stepsStartConsumerChain
-
     let proposal_id = "1";
-
-    /*
-    // note: must somehow get the hashes and spawn time in, may need to change height
-        {
-            "title": "Propose the addition of a new chain",
-            "description": "add consumer chain market",
-            "chain_id": "market",
-            "initial_height": {
-                "revision_height": 1
-            },
-            "genesis_hash": "Z2VuX2hhc2g=",
-            "binary_hash": "YmluX2hhc2g=",
-            "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
-            "consumer_redistribution_fraction": "0.75",
-            "blocks_per_distribution_transmission": 1000,
-            "historical_entries": 10000,
-            "ccv_timeout_period": 2419200000000000,
-            "transfer_timeout_period": 3600000000000,
-            "unbonding_period": 1728000000000000,
-            "deposit": "2000000000000000000000anom"
-        }
-     */
 
     // `json!` doesn't like large literals beyond i32
     let proposal_s = r#"{
@@ -214,14 +200,9 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    // In the mean time get the hermes setup and consensus key assignement done
+    // In the mean time get hermes keys and consensus key assignment done
 
-    // this uses what is set by `onomyd_setup`
-    sh(
-        "hermes keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
-        &[],
-    )
-    .await?;
+    nm_hermes.send::<String>(&mnemonic).await?;
 
     // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not
     // some random thing from teh validator set
@@ -303,6 +284,7 @@ async fn marketd_runner() -> Result<()> {
 
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    // TODO see if we can remove these
     genesis["app_state"]["auth"]["accounts"] = accounts;
     genesis["app_state"]["bank"] = bank;
     let genesis_s = genesis.to_string();
@@ -351,6 +333,7 @@ async fn marketd_runner() -> Result<()> {
 
     // # start out empty
     //hermes query channels --chain onomy
+    //hermes query channels --chain market
     //hermes query connections --chain onomy
 
     // #ClientChain {
@@ -402,5 +385,26 @@ async fn marketd_runner() -> Result<()> {
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
+    Ok(())
+}
+
+async fn hermes_runner() -> Result<()> {
+    let listen = "0.0.0.0:26000";
+    let mut nm = NetMessenger::listen_single_connect(listen, TIMEOUT).await?;
+
+    let mnemonic: String = nm.recv().await?;
+    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
+    sh(
+        "hermes keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
+        &[],
+    )
+    .await?;
+    sh(
+        "hermes keys add --chain market --mnemonic-file /root/.hermes/mnemonic.txt",
+        &[],
+    )
+    .await?;
+
+    sleep(TIMEOUT).await;
     Ok(())
 }
