@@ -253,6 +253,10 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
+    // wait for marketd to be online
+    nm.recv::<()>().await?;
+    nm_hermes.send::<()>(&()).await?;
+
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
     Ok(())
@@ -288,6 +292,7 @@ async fn marketd_runner() -> Result<()> {
     genesis["app_state"]["auth"]["accounts"] = accounts;
     genesis["app_state"]["bank"] = bank;
     let genesis_s = genesis.to_string();
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
 
     info!("genesis: {genesis_s}");
 
@@ -305,6 +310,9 @@ async fn marketd_runner() -> Result<()> {
     .await?;
 
     let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
+
+    // signal that we have started
+    nm.send::<()>(&()).await?;
 
     // need
     // $DAEMON_HOME/data/priv_validator_state.json # good
@@ -404,6 +412,15 @@ async fn hermes_runner() -> Result<()> {
         &[],
     )
     .await?;
+
+    nm.recv::<()>().await?;
+    sh(
+        "hermes create connection --a-chain market --a-client 07-tendermint-0 --b-client \
+         07-tendermint-0",
+        &[],
+    )
+    .await?;
+    println!("\n\n\nREADY\n\n\n");
 
     sleep(TIMEOUT).await;
     Ok(())
