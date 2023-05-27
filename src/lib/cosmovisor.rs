@@ -2,17 +2,26 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use super_orchestrator::{
-    get_separated_val, sh, wait_for_ok, Command, CommandRunner, FileOptions, MapAddError, Result,
-    STD_TRIES,
+    get_separated_val, sh, sh_no_dbg, wait_for_ok, Command, CommandRunner, FileOptions,
+    MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 
-use crate::{nom, token18, ONE_SEC};
+use crate::{anom_to_nom, nom, token18, ONE_SEC};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
 /// remove the INF line that always shows with cosmovisor runs)
 pub async fn cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
     let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args).await?;
+    Ok(stdout
+        .split_once('\n')
+        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .1
+        .to_owned())
+}
+
+pub async fn cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
+    let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args).await?;
     Ok(stdout
         .split_once('\n')
         .map_add_err(|| "cosmovisor run command did not have expected info line")?
@@ -66,6 +75,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&"/logs/genesis.log", &genesis_s).await?;
 
     cosmovisor("keys add validator", &[]).await?;
     cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
@@ -146,6 +156,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String>
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&"/logs/genesis.log", &genesis_s).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -177,7 +188,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String>
 
 /// Note that this interprets "null" height as 0
 pub async fn get_height() -> Result<u64> {
-    let block_s = cosmovisor("query block", &[]).await?;
+    let block_s = cosmovisor_no_dbg("query block", &[]).await?;
     let block: Value = serde_json::from_str(&block_s)?;
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
@@ -250,7 +261,7 @@ pub async fn cosmovisor_start(
     Ok(cosmovisor_runner)
 }
 
-pub async fn get_delegations_to_validator() -> Result<String> {
+pub async fn get_valoper_addr() -> Result<String> {
     let validator_addr = get_separated_val(
         &cosmovisor("keys show validator", &[]).await?,
         "\n",
@@ -272,5 +283,54 @@ pub async fn get_delegations_to_validator() -> Result<String> {
             "1"
         )?
     );
+    Ok(valoper_addr)
+}
+
+pub async fn get_delegations_to_validator() -> Result<String> {
+    let valoper_addr = get_valoper_addr().await?;
     cosmovisor("query staking delegations-to", &[&valoper_addr]).await
+}
+
+pub async fn get_treasury() -> Result<f64> {
+    let val = get_separated_val(
+        &cosmovisor("query dao show-treasury", &[]).await?,
+        "\n",
+        "- amount",
+        ":",
+    )?;
+    anom_to_nom(val.trim_matches('"'))
+}
+
+/// In seconds
+pub async fn block_time() -> Result<f64> {
+    Ok(6.0)
+}
+
+pub async fn get_treasury_inflation_annual() -> Result<f64> {
+    let height = get_height().await?;
+    wait_for_height(STD_TRIES, STD_DELAY, height + 1).await?;
+    let start = get_treasury().await?;
+    wait_for_height(STD_TRIES, STD_DELAY, height + 2).await?;
+    let end = get_treasury().await?;
+    Ok(((end - start) / (start * block_time().await?)) * (86400.0 * 365.0))
+}
+
+#[derive(Debug)]
+pub struct DbgStakingPool {
+    pub bonded_tokens: f64,
+    pub unbonded_tokens: f64,
+}
+
+pub async fn get_staking_pool() -> Result<DbgStakingPool> {
+    let pool = cosmovisor("query staking pool", &[]).await?;
+    let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":")?;
+    let bonded_tokens = bonded_tokens.trim_matches('"');
+    let bonded_tokens = anom_to_nom(bonded_tokens).map_add_err(|| ())?;
+    let unbonded_tokens = get_separated_val(&pool, "\n", "not_bonded_tokens", ":")?;
+    let unbonded_tokens = unbonded_tokens.trim_matches('"');
+    let unbonded_tokens = anom_to_nom(unbonded_tokens).map_add_err(|| ())?;
+    Ok(DbgStakingPool {
+        bonded_tokens,
+        unbonded_tokens,
+    })
 }

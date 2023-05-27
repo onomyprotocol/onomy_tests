@@ -2,7 +2,10 @@ use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{cosmovisor_setup, cosmovisor_start},
+    cosmovisor::{
+        cosmovisor, cosmovisor_setup, cosmovisor_start, get_staking_pool, get_treasury,
+        get_treasury_inflation_annual, get_valoper_addr,
+    },
     Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -71,6 +74,15 @@ async fn onomyd_runner() -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     dbg!(common::cosmovisor::get_delegations_to_validator().await?);
+
+    let valoper_addr = get_valoper_addr().await?;
+    cosmovisor("query staking validator", &[&valoper_addr]).await?;
+
+    dbg!(get_staking_pool().await?);
+
+    dbg!(get_treasury().await?);
+
+    dbg!(get_treasury_inflation_annual().await?);
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

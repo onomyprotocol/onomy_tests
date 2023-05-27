@@ -2,6 +2,7 @@ use std::time::Duration;
 pub mod cosmovisor;
 use awint::awi::*;
 use clap::Parser;
+use super_orchestrator::{Error, MapAddError, Result};
 
 pub const ONOMY_BASE: &str = "fedora:38";
 pub const ONE_SEC: Duration = Duration::from_secs(1);
@@ -38,10 +39,41 @@ pub fn token18(units_of_nom: f64, denom: &str) -> String {
     s
 }
 
+/// If there is a "anom" suffix it is trimmed, then we convert from units of
+/// 1e-18 to 1.
+pub fn anom_to_nom(val: &str) -> Result<f64> {
+    let val = val.trim_end_matches("anom");
+    // TODO I think it is actually the `try_to_f64` that has a rounding problem
+    match ExtAwi::from_str_general(None, val, "", -18, 10, bw(192), 128) {
+        Ok(o) => {
+            let mut f = FP::new(false, o, 128).unwrap();
+            FP::try_to_f64(&mut f).map_add_err(|| "anom_to_nom() f64 overflow")
+        }
+        Err(e) => {
+            // `SerdeError` can't implement Error
+            Err(Error::from(format!(
+                "anom_to_nom() -> when converting we got {e:?}"
+            )))
+        }
+    }
+}
+
 #[test]
 fn test_nom() {
     assert_eq!(&nom(1.0), "1000000000000000000anom");
     assert_eq!(&nom(1.0e-18), "1anom");
     assert_eq!(&nom(1.0e18), "1000000000000000000000000000000000000anom");
     assert_eq!(&nom(std::f64::consts::TAU), "6283185307179586231anom");
+    assert_eq!(anom_to_nom("1000000000000000000anom").unwrap(), 1.0);
+    assert_eq!(anom_to_nom("1anom").unwrap(), 9.999999999999999e-19);
+    assert_eq!(anom_to_nom("1").unwrap(), 9.999999999999999e-19);
+    assert_eq!(anom_to_nom("0").unwrap(), 0.0);
+    assert_eq!(
+        anom_to_nom("1000000000000000000000000000000000000anom").unwrap(),
+        1.0e18
+    );
+    assert_eq!(
+        anom_to_nom("6283185307179586231anom").unwrap(),
+        6.283185307179585
+    );
 }

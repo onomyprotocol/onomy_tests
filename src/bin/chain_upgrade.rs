@@ -4,7 +4,7 @@ use clap::Parser;
 use common::{
     cosmovisor::{
         cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator,
-        wait_for_height,
+        get_staking_pool, wait_for_height,
     },
     nom, Args, ONE_SEC, TIMEOUT,
 };
@@ -13,6 +13,7 @@ use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     sh, std_init, MapAddError, Result, STD_TRIES,
 };
+use tokio::time::sleep;
 
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
@@ -41,7 +42,7 @@ async fn container_runner() -> Result<()> {
     let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
-    let entrypoint = "chain_upgrade_test";
+    let entrypoint = "chain_upgrade";
 
     // build internal runner
     sh("cargo build --release --bin", &[
@@ -79,9 +80,7 @@ async fn onomyd_runner() -> Result<()> {
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
 
-    dbg!(super_orchestrator::DisplayStr(
-        &get_delegations_to_validator().await?
-    ));
+    dbg!(get_staking_pool().await?);
 
     let gas_args = [
         "--gas",
@@ -133,6 +132,9 @@ async fn onomyd_runner() -> Result<()> {
     ));
     // TODO check that the upgrade was successful
 
+    dbg!(get_staking_pool().await?);
+
+    sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
 
     Ok(())
