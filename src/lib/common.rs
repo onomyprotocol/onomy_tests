@@ -1,11 +1,21 @@
 use std::time::Duration;
 pub mod cosmovisor;
-
 use awint::awi::*;
+use clap::Parser;
 
 pub const ONOMY_BASE: &str = "fedora:38";
 pub const ONE_SEC: Duration = Duration::from_secs(1);
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
+
+/// Runs the given entrypoint
+#[derive(Parser, Debug)]
+#[command(about)]
+pub struct Args {
+    /// If left `None`, the container runner program runs, otherwise this
+    /// specifies the entrypoint to run
+    #[arg(short, long)]
+    pub entrypoint: Option<String>,
+}
 
 /// Given `units_of_nom` in units of NOM, returns a string of the decimal number
 /// of aNOM appended with "anom"

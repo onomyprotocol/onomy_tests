@@ -6,7 +6,7 @@ use super_orchestrator::{
     STD_TRIES,
 };
 
-use crate::{nom, ONE_SEC};
+use crate::{nom, token18, ONE_SEC};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -53,7 +53,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // init DAO balance
-    let treasury_balance = json!([{"denom": "anom", "amount": "100000000000000000000000000"}]);
+    let treasury_balance = json!([{"denom": "anom", "amount": token18(100e6, "")}]);
     genesis["app_state"]["dao"]["treasury_balance"] = treasury_balance;
 
     // disable community_tax

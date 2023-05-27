@@ -6,8 +6,8 @@ ENV PATH=$PATH:/root/go/bin
 
 ENV DAEMON_NAME="onomyd"
 ENV DAEMON_HOME="/root/.onomy"
-ENV ONOMY_CURRENT_VERSION=v1.0.3
-ENV ONOMY_UPGRADE_VERSION=v1.0.3.4
+ENV ONOMY_CURRENT_VERSION=v1.0.3.4
+ENV ONOMY_UPGRADE_VERSION=v1.0.3.5
 # under some circumstances such as versions with capitals, this needs to be changed (but try to
 # avoid this problem in the first place)
 ENV ONOMY_UPGRADE_DIR_NAME=$ONOMY_UPGRADE_VERSION

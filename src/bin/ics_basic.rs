@@ -3,7 +3,7 @@ use std::env;
 use clap::Parser;
 use common::{
     cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
-    ONE_SEC, TIMEOUT,
+    Args, ONE_SEC, TIMEOUT,
 };
 use lazy_static::lazy_static;
 use log::info;
@@ -19,16 +19,6 @@ use tokio::time::sleep;
 lazy_static! {
     static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
     static ref DAEMON_HOME: String = env::var("DAEMON_HOME").unwrap();
-}
-
-/// Runs ics_basic
-#[derive(Parser, Debug)]
-#[command(about)]
-struct Args {
-    /// If left `None`, the container runner program runs, otherwise this
-    /// specifies the entrypoint to run
-    #[arg(short, long)]
-    entrypoint: Option<String>,
 }
 
 #[tokio::main]
