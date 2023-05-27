@@ -6,7 +6,7 @@ use super_orchestrator::{
     MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 
-use crate::{anom_to_nom, nom, token18, ONE_SEC};
+use crate::{anom_to_nom, nom, token18};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -71,6 +71,35 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     // min_global_self_delegation
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.into();
+
+    // speed up block speed to be one second. NOTE: keep the inflation calculations
+    // to expect 5s block times, and just assume 5 second block time because the
+    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
+    // that we keep constant genesis["app_state"]["mint"]["params"]["
+    // blocks_per_year"] = "31536000000".into(); genesis["app_state"]["gravity"
+    // ]["params"]["average_block_time"] = "1000".into();
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    // reduce all of these by a factor of 5
+    /*
+    timeout_propose = "3s"
+    timeout_propose_delta = "500ms"
+    timeout_prevote = "1s"
+    timeout_prevote_delta = "500ms"
+    timeout_precommit = "1s"
+    timeout_precommit_delta = "500ms"
+    timeout_commit = "5s"
+     */
+    config["consensus"]["timeout_propose"] = "600ms".into();
+    config["consensus"]["timeout_propose_delta"] = "100ms".into();
+    config["consensus"]["timeout_prevote"] = "200ms".into();
+    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
+    config["consensus"]["timeout_precommit"] = "200ms".into();
+    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
+    config["consensus"]["timeout_commit"] = "1000ms".into();
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_file_path, &config_s).await?;
 
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
@@ -254,9 +283,9 @@ pub async fn cosmovisor_start(
         .await?;
     // wait for status to be ok and daemon to be running
     println!("waiting for daemon to run");
-    wait_for_ok(STD_TRIES, ONE_SEC, || cosmovisor("status", &[])).await?;
+    wait_for_ok(STD_TRIES, STD_DELAY, || cosmovisor("status", &[])).await?;
     println!("waiting for block height to increase");
-    wait_for_height(STD_TRIES, ONE_SEC, 1).await?;
+    wait_for_height(STD_TRIES, STD_DELAY, 1).await?;
 
     Ok(cosmovisor_runner)
 }
@@ -301,18 +330,14 @@ pub async fn get_treasury() -> Result<f64> {
     anom_to_nom(val.trim_matches('"'))
 }
 
-/// In seconds
-pub async fn block_time() -> Result<f64> {
-    Ok(6.0)
-}
-
 pub async fn get_treasury_inflation_annual() -> Result<f64> {
     let height = get_height().await?;
     wait_for_height(STD_TRIES, STD_DELAY, height + 1).await?;
     let start = get_treasury().await?;
     wait_for_height(STD_TRIES, STD_DELAY, height + 2).await?;
     let end = get_treasury().await?;
-    Ok(((end - start) / (start * block_time().await?)) * (86400.0 * 365.0))
+    // we assume 5 second blocks
+    Ok(((end - start) / (start * 5.0)) * (86400.0 * 365.0))
 }
 
 #[derive(Debug)]

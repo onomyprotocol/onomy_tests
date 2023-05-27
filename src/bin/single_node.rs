@@ -77,6 +77,10 @@ async fn onomyd_runner() -> Result<()> {
 
     let valoper_addr = get_valoper_addr().await?;
     cosmovisor("query staking validator", &[&valoper_addr]).await?;
+    cosmovisor("query distribution validator-outstanding-rewards", &[
+        &valoper_addr,
+    ])
+    .await?;
 
     dbg!(get_staking_pool().await?);
 

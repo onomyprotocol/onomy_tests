@@ -5,7 +5,6 @@ use clap::Parser;
 use super_orchestrator::{Error, MapAddError, Result};
 
 pub const ONOMY_BASE: &str = "fedora:38";
-pub const ONE_SEC: Duration = Duration::from_secs(1);
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
 
 /// Runs the given entrypoint

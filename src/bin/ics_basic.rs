@@ -3,7 +3,7 @@ use std::env;
 use clap::Parser;
 use common::{
     cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
-    Args, ONE_SEC, TIMEOUT,
+    Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
 use log::info;
@@ -215,7 +215,7 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    wait_for_height(STD_TRIES, ONE_SEC, 5).await?;
+    wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
 
     let ccvconsumer_state =
         cosmovisor("query provider consumer-genesis market -o json", &[]).await?;

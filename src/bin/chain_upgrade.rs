@@ -6,12 +6,12 @@ use common::{
         cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator,
         get_staking_pool, wait_for_height,
     },
-    nom, Args, ONE_SEC, TIMEOUT,
+    nom, Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    sh, std_init, MapAddError, Result, STD_TRIES,
+    sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 
@@ -126,7 +126,7 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    wait_for_height(STD_TRIES, ONE_SEC, 5).await?;
+    wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
     dbg!(super_orchestrator::DisplayStr(
         &get_delegations_to_validator().await?
     ));
