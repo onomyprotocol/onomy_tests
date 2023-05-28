@@ -3,8 +3,8 @@ use std::env;
 use clap::Parser;
 use common::{
     cosmovisor::{
-        cosmovisor, cosmovisor_setup, cosmovisor_start, get_staking_pool, get_treasury,
-        get_treasury_inflation_annual, get_valoper_addr,
+        cosmovisor_setup, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
+        get_treasury_inflation_annual, wait_for_num_blocks,
     },
     Args, TIMEOUT,
 };
@@ -73,20 +73,19 @@ async fn onomyd_runner() -> Result<()> {
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
-    dbg!(common::cosmovisor::get_delegations_to_validator().await?);
+    // the chain is functional and has done its first block, but the rewards don't
+    // start until the second block
+    wait_for_num_blocks(1).await?;
 
-    let valoper_addr = get_valoper_addr().await?;
-    cosmovisor("query staking validator", &[&valoper_addr]).await?;
-    cosmovisor("query distribution validator-outstanding-rewards", &[
-        &valoper_addr,
-    ])
-    .await?;
+    dbg!(common::cosmovisor::get_delegations_to_validator().await?);
 
     dbg!(get_staking_pool().await?);
 
     dbg!(get_treasury().await?);
 
     dbg!(get_treasury_inflation_annual().await?);
+
+    dbg!(get_apr_annual().await?);
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

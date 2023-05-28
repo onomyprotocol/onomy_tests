@@ -41,9 +41,18 @@ pub fn token18(units_of_nom: f64, denom: &str) -> String {
 /// If there is a "anom" suffix it is trimmed, then we convert from units of
 /// 1e-18 to 1.
 pub fn anom_to_nom(val: &str) -> Result<f64> {
-    let val = val.trim_end_matches("anom");
+    let tmp = val.trim_end_matches("anom");
+    let (integer, fraction) = tmp.split_at(tmp.find('.').unwrap_or(tmp.len()));
     // TODO I think it is actually the `try_to_f64` that has a rounding problem
-    match ExtAwi::from_str_general(None, val, "", -18, 10, bw(192), 128) {
+    match ExtAwi::from_str_general(
+        None,
+        integer,
+        fraction.get(1..).unwrap_or(""),
+        -18,
+        10,
+        bw(192),
+        128,
+    ) {
         Ok(o) => {
             let mut f = FP::new(false, o, 128).unwrap();
             FP::try_to_f64(&mut f).map_add_err(|| "anom_to_nom() f64 overflow")
@@ -55,6 +64,22 @@ pub fn anom_to_nom(val: &str) -> Result<f64> {
             )))
         }
     }
+}
+
+pub fn yaml_str_to_json_value(yaml_input: &str) -> Result<serde_json::Value> {
+    // I feel like there should be a more direct path but I can't find it
+    let deserializer = serde_yaml::Deserializer::from_str(yaml_input);
+    let mut json_v = vec![];
+    let mut serializer = serde_json::Serializer::new(&mut json_v);
+    serde_transcode::transcode(deserializer, &mut serializer).map_add_err(|| ())?;
+    let json_s = String::from_utf8(json_v).map_add_err(|| ())?;
+    let tmp: serde_json::Value = serde_json::from_str(&json_s).map_add_err(|| ())?;
+    Ok(tmp)
+}
+
+/// Calls `.to_string().trim_matches('"').to_owned()`
+pub fn json_inner(json_value: &serde_json::Value) -> String {
+    json_value.to_string().trim_matches('"').to_owned()
 }
 
 #[test]
@@ -75,4 +100,6 @@ fn test_nom() {
         anom_to_nom("6283185307179586231anom").unwrap(),
         6.283185307179585
     );
+    // some methods returns a decimal even if it is always zeros
+    assert_eq!(anom_to_nom("1000000000000000000.00000anom").unwrap(), 1.0);
 }

@@ -1,12 +1,13 @@
 use std::time::Duration;
 
+use log::info;
 use serde_json::{json, Value};
 use super_orchestrator::{
     get_separated_val, sh, sh_no_dbg, wait_for_ok, Command, CommandRunner, FileOptions,
     MapAddError, Result, STD_DELAY, STD_TRIES,
 };
 
-use crate::{anom_to_nom, nom, token18};
+use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -235,7 +236,17 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
             ().map_add_err(|| ())
         }
     }
+    info!("waiting for height {height}");
     wait_for_ok(num_tries, delay, || height_is_ge(height)).await
+}
+
+/// Waits for `num_blocks`. Note: if you are calling this in some timed sequence
+/// that may be started at any time, you should call `wait_for_num_blocks(1)` in
+/// the very beginning to make sure execution starts towards the beginning of a
+/// new block.
+pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
+    let height = get_height().await?;
+    wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
 }
 
 // TODO
@@ -315,26 +326,26 @@ pub async fn get_valoper_addr() -> Result<String> {
     Ok(valoper_addr)
 }
 
+// TODO some of these become flaky if more than one addresse and delegator gets
+// involved
+
 pub async fn get_delegations_to_validator() -> Result<String> {
     let valoper_addr = get_valoper_addr().await?;
     cosmovisor("query staking delegations-to", &[&valoper_addr]).await
 }
 
 pub async fn get_treasury() -> Result<f64> {
-    let val = get_separated_val(
-        &cosmovisor("query dao show-treasury", &[]).await?,
-        "\n",
-        "- amount",
-        ":",
-    )?;
-    anom_to_nom(val.trim_matches('"'))
+    let inner = json_inner(
+        &yaml_str_to_json_value(&cosmovisor("query dao show-treasury", &[]).await?)?
+            ["treasury_balance"][0]["amount"],
+    );
+    anom_to_nom(&inner).map_add_err(|| format!("inner was: {inner}"))
 }
 
 pub async fn get_treasury_inflation_annual() -> Result<f64> {
-    let height = get_height().await?;
-    wait_for_height(STD_TRIES, STD_DELAY, height + 1).await?;
+    wait_for_num_blocks(1).await?;
     let start = get_treasury().await?;
-    wait_for_height(STD_TRIES, STD_DELAY, height + 2).await?;
+    wait_for_num_blocks(1).await?;
     let end = get_treasury().await?;
     // we assume 5 second blocks
     Ok(((end - start) / (start * 5.0)) * (86400.0 * 365.0))
@@ -358,4 +369,41 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
         bonded_tokens,
         unbonded_tokens,
     })
+}
+
+pub async fn get_validator_outstanding_rewards() -> Result<f64> {
+    let valoper_addr = get_valoper_addr().await?;
+    Ok(anom_to_nom(&json_inner(
+        &yaml_str_to_json_value(
+            &cosmovisor("query distribution validator-outstanding-rewards", &[
+                &valoper_addr,
+            ])
+            .await?,
+        )?["rewards"][0]["amount"],
+    ))?)
+}
+
+pub async fn get_validator_delegated() -> Result<f64> {
+    let validator_addr = get_separated_val(
+        &cosmovisor("keys show validator", &[]).await?,
+        "\n",
+        "address",
+        ":",
+    )?;
+    let s = cosmovisor("query staking delegations", &[&validator_addr]).await?;
+    Ok(anom_to_nom(&json_inner(
+        &yaml_str_to_json_value(&s)?["delegation_responses"][0]["balance"]["amount"],
+    ))?)
+}
+
+/// APR calculation is: [Amount(Rewards End) - Amount(Rewards
+/// Beg)]/Amount(Delegated) * # of Blocks/Blocks_per_year
+pub async fn get_apr_annual() -> Result<f64> {
+    wait_for_num_blocks(1).await?;
+    let delegated = get_validator_delegated().await?;
+    let reward_start = get_validator_outstanding_rewards().await?;
+    wait_for_num_blocks(1).await?;
+    let reward_end = get_validator_outstanding_rewards().await?;
+    dbg!(delegated, reward_start, reward_end);
+    Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
 }

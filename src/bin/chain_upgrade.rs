@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
 }
 
 async fn container_runner() -> Result<()> {
-    let dockerfile = "./dockerfiles/chain_upgrade_test.dockerfile";
+    let dockerfile = "./dockerfiles/chain_upgrade.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
     let entrypoint = "chain_upgrade";
