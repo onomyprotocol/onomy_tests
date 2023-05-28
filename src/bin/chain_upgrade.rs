@@ -10,6 +10,7 @@ use common::{
     nom, Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
+use log::warn;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     sh, std_init, MapAddError, Result, STD_DELAY, STD_TRIES,
@@ -73,18 +74,18 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn onomyd_runner() -> Result<()> {
+    assert_ne!(ONOMY_CURRENT_VERSION.as_str(), ONOMY_UPGRADE_VERSION.as_str());
     // as long as none of our operations are delayed longer than a block, this works
-    let gov_period = "4s";
+    let gov_period = "800ms";
 
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
 
+    assert_eq!(cosmovisor("version", &[]).await?.trim(), ONOMY_CURRENT_VERSION.as_str());
+
     wait_for_num_blocks(1).await?;
 
-    dbg!(get_staking_pool().await?);
-    dbg!(get_treasury().await?);
-    dbg!(get_treasury_inflation_annual().await?);
-    dbg!(get_apr_annual().await?);
+    warn!("{}", get_apr_annual().await?);
 
     wait_for_num_blocks(1).await?;
     let upgrade_prepare_start = get_block_height().await?;
@@ -137,12 +138,19 @@ async fn onomyd_runner() -> Result<()> {
 
     wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 5).await?;
 
+    assert_eq!(cosmovisor("version", &[]).await?.trim(), ONOMY_UPGRADE_VERSION.as_str());
+
     // TODO automatically check that the upgrade was successful
 
     dbg!(get_staking_pool().await?);
     dbg!(get_treasury().await?);
     dbg!(get_treasury_inflation_annual().await?);
     dbg!(get_apr_annual().await?);
+
+    warn!("{}", get_apr_annual().await?);
+    wait_for_num_blocks(20).await?;
+    warn!("{}", get_apr_annual().await?);
+
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

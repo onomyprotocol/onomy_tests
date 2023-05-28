@@ -108,7 +108,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     FileOptions::write_str(&"/logs/genesis.log", &genesis_s).await?;
 
     cosmovisor("keys add validator", &[]).await?;
-    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("add-genesis-account validator", &[&nom(100.0e6)]).await?;
     // Even if we don't test the bridge, we need this because SetValsetRequest is
     // called by the gravity module. There are parallel validators for the
     // gravity module, and they need all their own `gravity` variations of `gentx`
@@ -120,10 +120,10 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
         .await?
         .trim()
         .to_owned();
-    cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)]).await?;
+    cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
 
     cosmovisor("gravity gentx validator", &[
-        &nom(1.0e6),
+        &nom(95.0e6),
         eth_addr,
         orch_addr,
         "--chain-id",

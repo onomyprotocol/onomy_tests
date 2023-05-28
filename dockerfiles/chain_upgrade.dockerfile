@@ -13,7 +13,9 @@ ENV ONOMY_UPGRADE_VERSION=v1.0.3.5
 ENV ONOMY_UPGRADE_DIR_NAME=$ONOMY_UPGRADE_VERSION
 
 ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_CURRENT_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
-ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_UPGRADE_VERSION/onomyd $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
+#ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_UPGRADE_VERSION/onomyd $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
+ADD ./dockerfile_resources/onomyd $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
+
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
 RUN chmod +x $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
