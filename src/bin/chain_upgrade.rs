@@ -3,8 +3,9 @@ use std::env;
 use clap::Parser;
 use common::{
     cosmovisor::{
-        cosmovisor, cosmovisor_setup, cosmovisor_start, get_delegations_to_validator,
-        get_staking_pool, wait_for_height,
+        cosmovisor, cosmovisor_setup, cosmovisor_start, get_apr_annual, get_block_height,
+        get_staking_pool, get_treasury, get_treasury_inflation_annual, wait_for_height,
+        wait_for_num_blocks,
     },
     nom, Args, TIMEOUT,
 };
@@ -73,14 +74,22 @@ async fn container_runner() -> Result<()> {
 
 async fn onomyd_runner() -> Result<()> {
     // as long as none of our operations are delayed longer than a block, this works
-    let upgrade_height = "5";
-    let proposal_id = "1";
     let gov_period = "4s";
 
     cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
 
+    wait_for_num_blocks(1).await?;
+
     dbg!(get_staking_pool().await?);
+    dbg!(get_treasury().await?);
+    dbg!(get_treasury_inflation_annual().await?);
+    dbg!(get_apr_annual().await?);
+
+    wait_for_num_blocks(1).await?;
+    let upgrade_prepare_start = get_block_height().await?;
+    let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
+    let proposal_id = "1";
 
     let gas_args = [
         "--gas",
@@ -126,13 +135,14 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
-    dbg!(super_orchestrator::DisplayStr(
-        &get_delegations_to_validator().await?
-    ));
-    // TODO check that the upgrade was successful
+    wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 5).await?;
+
+    // TODO automatically check that the upgrade was successful
 
     dbg!(get_staking_pool().await?);
+    dbg!(get_treasury().await?);
+    dbg!(get_treasury_inflation_annual().await?);
+    dbg!(get_apr_annual().await?);
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

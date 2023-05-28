@@ -9,6 +9,7 @@ use common::{
     Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
+use log::warn;
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     sh, std_init, MapAddError, Result,
@@ -77,15 +78,17 @@ async fn onomyd_runner() -> Result<()> {
     // start until the second block
     wait_for_num_blocks(1).await?;
 
+    warn!("{}", get_apr_annual().await?);
+
     dbg!(common::cosmovisor::get_delegations_to_validator().await?);
 
     dbg!(get_staking_pool().await?);
-
     dbg!(get_treasury().await?);
-
     dbg!(get_treasury_inflation_annual().await?);
-
     dbg!(get_apr_annual().await?);
+
+    wait_for_num_blocks(5).await?;
+    warn!("{}", get_apr_annual().await?);
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

@@ -217,7 +217,7 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String>
 }
 
 /// Note that this interprets "null" height as 0
-pub async fn get_height() -> Result<u64> {
+pub async fn get_block_height() -> Result<u64> {
     let block_s = cosmovisor_no_dbg("query block", &[]).await?;
     let block: Value = serde_json::from_str(&block_s)?;
     let height = &block["block"]["header"]["height"].to_string();
@@ -230,7 +230,7 @@ pub async fn get_height() -> Result<u64> {
 
 pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Result<()> {
     async fn height_is_ge(height: u64) -> Result<()> {
-        if get_height().await? >= height {
+        if get_block_height().await? >= height {
             Ok(())
         } else {
             ().map_add_err(|| ())
@@ -245,7 +245,7 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
 /// the very beginning to make sure execution starts towards the beginning of a
 /// new block.
 pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
-    let height = get_height().await?;
+    let height = get_block_height().await?;
     wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
 }
 
