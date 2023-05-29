@@ -207,7 +207,7 @@ async fn onomyd_runner() -> Result<()> {
     consensus_pubkey.push_str(&tmp_s);
     consensus_pubkey.push_str("\"}}");
 
-    println!("ccvkey: {consensus_pubkey}");
+    info!("ccvkey: {consensus_pubkey}");
 
     // do this before getting the consumer-genesis
     cosmovisor(
@@ -228,7 +228,7 @@ async fn onomyd_runner() -> Result<()> {
 
     let genesis_s =
         FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json")).await?;
-    //println!("genesis: {genesis_s}");
+    info!("genesis: {genesis_s}");
     let genesis: Value = serde_json::from_str(&genesis_s)?;
     nm.send::<String>(&genesis["app_state"]["auth"]["accounts"].to_string())
         .await?;
@@ -411,7 +411,7 @@ async fn hermes_runner() -> Result<()> {
         &[],
     )
     .await?;
-    println!("\n\n\nREADY\n\n\n");
+    info!("\n\n\nREADY\n\n\n");
 
     sleep(TIMEOUT).await;
     Ok(())

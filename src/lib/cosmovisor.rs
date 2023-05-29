@@ -294,9 +294,9 @@ pub async fn cosmovisor_start(
         .run()
         .await?;
     // wait for status to be ok and daemon to be running
-    println!("waiting for daemon to run");
+    info!("waiting for daemon to run");
     wait_for_ok(STD_TRIES, STD_DELAY, || cosmovisor("status", &[])).await?;
-    println!("waiting for block height to increase");
+    info!("waiting for block height to increase");
     wait_for_height(STD_TRIES, STD_DELAY, 1).await?;
 
     Ok(cosmovisor_runner)
