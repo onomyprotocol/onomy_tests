@@ -232,7 +232,7 @@ async fn onomyd_runner() -> Result<()> {
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .map_add_err(|| ())?;
-    let mut nm_marketd = NetMessenger::connect(STD_TRIES, STD_DELAY, "marketd:26000")
+    let mut nm_marketd = NetMessenger::connect(STD_TRIES, STD_DELAY, "marketd:26001")
         .await
         .map_add_err(|| ())?;
 
@@ -361,8 +361,7 @@ async fn onomyd_runner() -> Result<()> {
 }
 
 async fn marketd_runner() -> Result<()> {
-    let listen = "0.0.0.0:26000";
-    let mut nm = NetMessenger::listen_single_connect(listen, TIMEOUT).await?;
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
 
     let daemon_home = DAEMON_HOME.as_str();
     let chain_id = "market";
@@ -371,13 +370,13 @@ async fn marketd_runner() -> Result<()> {
     cosmovisor("init --overwrite", &[chain_id]).await?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
-    let ccvconsumer_state_s: String = nm.recv().await?;
+    let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
     let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
 
-    let accounts_s: String = nm.recv().await?;
+    let accounts_s: String = nm_onomyd.recv().await?;
     let accounts: Value = serde_json::from_str(&accounts_s)?;
 
-    let bank_s: String = nm.recv().await?;
+    let bank_s: String = nm_onomyd.recv().await?;
     let bank: Value = serde_json::from_str(&bank_s)?;
 
     // add `ccvconsumer_state` to genesis
@@ -396,21 +395,23 @@ async fn marketd_runner() -> Result<()> {
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
+    // we used same keys for consumer as producer, need to copy them over or else
+    // the node will not be a working validator for itself
     FileOptions::write_str(
         &format!("{daemon_home}/config/node_key.json"),
-        &nm.recv::<String>().await?,
+        &nm_onomyd.recv::<String>().await?,
     )
     .await?;
     FileOptions::write_str(
         &format!("{daemon_home}/config/priv_validator_key.json"),
-        &nm.recv::<String>().await?,
+        &nm_onomyd.recv::<String>().await?,
     )
     .await?;
 
     let mut cosmovisor_runner = cosmovisor_start("marketd_runner.log", true, None).await?;
 
     // signal that we have started
-    nm.send::<()>(&()).await?;
+    nm_onomyd.send::<()>(&()).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
