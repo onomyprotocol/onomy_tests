@@ -1,6 +1,7 @@
 // for temporary tests
 
-use super_orchestrator::{remove_files_in_dir, std_init, Result};
+use stacked_errors::Result;
+use super_orchestrator::{remove_files_in_dir, std_init};
 
 #[tokio::main]
 async fn main() -> Result<()> {

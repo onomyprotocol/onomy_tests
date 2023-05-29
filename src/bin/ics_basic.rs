@@ -8,11 +8,12 @@ use common::{
 use lazy_static::lazy_static;
 use log::info;
 use serde_json::Value;
+use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val,
     net_message::NetMessenger,
-    remove_files_in_dir, sh, std_init, FileOptions, MapAddError, Result, STD_DELAY, STD_TRIES,
+    remove_files_in_dir, sh, std_init, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 

@@ -2,7 +2,7 @@ use std::time::Duration;
 pub mod cosmovisor;
 use awint::awi::*;
 use clap::Parser;
-use super_orchestrator::{Error, MapAddError, Result};
+use stacked_errors::{Error, MapAddError, Result};
 
 pub const ONOMY_BASE: &str = "fedora:38";
 pub const TIMEOUT: Duration = Duration::from_secs(1000);

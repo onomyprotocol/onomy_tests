@@ -10,9 +10,10 @@ use common::{
 };
 use lazy_static::lazy_static;
 use log::warn;
+use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    sh, std_init, MapAddError, Result,
+    sh, std_init,
 };
 use tokio::time::sleep;
 
