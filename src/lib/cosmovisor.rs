@@ -33,7 +33,7 @@ pub async fn cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Str
 
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
-pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()> {
+pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
@@ -59,6 +59,8 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
 
     // decrease the governing period for fast tests
+    // as long as none of our operations are delayed longer than a block, this works
+    let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
     genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
@@ -106,7 +108,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str(&"/logs/genesis.log", &genesis_s).await?;
+    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
 
     cosmovisor("keys add validator", &[]).await?;
     cosmovisor("add-genesis-account validator", &[&nom(100.0e6)]).await?;
@@ -143,7 +145,7 @@ pub async fn cosmovisor_setup(daemon_home: &str, gov_period: &str) -> Result<()>
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String> {
+pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
     cosmovisor("config chain-id", &[chain_id]).await?;
@@ -168,11 +170,6 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String>
     );
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
 
-    // decrease the governing period for fast tests
-    let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
-
     // init DAO balance
     let treasury_balance = json!([{"denom": "anom", "amount": "100000000000000000000000000"}]);
     genesis["app_state"]["dao"]["treasury_balance"] = treasury_balance;
@@ -184,10 +181,45 @@ pub async fn onomyd_setup(daemon_home: &str, gov_period: &str) -> Result<String>
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.into();
 
-    // write back genesis, just reopen
+    // speed up block speed to be one second. NOTE: keep the inflation calculations
+    // to expect 5s block times, and just assume 5 second block time because the
+    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
+    // that we keep constant genesis["app_state"]["mint"]["params"]["
+    // blocks_per_year"] = "31536000000".into(); genesis["app_state"]["gravity"
+    // ]["params"]["average_block_time"] = "1000".into();
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    // reduce all of these by a factor of 5
+    /*
+    timeout_propose = "3s"
+    timeout_propose_delta = "500ms"
+    timeout_prevote = "1s"
+    timeout_prevote_delta = "500ms"
+    timeout_precommit = "1s"
+    timeout_precommit_delta = "500ms"
+    timeout_commit = "5s"
+     */
+    config["consensus"]["timeout_propose"] = "600ms".into();
+    config["consensus"]["timeout_propose_delta"] = "100ms".into();
+    config["consensus"]["timeout_prevote"] = "200ms".into();
+    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
+    config["consensus"]["timeout_precommit"] = "200ms".into();
+    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
+    config["consensus"]["timeout_commit"] = "1000ms".into();
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_file_path, &config_s).await?;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str(&"/logs/genesis.log", &genesis_s).await?;
+    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -296,7 +328,6 @@ pub async fn cosmovisor_start(
     // wait for status to be ok and daemon to be running
     info!("waiting for daemon to run");
     wait_for_ok(STD_TRIES, STD_DELAY, || cosmovisor("status", &[])).await?;
-    info!("waiting for block height to increase");
     wait_for_height(STD_TRIES, STD_DELAY, 1).await?;
 
     Ok(cosmovisor_runner)
@@ -374,14 +405,14 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
 
 pub async fn get_validator_outstanding_rewards() -> Result<f64> {
     let valoper_addr = get_valoper_addr().await?;
-    Ok(anom_to_nom(&json_inner(
+    anom_to_nom(&json_inner(
         &yaml_str_to_json_value(
             &cosmovisor("query distribution validator-outstanding-rewards", &[
                 &valoper_addr,
             ])
             .await?,
         )?["rewards"][0]["amount"],
-    ))?)
+    ))
 }
 
 pub async fn get_validator_delegated() -> Result<f64> {
@@ -392,9 +423,9 @@ pub async fn get_validator_delegated() -> Result<f64> {
         ":",
     )?;
     let s = cosmovisor("query staking delegations", &[&validator_addr]).await?;
-    Ok(anom_to_nom(&json_inner(
+    anom_to_nom(&json_inner(
         &yaml_str_to_json_value(&s)?["delegation_responses"][0]["balance"]["amount"],
-    ))?)
+    ))
 }
 
 /// APR calculation is: [Amount(Rewards End) - Amount(Rewards

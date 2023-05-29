@@ -71,8 +71,7 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn onomyd_runner() -> Result<()> {
-    let gov_period = "20s";
-    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    cosmovisor_setup(DAEMON_HOME.as_str()).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     // the chain is functional and has done its first block, but the rewards don't

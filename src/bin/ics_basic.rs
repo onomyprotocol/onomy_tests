@@ -13,7 +13,7 @@ use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val,
     net_message::NetMessenger,
-    remove_files_in_dir, sh, std_init, FileOptions, STD_DELAY, STD_TRIES,
+    remove_files_in_dir, sh, std_init, Command, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 
@@ -86,6 +86,15 @@ async fn container_runner() -> Result<()> {
         "test",
         vec![
             Container::new(
+                "hermes",
+                Some("./dockerfiles/hermes.dockerfile"),
+                None,
+                &[],
+                &volumes,
+                entrypoint,
+                &["--entrypoint", "hermes"],
+            ),
+            Container::new(
                 "onomyd",
                 Some("./dockerfiles/onomyd.dockerfile"),
                 None,
@@ -103,15 +112,6 @@ async fn container_runner() -> Result<()> {
                 entrypoint,
                 &["--entrypoint", "marketd"],
             ),
-            Container::new(
-                "hermes",
-                Some("./dockerfiles/hermes.dockerfile"),
-                None,
-                &[],
-                &volumes,
-                entrypoint,
-                &["--entrypoint", "hermes"],
-            ),
         ],
         true,
         logs_dir,
@@ -122,10 +122,9 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn hermes_runner() -> Result<()> {
-    let listen = "0.0.0.0:26000";
-    let mut nm = NetMessenger::listen_single_connect(listen, TIMEOUT).await?;
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
 
-    let mnemonic: String = nm.recv().await?;
+    let mnemonic: String = nm_onomyd.recv().await?;
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
     sh(
         "hermes keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
@@ -138,93 +137,31 @@ async fn hermes_runner() -> Result<()> {
     )
     .await?;
 
-    nm.recv::<()>().await?;
+    nm_onomyd.recv::<()>().await?;
     sh(
         "hermes create connection --a-chain market --a-client 07-tendermint-0 --b-client \
          07-tendermint-0",
         &[],
     )
     .await?;
+    sh(
+        "hermes create channel --order ordered --a-chain market --a-connection connection-0 \
+         --a-port consumer --b-port provider --channel-version 1",
+        &[],
+    )
+    .await?;
+
+    let hermes_log = FileOptions::write2("/logs", "hermes_runner.log");
+    let mut hermes_runner = Command::new("hermes start", &[])
+        .stderr_log(&hermes_log)
+        .stdout_log(&hermes_log)
+        .run()
+        .await?;
+
     info!("\n\n\nREADY\n\n\n");
 
-    // need
-    // $DAEMON_HOME/data/priv_validator_state.json # good
-    // $DAEMON_HOME/config/node_key.json #
-    // {"priv_key":{"type":"tendermint/PrivKeyEd25519","value":"
-    // ZPJdDf6VM0AOpp9RA4o1TWfsJ8FlKAqRYetfz+JY6k0ocKr28vNQyxMM2XLVCl38XoSkqSjaxH4aJaXt98nKGw=="
-    // }} $DAEMON_HOME/config/priv_validator_key.json
-    // {
-    //   "address": "B84FF2E45DC827E00316F7E521DC326D85025916",
-    //   "pub_key": {
-    //     "type": "tendermint/PubKeyEd25519",
-    //     "value": "w0tuY2qwu+uMA6eS430yEJITssJgGAXsyCFCbNkKM7g="
-    //   },
-    //   "priv_key": {
-    //     "type": "tendermint/PrivKeyEd25519",
-    //     "value":
-    // "72qperDW+FVH+uxpDCC1HeRtGDW46UdroUqLL1Eoaj7DS25jarC764wDp5LjfTIQkhOywmAYBezIIUJs2QozuA=="
-    // }
-    // also need keyring (/keyring-test/) to be able to do transactions
-
-    // verified:
-
-    // #`07-tendermint0` is created automatically to interface with the market chain
-    // # this should return something after onomyd proposals have passed
-    //hermes query client state --chain onomy --client 07-tendermint-0
-
-    // # start out empty
-    //hermes query channels --chain onomy
-    //hermes query channels --chain market
-    //hermes query connections --chain onomy
-
-    // #ClientChain {
-    // #    client_id: ClientId(
-    // #        "07-tendermint-0",
-    // #    ),
-    // #    chain_id: ChainId {
-    // #        id: "market",
-    // #        version: 0,
-    // #    },
-    // #}
-    //hermes query clients --host-chain onomy
-
-    //hermes query client connections --chain onomy --client 07-tendermint-0
-    //hermes query client consensus --chain onomy --client 07-tendermint-0
-    //hermes query client state --chain onomy --client 07-tendermint-0
-    //hermes query client status --chain onomy --client 07-tendermint-0
-
-    // # this is done on onomyd
-    //sh("hermes keys add --chain onomy --mnemonic-file
-    // /root/.hermes/mnemonic.txt", &[]).await?;
-
-    //hermes query clients --host-chain market
-
-    // end verified
-
-    // # this should be it
-    // hermes create connection --a-chain market --a-client 07-tendermint-0
-    // --b-client 07-tendermint-0
-
-    //hermes query client state --chain market --client 07-tendermint-0
-
-    // hermes create client --host-chain onomy --reference-chain market
-    // hermes create client --host-chain market --reference-chain onomy
-    // hermes query client state --chain onomy --client 07-tendermint-0
-    // hermes query client state --chain market --client 07-tendermint-0
-
-    //  hermes create connection --a-chain onomy --a-client 07-tendermint-0
-    // --b-client 07-tendermint-0
-
-    // hermes create connection --a-chain market --a-client 07-tendermint-0
-    // --b-client 07-tendermint-1 TODO check connection num
-    // hermes create channel --order ordered --a-chain market --a-connection
-    // connection-0 --a-port consumer --b-port provider --channel-version 1
-    // hermes start
-
-    // hermes tx chan-open-try --dst-chain onomy --src-chain market --dst-connection
-    // connection-0 --dst-port provider --src-port consumer --src-channel channel-0
-
     sleep(TIMEOUT).await;
+    hermes_runner.terminate().await?;
     Ok(())
 }
 
@@ -236,9 +173,8 @@ async fn onomyd_runner() -> Result<()> {
         .await
         .map_add_err(|| ())?;
 
-    let gov_period = "4s";
     let daemon_home = DAEMON_HOME.as_str();
-    let mnemonic = onomyd_setup(daemon_home, gov_period).await?;
+    let mnemonic = onomyd_setup(daemon_home).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
 
@@ -370,6 +306,8 @@ async fn marketd_runner() -> Result<()> {
     cosmovisor("init --overwrite", &[chain_id]).await?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
+    // we need both the initial consumer state and the accounts, plus we just copy
+    // over the bank (or else we need some kind of funding) for the test to work
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
     let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
 
@@ -385,7 +323,6 @@ async fn marketd_runner() -> Result<()> {
 
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
-    // TODO see if we can remove these
     genesis["app_state"]["auth"]["accounts"] = accounts;
     genesis["app_state"]["bank"] = bank;
     let genesis_s = genesis.to_string();

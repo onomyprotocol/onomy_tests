@@ -79,10 +79,7 @@ async fn onomyd_runner() -> Result<()> {
         ONOMY_CURRENT_VERSION.as_str(),
         ONOMY_UPGRADE_VERSION.as_str()
     );
-    // as long as none of our operations are delayed longer than a block, this works
-    let gov_period = "800ms";
-
-    cosmovisor_setup(DAEMON_HOME.as_str(), gov_period).await?;
+    cosmovisor_setup(DAEMON_HOME.as_str()).await?;
     let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
 
     assert_eq!(
