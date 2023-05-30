@@ -52,15 +52,13 @@ async fn container_runner() -> Result<()> {
     ])
     .await?;
 
-    // FIXME fall back to 971000347e9dce20e27b37208a0305c27ef1c458
-
     // build binaries
 
-    sh("make --directory ./../onomy_workspace0/onomy/ build", &[]).await?;
+    sh("make --directory ./../onomy/ build", &[]).await?;
     sh("make --directory ./../market/ build", &[]).await?;
     // copy to dockerfile resources (docker cannot use files from outside cwd)
     sh(
-        "cp ./../onomy_workspace0/onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+        "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
         &[],
     )
     .await?;
@@ -158,7 +156,18 @@ async fn hermes_runner() -> Result<()> {
         .run()
         .await?;
 
-    info!("\n\n\nREADY\n\n\n");
+    info!("Onomy Network has been setup");
+
+    sh(
+        "hermes query packet acks --chain onomy --channel channel-0 --port provider",
+        &[],
+    )
+    .await?;
+    sh(
+        "hermes query packet acks --chain market --channel channel-0 --port consumer",
+        &[],
+    )
+    .await?;
 
     sleep(TIMEOUT).await;
     hermes_runner.terminate().await?;
@@ -233,7 +242,7 @@ async fn onomyd_runner() -> Result<()> {
     // In the mean time get consensus key assignment done
 
     // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not
-    // some random thing from teh validator set
+    // some random thing from the validator set
     let tmp_s = get_separated_val(
         &cosmovisor("query tendermint-validator-set", &[]).await?,
         "\n",
