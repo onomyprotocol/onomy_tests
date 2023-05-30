@@ -1,10 +1,10 @@
-use std::env;
+use std::{env};
 
 use clap::Parser;
 use common::{
     cosmovisor::{
-        cosmovisor_setup, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
-        get_treasury_inflation_annual, wait_for_num_blocks,
+        cosmovisor, cosmovisor_setup, cosmovisor_start, get_apr_annual, get_staking_pool,
+        get_treasury, get_treasury_inflation_annual, wait_for_num_blocks,
     },
     Args, TIMEOUT,
 };
@@ -13,7 +13,7 @@ use log::warn;
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
-    sh, std_init,
+    get_separated_val, sh, std_init,
 };
 use tokio::time::sleep;
 
@@ -42,6 +42,14 @@ async fn container_runner() -> Result<()> {
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
     let entrypoint = "single_node";
+
+    /*sh("make --directory ./../onomy/ build", &[]).await?;
+    // copy to dockerfile resources (docker cannot use files from outside cwd)
+    sh(
+        "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+        &[],
+    )
+    .await?;*/
 
     // build internal runner
     sh("cargo build --release --bin", &[
@@ -89,6 +97,22 @@ async fn onomyd_runner() -> Result<()> {
 
     wait_for_num_blocks(5).await?;
     warn!("{}", get_apr_annual().await?);
+
+    let validator_addr = get_separated_val(
+        &cosmovisor("keys show validator", &[]).await?,
+        "\n",
+        "address",
+        ":",
+    )?;
+    sh(
+        &format!(
+            "cosmovisor run tx bank send {validator_addr} \
+            onomy1a5vn0tgp5tvqmsyrfaq03nkyh2vh5x58ltsvfs 1337anom --gas auto --gas-adjustment \
+             1.3 -y -b block --from validator"
+        ),
+        &[],
+    )
+    .await?;
 
     sleep(common::TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
