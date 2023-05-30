@@ -249,6 +249,88 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     Ok(mnemonic)
 }
 
+pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
+    let chain_id = "market_standalone";
+    let global_min_self_delegation = "225000000000000000000000";
+    cosmovisor("config chain-id", &[chain_id]).await?;
+    cosmovisor("config keyring-backend test", &[]).await?;
+    cosmovisor("init --overwrite", &[chain_id]).await?;
+
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+
+    // rename all "stake" to "anom"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    // put in the test `footoken` and the staking `anom`
+    let denom_metadata = json!(
+        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
+        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
+        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
+        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
+        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
+        "exponent": 18}]}]
+    );
+    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+
+    // min_global_self_delegation
+    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
+        global_min_self_delegation.into();
+
+    // speed up block speed to be one second.
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    config["consensus"]["timeout_propose"] = "600ms".into();
+    config["consensus"]["timeout_propose_delta"] = "100ms".into();
+    config["consensus"]["timeout_prevote"] = "200ms".into();
+    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
+    config["consensus"]["timeout_precommit"] = "200ms".into();
+    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
+    config["consensus"]["timeout_commit"] = "1000ms".into();
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_file_path, &config_s).await?;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // write back genesis
+    let genesis_s = serde_json::to_string(&genesis)?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
+
+    // we need the stderr to get the mnemonic
+    let comres = Command::new("cosmovisor run keys add validator", &[])
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let mnemonic = comres
+        .stderr
+        .trim()
+        .lines()
+        .last()
+        .map_add_err(|| "no last line")?
+        .trim()
+        .to_owned();
+
+    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    cosmovisor("gentx validator", &[
+        &nom(1.0e6),
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
+    ])
+    .await?;
+    cosmovisor("collect-gentxs", &[]).await?;
+
+    Ok(mnemonic)
+}
+
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
     let block_s = cosmovisor_no_dbg("query block", &[]).await?;
@@ -281,13 +363,6 @@ pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
     let height = get_block_height().await?;
     wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
 }
-
-// TODO
-// This is just a simple wrapper struct to facilitate checked message passing
-//#[derive(Debug, Clone, Decode, Encode)]
-//pub struct PersistentPeer {
-//    pub lkj: u32
-//}
 
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     let s = cosmovisor("tendermint show-node-id", &[]).await?;

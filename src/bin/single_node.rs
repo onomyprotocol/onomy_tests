@@ -1,4 +1,4 @@
-use std::{env};
+use std::env;
 
 use clap::Parser;
 use common::{
@@ -107,7 +107,7 @@ async fn onomyd_runner() -> Result<()> {
     sh(
         &format!(
             "cosmovisor run tx bank send {validator_addr} \
-            onomy1a5vn0tgp5tvqmsyrfaq03nkyh2vh5x58ltsvfs 1337anom --gas auto --gas-adjustment \
+             onomy1a5vn0tgp5tvqmsyrfaq03nkyh2vh5x58ltsvfs 1337anom --gas auto --gas-adjustment \
              1.3 -y -b block --from validator"
         ),
         &[],
