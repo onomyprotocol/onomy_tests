@@ -2,7 +2,7 @@ use std::env;
 
 use clap::Parser;
 use common::{
-    cosmovisor::{cosmovisor_start, market_standaloned_setup},
+    cosmovisor::{cosmovisor, cosmovisor_start, market_standaloned_setup},
     Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -85,6 +85,29 @@ async fn market_standaloned_runner() -> Result<()> {
     market_standaloned_setup(daemon_home).await?;
     let mut cosmovisor_runner =
         cosmovisor_start("market_standaloned_runner.log", true, None).await?;
+
+    // also `show-` versions of all these
+    cosmovisor("query market list-asset", &[]).await?;
+    cosmovisor("query market list-burnings", &[]).await?;
+    cosmovisor("query market list-drop", &[]).await?;
+    cosmovisor("query market list-member", &[]).await?;
+    cosmovisor("query market list-pool", &[]).await?;
+
+    cosmovisor("query market params", &[]).await?;
+    //cosmovisor("query market get-book [denom-a] [denom-b] [order-type]",
+    // &[]).await?;
+
+    //cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
+
+    //cosmovisor("tx market create-drop [pair] [drops]").await?;
+    //cosmovisor("tx market redeem-drop [uid]").await?;
+
+    //cosmovisor("tx market market-order [denom-ask] [denom-bid] [amount-bid]
+    // [quote-ask] [slippage]").await?;
+
+    //cosmovisor("tx market create-order [denom-ask] [denom-bid] [order-type]
+    // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
+    // cancel-order [uid]").await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

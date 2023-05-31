@@ -404,7 +404,7 @@ pub async fn cosmovisor_start(
     info!("waiting for daemon to run");
     wait_for_ok(STD_TRIES, STD_DELAY, || cosmovisor("status", &[])).await?;
     wait_for_height(STD_TRIES, STD_DELAY, 1).await?;
-
+    info!("daemon has reached height 1");
     Ok(cosmovisor_runner)
 }
 

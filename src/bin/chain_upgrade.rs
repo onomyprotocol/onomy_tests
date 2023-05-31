@@ -147,8 +147,6 @@ async fn onomyd_runner() -> Result<()> {
         ONOMY_UPGRADE_VERSION.as_str()
     );
 
-    // TODO automatically check that the upgrade was successful
-
     dbg!(get_staking_pool().await?);
     dbg!(get_treasury().await?);
     dbg!(get_treasury_inflation_annual().await?);
