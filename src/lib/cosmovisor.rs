@@ -108,7 +108,7 @@ pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
     // write back genesis, just reopen
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
+    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
 
     cosmovisor("keys add validator", &[]).await?;
     cosmovisor("add-genesis-account validator", &[&nom(100.0e6)]).await?;
@@ -219,7 +219,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
+    FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -301,7 +301,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.log", &genesis_s).await?;
+    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])

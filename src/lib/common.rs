@@ -1,5 +1,6 @@
 use std::time::Duration;
 pub mod cosmovisor;
+pub mod hermes;
 use awint::awi::*;
 use clap::Parser;
 use stacked_errors::{Error, MapAddError, Result};

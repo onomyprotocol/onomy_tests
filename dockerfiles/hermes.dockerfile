@@ -3,7 +3,7 @@ RUN dnf install -y git make cmake gcc gcc-c++ which iproute iputils procps-ng vi
 RUN npm install -g ts-node && npm install -g typescript
 RUN go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@latest
 ENV PATH=$PATH:/root/go/bin
-ADD https://github.com/informalsystems/hermes/releases/download/v1.4.1/hermes-v1.4.1-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
+ADD https://github.com/informalsystems/hermes/releases/download/v1.5.0/hermes-v1.5.0-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
 RUN cd /root/.hermes/bin/ && tar -vxf *
 ENV PATH=$PATH:/root/.hermes/bin
 

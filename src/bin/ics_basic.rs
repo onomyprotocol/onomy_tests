@@ -1,8 +1,9 @@
-use std::env;
+use std::{env, time::Duration};
 
 use clap::Parser;
 use common::{
     cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
+    hermes::{create_channel_pair, create_client_pair, create_connection_pair, hermes},
     Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -123,29 +124,52 @@ async fn hermes_runner() -> Result<()> {
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
 
     let mnemonic: String = nm_onomyd.recv().await?;
+    // set keys for our chains
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
-    sh(
-        "hermes keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
+    hermes(
+        "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
     .await?;
-    sh(
-        "hermes keys add --chain market --mnemonic-file /root/.hermes/mnemonic.txt",
+    hermes(
+        "keys add --chain market --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
     .await?;
 
     nm_onomyd.recv::<()>().await?;
-    sh(
-        "hermes create connection --a-chain market --a-client 07-tendermint-0 --b-client \
-         07-tendermint-0",
-        &[],
+
+    // https://hermes.informal.systems/tutorials/local-chains/add-a-new-relay-path.html
+
+    // Note: For ICS, there is a point where a handshake must be initiated by the
+    // consumer chain, so we must make the consumer chain the "a-chain" and the
+    // producer chain the "b-chain"
+
+    let b_chain = "onomy";
+    let a_chain = "market";
+    // a client is already created because of the ICS setup
+    //let _market_client_pair = create_client_pair(a_chain, b_chain).await?;
+    // create one client and connection pair that will be used for IBC transfer and
+    // ICS communication
+    let market_connection_pair = create_connection_pair(a_chain, b_chain).await?;
+
+    // market<->onomy transfer<->transfer
+    let market_transfer_channel_pair = create_channel_pair(
+        a_chain,
+        &market_connection_pair.0,
+        "transfer",
+        "transfer",
+        false,
     )
     .await?;
-    sh(
-        "hermes create channel --order ordered --a-chain market --a-connection connection-0 \
-         --a-port consumer --b-port provider --channel-version 1",
-        &[],
+
+    // market<->onomy consumer<->provider
+    let market_ics_channel_pair = create_channel_pair(
+        a_chain,
+        &market_connection_pair.0,
+        "consumer",
+        "provider",
+        true,
     )
     .await?;
 
@@ -158,16 +182,33 @@ async fn hermes_runner() -> Result<()> {
 
     info!("Onomy Network has been setup");
 
-    sh(
-        "hermes query packet acks --chain onomy --channel channel-0 --port provider",
-        &[],
+    sleep(Duration::from_secs(5)).await;
+
+    hermes(
+        "query packet acks --chain onomy --port transfer --channel",
+        &[&market_transfer_channel_pair.0],
     )
     .await?;
-    sh(
-        "hermes query packet acks --chain market --channel channel-0 --port consumer",
-        &[],
+    hermes(
+        "query packet acks --chain market --port transfer --channel",
+        &[&market_transfer_channel_pair.1],
     )
     .await?;
+    hermes(
+        "query packet acks --chain onomy --port provider --channel",
+        &[&market_ics_channel_pair.0],
+    )
+    .await?;
+    hermes(
+        "query packet acks --chain market --port consumer --channel",
+        &[&market_ics_channel_pair.1],
+    )
+    .await?;
+
+    //hermes tx ft-transfer --timeout-seconds 10 --dst-chain market --src-chain
+    // onomy --src-port transfer --src-channel channel-0 --amount 1337 --denom anom
+
+    nm_onomyd.send::<()>(&()).await?;
 
     sleep(TIMEOUT).await;
     hermes_runner.terminate().await?;
@@ -253,7 +294,7 @@ async fn onomyd_runner() -> Result<()> {
     consensus_pubkey.push_str(&tmp_s);
     consensus_pubkey.push_str("\"}}");
 
-    info!("ccvkey: {consensus_pubkey}");
+    //info!("ccvkey: {consensus_pubkey}");
 
     // do this before getting the consumer-genesis
     cosmovisor(
@@ -267,7 +308,7 @@ async fn onomyd_runner() -> Result<()> {
     let ccvconsumer_state =
         cosmovisor("query provider consumer-genesis market -o json", &[]).await?;
 
-    info!("ccvconsumer_state:\n{ccvconsumer_state}\n\n");
+    //info!("ccvconsumer_state:\n{ccvconsumer_state}\n\n");
 
     nm_hermes.send::<String>(&mnemonic).await?;
 
@@ -276,7 +317,7 @@ async fn onomyd_runner() -> Result<()> {
 
     let genesis_s =
         FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json")).await?;
-    info!("genesis: {genesis_s}");
+    //info!("genesis: {genesis_s}");
     let genesis: Value = serde_json::from_str(&genesis_s)?;
     nm_marketd
         .send::<String>(&genesis["app_state"]["auth"]["accounts"].to_string())
@@ -299,6 +340,10 @@ async fn onomyd_runner() -> Result<()> {
     // wait for marketd to be online
     nm_marketd.recv::<()>().await?;
     nm_hermes.send::<()>(&()).await?;
+    nm_hermes.recv::<()>().await?;
+
+    //cosmovisor("tx ibc-transfer transfer", &[port, channel, receiver,
+    // amount]).await?;
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
@@ -337,9 +382,10 @@ async fn marketd_runner() -> Result<()> {
     let genesis_s = genesis.to_string();
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
 
-    info!("genesis: {genesis_s}");
+    //info!("genesis: {genesis_s}");
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&"/logs/market_genesis.json", &genesis_s).await?;
 
     // we used same keys for consumer as producer, need to copy them over or else
     // the node will not be a working validator for itself
