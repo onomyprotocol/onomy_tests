@@ -38,10 +38,10 @@ async fn main() -> Result<()> {
 }
 
 async fn container_runner() -> Result<()> {
-    let dockerfile = "./dockerfiles/single_node.dockerfile";
+    let dockerfile = "./dockerfiles/onomyd.dockerfile";
     let container_target = "x86_64-unknown-linux-gnu";
     let logs_dir = "./logs";
-    let entrypoint = "single_node";
+    let entrypoint = "onomyd_only";
 
     /*sh("make --directory ./../onomy/ build", &[]).await?;
     // copy to dockerfile resources (docker cannot use files from outside cwd)
@@ -79,7 +79,7 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn onomyd_runner() -> Result<()> {
-    onomyd_setup(DAEMON_HOME.as_str()).await?;
+    onomyd_setup(DAEMON_HOME.as_str(), false).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     // the chain is functional and has done its first block, but the rewards don't

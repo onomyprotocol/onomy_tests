@@ -5,8 +5,8 @@ use lazy_static::lazy_static;
 use log::warn;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_setup, cosmovisor_start, get_apr_annual, get_block_height, get_staking_pool,
-        get_treasury, get_treasury_inflation_annual, sh_cosmovisor, wait_for_height,
+        cosmovisor_start, get_apr_annual, get_block_height, get_staking_pool, get_treasury,
+        get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
         wait_for_num_blocks,
     },
     nom, Args, TIMEOUT,
@@ -87,7 +87,7 @@ async fn onomyd_runner() -> Result<()> {
         ONOMY_CURRENT_VERSION.as_str(),
         ONOMY_UPGRADE_VERSION.as_str()
     );
-    cosmovisor_setup(DAEMON_HOME.as_str()).await?;
+    onomyd_setup(DAEMON_HOME.as_str(), false).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     assert_eq!(

@@ -222,7 +222,7 @@ async fn onomyd_runner() -> Result<()> {
         .map_add_err(|| ())?;
 
     let daemon_home = DAEMON_HOME.as_str();
-    let mnemonic = onomyd_setup(daemon_home).await?;
+    let mnemonic = onomyd_setup(daemon_home, false).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
 
