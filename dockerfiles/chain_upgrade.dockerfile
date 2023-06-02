@@ -6,13 +6,14 @@ ENV PATH=$PATH:/root/go/bin
 
 ENV DAEMON_NAME="onomyd"
 ENV DAEMON_HOME="/root/.onomy"
-ENV ONOMY_CURRENT_VERSION=v1.0.3.4
-ENV ONOMY_UPGRADE_VERSION=v1.0.3.5
+ENV ONOMY_CURRENT_VERSION=v1.0.3.5
+ENV ONOMY_UPGRADE_VERSION=v1.1.0
 # under some circumstances such as versions with capitals, this needs to be changed (but try to
 # avoid this problem in the first place)
 ENV ONOMY_UPGRADE_DIR_NAME=$ONOMY_UPGRADE_VERSION
 
 ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_CURRENT_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
+#ADD ./dockerfile_resources/onomyd $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
 ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_UPGRADE_VERSION/onomyd $DAEMON_HOME/cosmovisor/upgrades/$ONOMY_UPGRADE_DIR_NAME/bin/onomyd
 
 # for manual testing

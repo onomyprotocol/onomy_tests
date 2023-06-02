@@ -3,7 +3,7 @@ use std::{env, time::Duration};
 use clap::Parser;
 use common::{
     cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
-    hermes::{create_channel_pair, create_client_pair, create_connection_pair, hermes},
+    hermes::{create_channel_pair, create_connection_pair, hermes},
     Args, TIMEOUT,
 };
 use lazy_static::lazy_static;
@@ -53,9 +53,7 @@ async fn container_runner() -> Result<()> {
     ])
     .await?;
 
-    // build binaries
-
-    sh("make --directory ./../onomy/ build", &[]).await?;
+    /*sh("make --directory ./../onomy/ build", &[]).await?;
     sh("make --directory ./../market/ build", &[]).await?;
     // copy to dockerfile resources (docker cannot use files from outside cwd)
     sh(
@@ -67,7 +65,7 @@ async fn container_runner() -> Result<()> {
         "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
         &[],
     )
-    .await?;
+    .await?;*/
 
     // prepare volumed resources
     remove_files_in_dir("./resources/keyring-test/", &["address", "info"]).await?;
@@ -229,6 +227,10 @@ async fn onomyd_runner() -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
 
     let proposal_id = "1";
+
+    // TODO we think we will make the redistribution fraction 0 and either make a
+    // native "stake" or IBC NOM as the gas denom (may take a gov proposal for
+    // bootstrap)
 
     // `json!` doesn't like large literals beyond i32
     let proposal_s = r#"{

@@ -8,7 +8,7 @@ ENV DAEMON_NAME="onomyd"
 ENV DAEMON_HOME="/root/.onomy"
 ENV ONOMY_CURRENT_VERSION=v1.0.3.5
 
-#ADD ./dockerfile_resources/onomyd0 $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
+#ADD ./dockerfile_resources/onomyd $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
 ADD https://github.com/onomyprotocol/onomy/releases/download/$ONOMY_CURRENT_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$ONOMY_CURRENT_VERSION/bin/onomyd
 
 # for manual testing

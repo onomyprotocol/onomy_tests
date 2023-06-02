@@ -47,6 +47,14 @@ async fn container_runner() -> Result<()> {
     let logs_dir = "./logs";
     let entrypoint = "chain_upgrade";
 
+    /*sh("make --directory ./../onomy/ build", &[]).await?;
+    // copy to dockerfile resources (docker cannot use files from outside cwd)
+    sh(
+        "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+        &[],
+    )
+    .await?;*/
+
     // build internal runner
     sh("cargo build --release --bin", &[
         entrypoint,
@@ -80,7 +88,7 @@ async fn onomyd_runner() -> Result<()> {
         ONOMY_UPGRADE_VERSION.as_str()
     );
     cosmovisor_setup(DAEMON_HOME.as_str()).await?;
-    let mut cosmovisor_runner = cosmovisor_start("entrypoint_cosmovisor.log", false, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     assert_eq!(
         cosmovisor("version", &[]).await?.trim(),
@@ -92,6 +100,7 @@ async fn onomyd_runner() -> Result<()> {
     warn!("{}", get_apr_annual().await?);
 
     wait_for_num_blocks(1).await?;
+
     let upgrade_prepare_start = get_block_height().await?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
     let proposal_id = "1";

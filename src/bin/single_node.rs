@@ -3,8 +3,8 @@ use std::env;
 use clap::Parser;
 use common::{
     cosmovisor::{
-        cosmovisor, cosmovisor_setup, cosmovisor_start, get_apr_annual, get_staking_pool,
-        get_treasury, get_treasury_inflation_annual, wait_for_num_blocks,
+        cosmovisor, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
+        get_treasury_inflation_annual, onomyd_setup, wait_for_num_blocks,
     },
     Args, TIMEOUT,
 };
@@ -79,7 +79,7 @@ async fn container_runner() -> Result<()> {
 }
 
 async fn onomyd_runner() -> Result<()> {
-    cosmovisor_setup(DAEMON_HOME.as_str()).await?;
+    onomyd_setup(DAEMON_HOME.as_str()).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     // the chain is functional and has done its first block, but the rewards don't
