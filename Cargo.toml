@@ -1,24 +1,8 @@
-[package]
-name = "onomy_tests"
-version = "0.0.0"
-edition = "2021"
-publish = false
+[workspace]
+resolver = "2"
+members = [
+    "manual_tests",
+    "onomy_test_lib",
+]
 
-[lib]
-name = "common"
-path = "src/lib/common.rs"
-
-[dependencies]
-awint = { version = "0.10", default-features = false, features = ["std"] }
-clap = { version = "4.2", features = ["derive"] }
-env_logger = "0.10"
-lazy_static = "1.4"
-log = "0.4"
-musli = "0.0.49"
-serde-transcode = "1.1"
-serde_json = "1.0"
-serde_yaml = "0.9"
-stacked_errors = { version = "0.1", default-features = false, features = ["serde_json_support", "toml_support"] }
-super_orchestrator = { version = "0.1", default-features = false, features = ["serde_json_support", "env_logger_support", "ctrlc_support", "serde_yaml_support"] }
-tokio = { version = "1.28", features = ["full"] }
-toml = "0.7"
+[patch.crates-io]

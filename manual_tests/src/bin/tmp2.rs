@@ -1,21 +1,11 @@
 use clap::Parser;
-use common::TIMEOUT;
+use onomy_test_lib::{Args, TIMEOUT};
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     net_message::NetMessenger,
     sh, std_init, STD_DELAY, STD_TRIES,
 };
-
-/// Runs ics_basic
-#[derive(Parser, Debug)]
-#[command(about)]
-struct Args {
-    /// If left `None`, the container runner program runs, otherwise this
-    /// specifies the entrypoint to run
-    #[arg(short, long)]
-    entrypoint: Option<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {

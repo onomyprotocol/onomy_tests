@@ -1,16 +1,16 @@
 use std::env;
 
 use clap::Parser;
-use common::{
+use lazy_static::lazy_static;
+use log::warn;
+use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor, cosmovisor_setup, cosmovisor_start, get_apr_annual, get_block_height,
-        get_staking_pool, get_treasury, get_treasury_inflation_annual, wait_for_height,
+        cosmovisor_setup, cosmovisor_start, get_apr_annual, get_block_height, get_staking_pool,
+        get_treasury, get_treasury_inflation_annual, sh_cosmovisor, wait_for_height,
         wait_for_num_blocks,
     },
     nom, Args, TIMEOUT,
 };
-use lazy_static::lazy_static;
-use log::warn;
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
@@ -91,7 +91,7 @@ async fn onomyd_runner() -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
     assert_eq!(
-        cosmovisor("version", &[]).await?.trim(),
+        sh_cosmovisor("version", &[]).await?.trim(),
         ONOMY_CURRENT_VERSION.as_str()
     );
 
@@ -120,7 +120,7 @@ async fn onomyd_runner() -> Result<()> {
 
     let upgrade_version = ONOMY_UPGRADE_VERSION.as_str();
     let description = &format!("\"upgrade {upgrade_version}\"");
-    cosmovisor(
+    sh_cosmovisor(
         "tx gov submit-proposal software-upgrade",
         &[
             [
@@ -138,12 +138,12 @@ async fn onomyd_runner() -> Result<()> {
         .concat(),
     )
     .await?;
-    cosmovisor(
+    sh_cosmovisor(
         "tx gov deposit",
         &[[proposal_id, &nom(2000.0)].as_slice(), gas_args].concat(),
     )
     .await?;
-    cosmovisor(
+    sh_cosmovisor(
         "tx gov vote",
         &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
@@ -152,7 +152,7 @@ async fn onomyd_runner() -> Result<()> {
     wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 5).await?;
 
     assert_eq!(
-        cosmovisor("version", &[]).await?.trim(),
+        sh_cosmovisor("version", &[]).await?.trim(),
         ONOMY_UPGRADE_VERSION.as_str()
     );
 
@@ -165,7 +165,7 @@ async fn onomyd_runner() -> Result<()> {
     wait_for_num_blocks(20).await?;
     warn!("{}", get_apr_annual().await?);
 
-    sleep(common::TIMEOUT).await;
+    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
 
     Ok(())

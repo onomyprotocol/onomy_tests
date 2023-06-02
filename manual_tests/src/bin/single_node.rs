@@ -1,15 +1,15 @@
 use std::env;
 
 use clap::Parser;
-use common::{
+use lazy_static::lazy_static;
+use log::warn;
+use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
-        get_treasury_inflation_annual, onomyd_setup, wait_for_num_blocks,
+        self, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
+        get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_num_blocks,
     },
     Args, TIMEOUT,
 };
-use lazy_static::lazy_static;
-use log::warn;
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
@@ -88,7 +88,7 @@ async fn onomyd_runner() -> Result<()> {
 
     warn!("{}", get_apr_annual().await?);
 
-    dbg!(common::cosmovisor::get_delegations_to_validator().await?);
+    dbg!(cosmovisor::get_delegations_to_validator().await?);
 
     dbg!(get_staking_pool().await?);
     dbg!(get_treasury().await?);
@@ -99,7 +99,7 @@ async fn onomyd_runner() -> Result<()> {
     warn!("{}", get_apr_annual().await?);
 
     let validator_addr = get_separated_val(
-        &cosmovisor("keys show validator", &[]).await?,
+        &sh_cosmovisor("keys show validator", &[]).await?,
         "\n",
         "address",
         ":",
@@ -114,7 +114,7 @@ async fn onomyd_runner() -> Result<()> {
     )
     .await?;
 
-    sleep(common::TIMEOUT).await;
+    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
 
     Ok(())

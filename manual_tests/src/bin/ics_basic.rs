@@ -1,13 +1,13 @@
 use std::{env, time::Duration};
 
 use clap::Parser;
-use common::{
-    cosmovisor::{cosmovisor, cosmovisor_start, onomyd_setup, wait_for_height},
-    hermes::{create_channel_pair, create_connection_pair, hermes},
-    Args, TIMEOUT,
-};
 use lazy_static::lazy_static;
 use log::info;
+use onomy_test_lib::{
+    cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor, wait_for_height},
+    hermes::{create_channel_pair, create_connection_pair, sh_hermes},
+    Args, TIMEOUT,
+};
 use serde_json::Value;
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
@@ -124,12 +124,12 @@ async fn hermes_runner() -> Result<()> {
     let mnemonic: String = nm_onomyd.recv().await?;
     // set keys for our chains
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
-    hermes(
+    sh_hermes(
         "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
     .await?;
-    hermes(
+    sh_hermes(
         "keys add --chain market --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
@@ -182,22 +182,22 @@ async fn hermes_runner() -> Result<()> {
 
     sleep(Duration::from_secs(5)).await;
 
-    hermes(
+    sh_hermes(
         "query packet acks --chain onomy --port transfer --channel",
         &[&market_transfer_channel_pair.0],
     )
     .await?;
-    hermes(
+    sh_hermes(
         "query packet acks --chain market --port transfer --channel",
         &[&market_transfer_channel_pair.1],
     )
     .await?;
-    hermes(
+    sh_hermes(
         "query packet acks --chain onomy --port provider --channel",
         &[&market_ics_channel_pair.0],
     )
     .await?;
-    hermes(
+    sh_hermes(
         "query packet acks --chain market --port consumer --channel",
         &[&market_ics_channel_pair.1],
     )
@@ -270,13 +270,13 @@ async fn onomyd_runner() -> Result<()> {
         "validator",
     ]
     .as_slice();
-    cosmovisor(
+    sh_cosmovisor(
         "tx gov submit-proposal consumer-addition",
         &[&[proposal_file_path.as_str()], gas_args].concat(),
     )
     .await?;
     // the deposit is done as part of the chain addition proposal
-    cosmovisor(
+    sh_cosmovisor(
         "tx gov vote",
         &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
@@ -287,7 +287,7 @@ async fn onomyd_runner() -> Result<()> {
     // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not
     // some random thing from the validator set
     let tmp_s = get_separated_val(
-        &cosmovisor("query tendermint-validator-set", &[]).await?,
+        &sh_cosmovisor("query tendermint-validator-set", &[]).await?,
         "\n",
         "value",
         ":",
@@ -299,7 +299,7 @@ async fn onomyd_runner() -> Result<()> {
     //info!("ccvkey: {consensus_pubkey}");
 
     // do this before getting the consumer-genesis
-    cosmovisor(
+    sh_cosmovisor(
         "tx provider assign-consensus-key market",
         &[[consensus_pubkey.as_str()].as_slice(), gas_args].concat(),
     )
@@ -308,7 +308,7 @@ async fn onomyd_runner() -> Result<()> {
     wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
 
     let ccvconsumer_state =
-        cosmovisor("query provider consumer-genesis market -o json", &[]).await?;
+        sh_cosmovisor("query provider consumer-genesis market -o json", &[]).await?;
 
     //info!("ccvconsumer_state:\n{ccvconsumer_state}\n\n");
 
@@ -357,9 +357,9 @@ async fn marketd_runner() -> Result<()> {
 
     let daemon_home = DAEMON_HOME.as_str();
     let chain_id = "market";
-    cosmovisor("config chain-id", &[chain_id]).await?;
-    cosmovisor("config keyring-backend test", &[]).await?;
-    cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // we need both the initial consumer state and the accounts, plus we just copy
@@ -387,7 +387,7 @@ async fn marketd_runner() -> Result<()> {
     //info!("genesis: {genesis_s}");
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str(&"/logs/market_genesis.json", &genesis_s).await?;
+    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
 
     // we used same keys for consumer as producer, need to copy them over or else
     // the node will not be a working validator for itself

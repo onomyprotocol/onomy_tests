@@ -7,7 +7,7 @@ use crate::json_inner;
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
 /// last line is parsed as a `Value` and the inner "result" is returned.
-pub async fn hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
+pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     info!("running hermes({cmd_with_args}, {args:?})");
     let stdout = sh(&format!("hermes --json {cmd_with_args}"), args).await?;
     let res = stdout.lines().last().map_add_err(|| ())?;
@@ -16,7 +16,7 @@ pub async fn hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     Ok(res)
 }
 
-pub async fn hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
+pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     let stdout = sh_no_dbg(&format!("hermes --json {cmd_with_args}"), args).await?;
     let res = stdout.lines().last().map_add_err(|| ())?;
     let res: Value = serde_json::from_str(res).map_add_err(|| ())?;
@@ -27,7 +27,7 @@ pub async fn hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> 
 /// Returns a single client if it exists. Returns an error if two redundant
 /// clients were found.
 pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = hermes_no_dbg("query clients --host-chain", &[host_chain])
+    let clients = sh_hermes_no_dbg("query clients --host-chain", &[host_chain])
         .await
         .map_add_err(|| "failed to query for host chain")?;
     let clients = clients.as_array().map_add_err(|| ())?;
@@ -55,7 +55,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
 /// Returns a single connection if it exists. Returns an error if two redundant
 /// connections were found.
 pub async fn get_connection(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = hermes_no_dbg("query clients --host-chain", &[host_chain])
+    let clients = sh_hermes_no_dbg("query clients --host-chain", &[host_chain])
         .await
         .map_add_err(|| "failed to query for host chain")?;
     let clients = clients.as_array().map_add_err(|| ())?;
@@ -101,7 +101,7 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
         )))
     }
     let client0 = json_inner(
-        &hermes("create client --host-chain", &[
+        &sh_hermes("create client --host-chain", &[
             a_chain,
             "--reference-chain",
             b_chain,
@@ -110,7 +110,7 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
         .map_add_err(|| ())?["CreateClient"]["client_id"],
     );
     let client1 = json_inner(
-        &hermes("create client --host-chain", &[
+        &sh_hermes("create client --host-chain", &[
             b_chain,
             "--reference-chain",
             a_chain,
@@ -131,7 +131,7 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
         format!("client hosted by {b_chain} not created before `create_connection_pair` was called")
     })?;
 
-    let res = &hermes("create connection --a-chain", &[
+    let res = &sh_hermes("create connection --a-chain", &[
         a_chain,
         "--a-client",
         &a_client,
@@ -164,7 +164,7 @@ pub async fn create_channel_pair(
     } else {
         &[]
     };
-    let res = &hermes(
+    let res = &sh_hermes(
         "create channel --a-chain",
         &[
             &[

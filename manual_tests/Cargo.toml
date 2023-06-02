@@ -1,0 +1,19 @@
+[package]
+name = "onomy_tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "common"
+path = "src/lib/common.rs"
+
+[dependencies]
+clap = { version = "4.3", features = ["derive"] }
+lazy_static = "1.4"
+log = "0.4"
+onomy_test_lib = { path = "../onomy_test_lib" }
+serde_json = "1.0"
+stacked_errors = { version = "0.1", default-features = false, features = ["serde_json_support", "toml_support"] }
+super_orchestrator = { version = "0.1", default-features = false, features = ["serde_json_support", "env_logger_support", "ctrlc_support", "serde_yaml_support"] }
+tokio = { version = "1.28", features = ["full"] }

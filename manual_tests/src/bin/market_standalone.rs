@@ -1,11 +1,11 @@
 use std::env;
 
 use clap::Parser;
-use common::{
-    cosmovisor::{cosmovisor, cosmovisor_start, market_standaloned_setup},
+use lazy_static::lazy_static;
+use onomy_test_lib::{
+    cosmovisor::{cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
     Args, TIMEOUT,
 };
-use lazy_static::lazy_static;
 use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
     docker::{Container, ContainerNetwork},
@@ -87,25 +87,25 @@ async fn market_standaloned_runner() -> Result<()> {
         cosmovisor_start("market_standaloned_runner.log", true, None).await?;
 
     // also `show-` versions of all these
-    cosmovisor("query market list-asset", &[]).await?;
-    cosmovisor("query market list-burnings", &[]).await?;
-    cosmovisor("query market list-drop", &[]).await?;
-    cosmovisor("query market list-member", &[]).await?;
-    cosmovisor("query market list-pool", &[]).await?;
+    sh_cosmovisor("query market list-asset", &[]).await?;
+    sh_cosmovisor("query market list-burnings", &[]).await?;
+    sh_cosmovisor("query market list-drop", &[]).await?;
+    sh_cosmovisor("query market list-member", &[]).await?;
+    sh_cosmovisor("query market list-pool", &[]).await?;
 
-    cosmovisor("query market params", &[]).await?;
-    //cosmovisor("query market get-book [denom-a] [denom-b] [order-type]",
+    sh_cosmovisor("query market params", &[]).await?;
+    //sh_cosmovisor("query market get-book [denom-a] [denom-b] [order-type]",
     // &[]).await?;
 
-    //cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
+    //sh_cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
 
-    //cosmovisor("tx market create-drop [pair] [drops]").await?;
-    //cosmovisor("tx market redeem-drop [uid]").await?;
+    //sh_cosmovisor("tx market create-drop [pair] [drops]").await?;
+    //sh_cosmovisor("tx market redeem-drop [uid]").await?;
 
-    //cosmovisor("tx market market-order [denom-ask] [denom-bid] [amount-bid]
+    //sh_cosmovisor("tx market market-order [denom-ask] [denom-bid] [amount-bid]
     // [quote-ask] [slippage]").await?;
 
-    //cosmovisor("tx market create-order [denom-ask] [denom-bid] [order-type]
+    //sh_cosmovisor("tx market create-order [denom-ask] [denom-bid] [order-type]
     // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
     // cancel-order [uid]").await?;
 

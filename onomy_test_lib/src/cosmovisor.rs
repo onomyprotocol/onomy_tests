@@ -13,7 +13,7 @@ use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
 /// remove the INF line that always shows with cosmovisor runs)
-pub async fn cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
+pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
     let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args).await?;
     Ok(stdout
         .split_once('\n')
@@ -22,7 +22,7 @@ pub async fn cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
         .to_owned())
 }
 
-pub async fn cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
+pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
     let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args).await?;
     Ok(stdout
         .split_once('\n')
@@ -36,9 +36,9 @@ pub async fn cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Str
 pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
-    cosmovisor("config chain-id", &[chain_id]).await?;
-    cosmovisor("config keyring-backend test", &[]).await?;
-    cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -110,22 +110,22 @@ pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
 
-    cosmovisor("keys add validator", &[]).await?;
-    cosmovisor("add-genesis-account validator", &[&nom(100.0e6)]).await?;
+    sh_cosmovisor("keys add validator", &[]).await?;
+    sh_cosmovisor("add-genesis-account validator", &[&nom(100.0e6)]).await?;
     // Even if we don't test the bridge, we need this because SetValsetRequest is
     // called by the gravity module. There are parallel validators for the
     // gravity module, and they need all their own `gravity` variations of `gentx`
     // and `collect-gentxs`
-    cosmovisor("keys add orchestrator", &[]).await?;
-    let eth_keys = cosmovisor("eth_keys add", &[]).await?;
+    sh_cosmovisor("keys add orchestrator", &[]).await?;
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-    let orch_addr = &cosmovisor("keys show orchestrator -a", &[])
+    let orch_addr = &sh_cosmovisor("keys show orchestrator -a", &[])
         .await?
         .trim()
         .to_owned();
-    cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
+    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
 
-    cosmovisor("gravity gentx validator", &[
+    sh_cosmovisor("gravity gentx validator", &[
         &nom(95.0e6),
         eth_addr,
         orch_addr,
@@ -135,8 +135,8 @@ pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
         global_min_self_delegation,
     ])
     .await?;
-    cosmovisor("gravity collect-gentxs", &[]).await?;
-    cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor("gravity collect-gentxs", &[]).await?;
+    sh_cosmovisor("collect-gentxs", &[]).await?;
 
     Ok(())
 }
@@ -148,9 +148,9 @@ pub async fn cosmovisor_setup(daemon_home: &str) -> Result<()> {
 pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = "225000000000000000000000";
-    cosmovisor("config chain-id", &[chain_id]).await?;
-    cosmovisor("config keyring-backend test", &[]).await?;
-    cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -235,8 +235,8 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
 
-    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
-    cosmovisor("gentx validator", &[
+    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    sh_cosmovisor("gentx validator", &[
         &nom(1.0e6),
         "--chain-id",
         chain_id,
@@ -244,7 +244,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
         global_min_self_delegation,
     ])
     .await?;
-    cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
@@ -252,9 +252,9 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
 pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "market_standalone";
     let global_min_self_delegation = "225000000000000000000000";
-    cosmovisor("config chain-id", &[chain_id]).await?;
-    cosmovisor("config keyring-backend test", &[]).await?;
-    cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -317,8 +317,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
 
-    cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
-    cosmovisor("gentx validator", &[
+    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    sh_cosmovisor("gentx validator", &[
         &nom(1.0e6),
         "--chain-id",
         chain_id,
@@ -326,14 +326,14 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         global_min_self_delegation,
     ])
     .await?;
-    cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
-    let block_s = cosmovisor_no_dbg("query block", &[]).await?;
+    let block_s = sh_cosmovisor_no_dbg("query block", &[]).await?;
     let block: Value = serde_json::from_str(&block_s)?;
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
@@ -365,7 +365,7 @@ pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
 }
 
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
-    let s = cosmovisor("tendermint show-node-id", &[]).await?;
+    let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;
     let tendermint_id = s.trim();
     Ok(format!("{tendermint_id}@{hostname}:26656"))
 }
@@ -402,7 +402,7 @@ pub async fn cosmovisor_start(
         .await?;
     // wait for status to be ok and daemon to be running
     info!("waiting for daemon to run");
-    wait_for_ok(STD_TRIES, STD_DELAY, || cosmovisor("status", &[])).await?;
+    wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
     wait_for_height(STD_TRIES, STD_DELAY, 1).await?;
     info!("daemon has reached height 1");
     Ok(cosmovisor_runner)
@@ -410,13 +410,13 @@ pub async fn cosmovisor_start(
 
 pub async fn get_valoper_addr() -> Result<String> {
     let validator_addr = get_separated_val(
-        &cosmovisor("keys show validator", &[]).await?,
+        &sh_cosmovisor("keys show validator", &[]).await?,
         "\n",
         "address",
         ":",
     )?;
     let addr_bytes = get_separated_val(
-        &cosmovisor("keys parse", &[&validator_addr]).await?,
+        &sh_cosmovisor("keys parse", &[&validator_addr]).await?,
         "\n",
         "bytes",
         ":",
@@ -424,7 +424,7 @@ pub async fn get_valoper_addr() -> Result<String> {
     let valoper_addr = format!(
         "onomyvaloper1{}",
         get_separated_val(
-            &cosmovisor("keys parse", &[&addr_bytes]).await?,
+            &sh_cosmovisor("keys parse", &[&addr_bytes]).await?,
             "\n",
             "- onomyvaloper",
             "1"
@@ -438,12 +438,12 @@ pub async fn get_valoper_addr() -> Result<String> {
 
 pub async fn get_delegations_to_validator() -> Result<String> {
     let valoper_addr = get_valoper_addr().await?;
-    cosmovisor("query staking delegations-to", &[&valoper_addr]).await
+    sh_cosmovisor("query staking delegations-to", &[&valoper_addr]).await
 }
 
 pub async fn get_treasury() -> Result<f64> {
     let inner = json_inner(
-        &yaml_str_to_json_value(&cosmovisor("query dao show-treasury", &[]).await?)?
+        &yaml_str_to_json_value(&sh_cosmovisor("query dao show-treasury", &[]).await?)?
             ["treasury_balance"][0]["amount"],
     );
     anom_to_nom(&inner).map_add_err(|| format!("inner was: {inner}"))
@@ -465,7 +465,7 @@ pub struct DbgStakingPool {
 }
 
 pub async fn get_staking_pool() -> Result<DbgStakingPool> {
-    let pool = cosmovisor("query staking pool", &[]).await?;
+    let pool = sh_cosmovisor("query staking pool", &[]).await?;
     let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":")?;
     let bonded_tokens = bonded_tokens.trim_matches('"');
     let bonded_tokens = anom_to_nom(bonded_tokens).map_add_err(|| ())?;
@@ -482,7 +482,7 @@ pub async fn get_validator_outstanding_rewards() -> Result<f64> {
     let valoper_addr = get_valoper_addr().await?;
     anom_to_nom(&json_inner(
         &yaml_str_to_json_value(
-            &cosmovisor("query distribution validator-outstanding-rewards", &[
+            &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
                 &valoper_addr,
             ])
             .await?,
@@ -492,12 +492,12 @@ pub async fn get_validator_outstanding_rewards() -> Result<f64> {
 
 pub async fn get_validator_delegated() -> Result<f64> {
     let validator_addr = get_separated_val(
-        &cosmovisor("keys show validator", &[]).await?,
+        &sh_cosmovisor("keys show validator", &[]).await?,
         "\n",
         "address",
         ":",
     )?;
-    let s = cosmovisor("query staking delegations", &[&validator_addr]).await?;
+    let s = sh_cosmovisor("query staking delegations", &[&validator_addr]).await?;
     anom_to_nom(&json_inner(
         &yaml_str_to_json_value(&s)?["delegation_responses"][0]["balance"]["amount"],
     ))
