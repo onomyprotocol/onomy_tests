@@ -1,20 +1,49 @@
-use std::time::Duration;
+use std::{env, time::Duration};
 
 use awint::awi::*;
 use clap::Parser;
 use stacked_errors::{Error, MapAddError, Result};
+use super_orchestrator::std_init;
 
 pub const ONOMY_BASE: &str = "fedora:38";
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
 
 /// Runs the given entrypoint
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(about)]
 pub struct Args {
+    /// Gets set by `onomy_std_init`
+    #[arg(long, default_value_t = String::new())]
+    pub bin_name: String,
     /// If left `None`, the container runner program runs, otherwise this
-    /// specifies the entrypoint to run
-    #[arg(short, long)]
-    pub entrypoint: Option<String>,
+    /// specifies the entry_name to run
+    #[arg(long)]
+    pub entry_name: Option<String>,
+    /// Used by Cosmovisor for the name of the Daemon (e.x. `onomyd`)
+    #[arg(long, env)]
+    pub daemon_name: Option<String>,
+    /// Used by Cosmovisor for the home of the Daemon (e.x. `/root/.onomy`)
+    #[arg(long, env)]
+    pub daemon_home: Option<String>,
+    #[arg(long, env)]
+    pub onomy_current_version: Option<String>,
+    #[arg(long, env)]
+    pub onomy_upgrade_version: Option<String>,
+}
+
+/// Calls [super_orchestrator::std_init] and returns the result of
+/// [crate::Args::parse]
+pub fn onomy_std_init() -> Result<Args> {
+    std_init().map_add_err(|| "onomy_std_init")?;
+    let mut args = Args::parse();
+    args.bin_name = env::args()
+        .next()
+        .map_add_err(|| ())?
+        .split('/')
+        .last()
+        .unwrap()
+        .to_owned();
+    Ok(args)
 }
 
 /// Given `units_of_nom` in units of NOM, returns a string of the decimal number

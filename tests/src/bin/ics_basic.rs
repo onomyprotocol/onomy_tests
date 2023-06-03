@@ -1,12 +1,10 @@
-use std::{env, time::Duration};
+use std::time::Duration;
 
-use clap::Parser;
-use lazy_static::lazy_static;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor, wait_for_height},
     hermes::{create_channel_pair, create_connection_pair, sh_hermes},
-    Args, TIMEOUT,
+    onomy_std_init, Args, TIMEOUT,
 };
 use serde_json::Value;
 use stacked_errors::{MapAddError, Result};
@@ -14,100 +12,97 @@ use super_orchestrator::{
     docker::{Container, ContainerNetwork},
     get_separated_val,
     net_message::NetMessenger,
-    remove_files_in_dir, sh, std_init, Command, FileOptions, STD_DELAY, STD_TRIES,
+    remove_files_in_dir, sh, Command, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 
-lazy_static! {
-    static ref DAEMON_NAME: String = env::var("DAEMON_NAME").unwrap();
-    static ref DAEMON_HOME: String = env::var("DAEMON_HOME").unwrap();
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    std_init()?;
-    let args = Args::parse();
+    let args = onomy_std_init()?;
 
-    if let Some(ref s) = args.entrypoint {
+    if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "onomyd" => onomyd_runner().await,
-            "marketd" => marketd_runner().await,
+            "onomyd" => onomyd_runner(&args).await,
+            "marketd" => marketd_runner(&args).await,
             "hermes" => hermes_runner().await,
-            _ => format!("entrypoint \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
-        container_runner().await
+        sh("make --directory ./../onomy/ build", &[]).await?;
+        sh("make --directory ./../market/ build", &[]).await?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(
+            "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
+            &[],
+        )
+        .await?;
+        sh(
+            "cp ./../market/marketd ./tests/dockerfiles/dockerfile_resources/marketd",
+            &[],
+        )
+        .await?;
+        container_runner(&args).await
     }
 }
 
-async fn container_runner() -> Result<()> {
+async fn container_runner(args: &Args) -> Result<()> {
+    let bin_entrypoint = &args.bin_name;
     let container_target = "x86_64-unknown-linux-gnu";
-    let logs_dir = "./logs";
-    let this_bin = "ics_basic";
+    let logs_dir = "./tests/logs";
 
     // build internal runner with `--release`
     sh("cargo build --release --bin", &[
-        this_bin,
+        bin_entrypoint,
         "--target",
         container_target,
     ])
     .await?;
 
-    /*sh("make --directory ./../onomy/ build", &[]).await?;
-    sh("make --directory ./../market/ build", &[]).await?;
-    // copy to dockerfile resources (docker cannot use files from outside cwd)
-    sh(
-        "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
-        &[],
-    )
-    .await?;
-    sh(
-        "cp ./../market/marketd ./dockerfiles/dockerfile_resources/marketd",
-        &[],
-    )
-    .await?;*/
-
     // prepare volumed resources
-    remove_files_in_dir("./resources/keyring-test/", &["address", "info"]).await?;
+    remove_files_in_dir("./tests/resources/keyring-test/", &["address", "info"]).await?;
 
-    let entrypoint = &format!("./target/{container_target}/release/{this_bin}");
-    let volumes = vec![("./logs", "/logs")];
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
+    let volumes = vec![(logs_dir, "/logs")];
     let mut onomyd_volumes = volumes.clone();
-    onomyd_volumes.push(("./resources/keyring-test", "/root/.onomy/keyring-test"));
     let mut marketd_volumes = volumes.clone();
+    onomyd_volumes.push((
+        "./tests/resources/keyring-test",
+        "/root/.onomy/keyring-test",
+    ));
     marketd_volumes.push((
-        "./resources/keyring-test",
+        "./tests/resources/keyring-test",
         "/root/.onomy_market/keyring-test",
     ));
+
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "hermes",
-                Some("./dockerfiles/hermes.dockerfile"),
+                Some("./tests/dockerfiles/hermes.dockerfile"),
                 None,
                 &[],
                 &volumes,
                 entrypoint,
-                &["--entrypoint", "hermes"],
+                &["--entry-name", "hermes"],
             ),
             Container::new(
                 "onomyd",
-                Some("./dockerfiles/onomyd.dockerfile"),
+                Some("./tests/dockerfiles/onomyd.dockerfile"),
                 None,
                 &[],
                 &onomyd_volumes,
                 entrypoint,
-                &["--entrypoint", "onomyd"],
+                &["--entry-name", "onomyd"],
             ),
             Container::new(
                 "marketd",
-                Some("./dockerfiles/marketd.dockerfile"),
+                Some("./tests/dockerfiles/marketd.dockerfile"),
                 None,
                 &[],
                 &marketd_volumes,
                 entrypoint,
-                &["--entrypoint", "marketd"],
+                &["--entry-name", "marketd"],
             ),
         ],
         true,
@@ -213,7 +208,8 @@ async fn hermes_runner() -> Result<()> {
     Ok(())
 }
 
-async fn onomyd_runner() -> Result<()> {
+async fn onomyd_runner(args: &Args) -> Result<()> {
+    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .map_add_err(|| ())?;
@@ -221,7 +217,6 @@ async fn onomyd_runner() -> Result<()> {
         .await
         .map_add_err(|| ())?;
 
-    let daemon_home = DAEMON_HOME.as_str();
     let mnemonic = onomyd_setup(daemon_home, false).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
@@ -352,10 +347,9 @@ async fn onomyd_runner() -> Result<()> {
     Ok(())
 }
 
-async fn marketd_runner() -> Result<()> {
+async fn marketd_runner(args: &Args) -> Result<()> {
+    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
-
-    let daemon_home = DAEMON_HOME.as_str();
     let chain_id = "market";
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
