@@ -7,7 +7,7 @@ use super_orchestrator::{remove_files_in_dir, std_init};
 async fn main() -> Result<()> {
     std_init()?;
 
-    remove_files_in_dir("./logs", &["log", "json"]).await?;
+    remove_files_in_dir("./tests/logs", &["log", "json"]).await?;
 
     Ok(())
 }

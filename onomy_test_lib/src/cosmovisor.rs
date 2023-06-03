@@ -471,6 +471,5 @@ pub async fn get_apr_annual() -> Result<f64> {
     let reward_start = get_validator_outstanding_rewards().await?;
     wait_for_num_blocks(1).await?;
     let reward_end = get_validator_outstanding_rewards().await?;
-    dbg!(delegated, reward_start, reward_end);
     Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
 }

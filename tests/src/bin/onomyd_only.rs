@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         /*sh("make --directory ./../onomy/ build", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
-            "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+            "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
             &[],
         )
         .await?;*/
@@ -36,10 +36,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     onomyd_setup(daemon_home, false).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
-
-    // the chain is functional and has done its first block, but the rewards don't
-    // start until the second block
-    wait_for_num_blocks(1).await?;
 
     warn!("{}", get_apr_annual().await?);
 

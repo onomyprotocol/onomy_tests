@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
         /*sh("make --directory ./../onomy/ build", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
-            "cp ./../onomy/onomyd ./dockerfiles/dockerfile_resources/onomyd",
+            "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
             &[],
         )
         .await?;*/
