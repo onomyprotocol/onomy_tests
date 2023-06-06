@@ -113,6 +113,20 @@ pub fn json_inner(json_value: &serde_json::Value) -> String {
     json_value.to_string().trim_matches('"').to_owned()
 }
 
+/// Takes a bech32 address and replaces the prefix with a new one, correctly
+/// updating the checksum
+pub fn reprefix_bech32(s: &str, new_prefix: &str) -> Result<String> {
+    // catch most bad cases
+    if new_prefix.chars().any(|c| !c.is_ascii_alphabetic()) {
+        return Err(Error::from(format!(
+            "new_prefix \"{new_prefix}\" is not ascii alphabetic"
+        )))
+    }
+    let decoded = bech32::decode(s).map_err(|e| Error::boxed(Box::new(e)))?.1;
+    let encoded = bech32::encode(new_prefix, decoded, bech32::Variant::Bech32).unwrap();
+    Ok(encoded)
+}
+
 #[test]
 fn test_nom() {
     assert_eq!(&nom(1.0), "1000000000000000000anom");
@@ -133,4 +147,12 @@ fn test_nom() {
     );
     // some methods returns a decimal even if it is always zeros
     assert_eq!(anom_to_nom("1000000000000000000.00000anom").unwrap(), 1.0);
+}
+
+#[test]
+fn test_reprefix_bech32() {
+    assert_eq!(
+        reprefix_bech32("onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m", "cosmos").unwrap(),
+        "cosmos1a69w3hfjqere4crkgyee79x2mxq0w2pfgyl2m7".to_owned()
+    );
 }

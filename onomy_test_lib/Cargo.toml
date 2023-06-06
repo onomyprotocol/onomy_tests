@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 awint = { version = "0.10", default-features = false, features = ["std"] }
+bech32 = "0.9.1"
 clap = { version = "4.3", features = ["derive", "env"] }
 env_logger = "0.10"
 lazy_static = "1.4"
