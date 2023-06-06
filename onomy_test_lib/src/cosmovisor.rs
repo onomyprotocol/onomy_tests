@@ -371,37 +371,19 @@ pub async fn cosmovisor_start(
     Ok(cosmovisor_runner)
 }
 
-pub async fn get_valoper_addr() -> Result<String> {
-    let validator_addr = get_separated_val(
-        &sh_cosmovisor("keys show validator", &[]).await?,
-        "\n",
-        "address",
-        ":",
-    )?;
-    let addr_bytes = get_separated_val(
-        &sh_cosmovisor("keys parse", &[&validator_addr]).await?,
-        "\n",
-        "bytes",
-        ":",
-    )?;
-    let valoper_addr = format!(
-        "onomyvaloper1{}",
-        get_separated_val(
-            &sh_cosmovisor("keys parse", &[&addr_bytes]).await?,
-            "\n",
-            "- onomyvaloper",
-            "1"
-        )?
-    );
-    Ok(valoper_addr)
+pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
+    let validator = yaml_str_to_json_value(
+        &sh_cosmovisor("keys show", &[key_name])
+            .await
+            .map_add_err(|| ())?,
+    )
+    .map_add_err(|| ())?;
+    dbg!(&validator);
+    Ok(json_inner(&validator[0]["address"]))
 }
 
-// TODO some of these become flaky if more than one addresse and delegator gets
-// involved
-
-pub async fn get_delegations_to_validator() -> Result<String> {
-    let valoper_addr = get_valoper_addr().await?;
-    sh_cosmovisor("query staking delegations-to", &[&valoper_addr]).await
+pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {
+    sh_cosmovisor("query staking delegations-to", &[valoper_addr]).await
 }
 
 pub async fn get_treasury() -> Result<f64> {
@@ -441,12 +423,11 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
     })
 }
 
-pub async fn get_validator_outstanding_rewards() -> Result<f64> {
-    let valoper_addr = get_valoper_addr().await?;
+pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
     anom_to_nom(&json_inner(
         &yaml_str_to_json_value(
             &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
-                &valoper_addr,
+                valoper_addr,
             ])
             .await?,
         )?["rewards"][0]["amount"],
@@ -468,11 +449,11 @@ pub async fn get_validator_delegated() -> Result<f64> {
 
 /// APR calculation is: [Amount(Rewards End) - Amount(Rewards
 /// Beg)]/Amount(Delegated) * # of Blocks/Blocks_per_year
-pub async fn get_apr_annual() -> Result<f64> {
+pub async fn get_apr_annual(valoper_addr: &str) -> Result<f64> {
     wait_for_num_blocks(1).await?;
     let delegated = get_validator_delegated().await?;
-    let reward_start = get_validator_outstanding_rewards().await?;
+    let reward_start = get_outstanding_rewards(valoper_addr).await?;
     wait_for_num_blocks(1).await?;
-    let reward_end = get_validator_outstanding_rewards().await?;
+    let reward_end = get_outstanding_rewards(valoper_addr).await?;
     Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
 }

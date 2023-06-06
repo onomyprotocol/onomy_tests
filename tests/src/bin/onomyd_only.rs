@@ -1,13 +1,14 @@
 use common::container_runner;
-use log::warn;
+use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        self, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
-        get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_num_blocks,
+        cosmovisor_get_addr, cosmovisor_start, get_apr_annual, get_delegations_to,
+        get_staking_pool, get_treasury, get_treasury_inflation_annual, onomyd_setup,
+        wait_for_num_blocks,
     },
-    onomy_std_init,
+    onomy_std_init, reprefix_bech32,
     super_orchestrator::{
-        get_separated_val, sh,
+        sh,
         stacked_errors::{MapAddError, Result},
     },
     Args, TIMEOUT,
@@ -40,29 +41,24 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     onomyd_setup(daemon_home, false).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
 
-    warn!("{}", get_apr_annual().await?);
+    let addr: &String = &cosmovisor_get_addr("validator").await?;
+    let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").unwrap();
+    info!("{}", get_apr_annual(valoper_addr).await?);
 
-    dbg!(cosmovisor::get_delegations_to_validator().await?);
+    dbg!(get_delegations_to(valoper_addr).await?);
 
     dbg!(get_staking_pool().await?);
     dbg!(get_treasury().await?);
     dbg!(get_treasury_inflation_annual().await?);
-    dbg!(get_apr_annual().await?);
+    dbg!(get_apr_annual(valoper_addr).await?);
 
     wait_for_num_blocks(5).await?;
-    warn!("{}", get_apr_annual().await?);
+    info!("{}", get_apr_annual(valoper_addr).await?);
 
-    let validator_addr = get_separated_val(
-        &sh_cosmovisor("keys show validator", &[]).await?,
-        "\n",
-        "address",
-        ":",
-    )?;
     sh(
         &format!(
-            "cosmovisor run tx bank send {validator_addr} \
-             onomy1a5vn0tgp5tvqmsyrfaq03nkyh2vh5x58ltsvfs 1337anom --gas auto --gas-adjustment \
-             1.3 -y -b block --from validator"
+            "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
+             1337anom --gas auto --gas-adjustment 1.3 -y -b block --from validator"
         ),
         &[],
     )

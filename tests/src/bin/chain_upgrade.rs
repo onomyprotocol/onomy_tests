@@ -1,10 +1,8 @@
 use common::container_runner;
-use log::warn;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_start, get_apr_annual, get_block_height, get_staking_pool, get_treasury,
+        cosmovisor_start, get_block_height, get_staking_pool, get_treasury,
         get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
-        wait_for_num_blocks,
     },
     nom, onomy_std_init,
     super_orchestrator::{
@@ -48,12 +46,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         sh_cosmovisor("version", &[]).await?.trim(),
         onomy_current_version
     );
-
-    wait_for_num_blocks(1).await?;
-
-    warn!("{}", get_apr_annual().await?);
-
-    wait_for_num_blocks(1).await?;
 
     let upgrade_prepare_start = get_block_height().await?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
@@ -112,11 +104,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     dbg!(get_staking_pool().await?);
     dbg!(get_treasury().await?);
     dbg!(get_treasury_inflation_annual().await?);
-    dbg!(get_apr_annual().await?);
-
-    warn!("{}", get_apr_annual().await?);
-    wait_for_num_blocks(20).await?;
-    warn!("{}", get_apr_annual().await?);
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;
