@@ -63,7 +63,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     // prepare volumed resources
     remove_files_in_dir("./tests/resources/keyring-test/", &["address", "info"]).await?;
 
-    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
+    let entrypoint = format!("./target/{container_target}/release/{bin_entrypoint}");
+    let entrypoint = Some(entrypoint.as_str());
     let volumes = vec![(logs_dir, "/logs")];
     let mut onomyd_volumes = volumes.clone();
     let mut marketd_volumes = volumes.clone();
@@ -83,7 +84,6 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "hermes",
                 Some("./tests/dockerfiles/hermes.dockerfile"),
                 None,
-                &[],
                 &volumes,
                 entrypoint,
                 &["--entry-name", "hermes"],
@@ -92,7 +92,6 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "onomyd",
                 Some("./tests/dockerfiles/onomyd.dockerfile"),
                 None,
-                &[],
                 &onomyd_volumes,
                 entrypoint,
                 &["--entry-name", "onomyd"],
@@ -101,7 +100,6 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "marketd",
                 Some("./tests/dockerfiles/marketd.dockerfile"),
                 None,
-                &[],
                 &marketd_volumes,
                 entrypoint,
                 &["--entry-name", "marketd"],

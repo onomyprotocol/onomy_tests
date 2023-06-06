@@ -34,9 +34,8 @@ pub async fn container_runner(
                     entry_name,
                     Some(&format!("./tests/dockerfiles/{dockerfile}.dockerfile")),
                     None,
-                    &[],
                     &[(logs_dir, "/logs")],
-                    &format!("./target/{container_target}/release/{bin_entrypoint}"),
+                    Some(&format!("./target/{container_target}/release/{bin_entrypoint}")),
                     &["--entry-name", entry_name],
                 )
             })

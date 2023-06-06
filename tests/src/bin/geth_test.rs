@@ -55,7 +55,6 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "geth",
                 Some("./tests/dockerfiles/geth.dockerfile"),
                 None,
-                &[],
                 &volumes,
                 entrypoint,
                 &["--entry-name", "geth"],
@@ -64,11 +63,18 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "test",
                 Some("./tests/dockerfiles/onomy_std.dockerfile"),
                 None,
-                &[],
                 &volumes,
                 entrypoint,
                 &["--entry-name", "test"],
             ),
+            Container::new(
+                "prometheus",
+                None,
+                Some("prom/prometheus:v2.44.0"),
+                &[],
+                None,
+                &[],
+            ).create_args(&["-p", "9090:9090"]),
         ],
         true,
         logs_dir,
@@ -203,6 +209,8 @@ async fn test_runner() -> Result<()> {
         .eth_get_balance(Address::from_str("0x9c368ed60a6899c57bc56fcab8a2d37bb1fab693").unwrap())
         .await
         .unwrap());
+
+    // note: check out https://crates.io/crates/prometheus for running your own Prometheus metrics client
 
     Ok(())
 }
