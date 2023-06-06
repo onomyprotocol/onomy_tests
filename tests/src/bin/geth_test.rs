@@ -45,7 +45,10 @@ async fn container_runner(args: &Args) -> Result<()> {
     ])
     .await?;
 
-    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
+    let entrypoint = Some(format!(
+        "./target/{container_target}/release/{bin_entrypoint}"
+    ));
+    let entrypoint = entrypoint.as_deref();
     let volumes = vec![(logs_dir, "/logs")];
 
     let mut cn = ContainerNetwork::new(
@@ -74,7 +77,8 @@ async fn container_runner(args: &Args) -> Result<()> {
                 &[],
                 None,
                 &[],
-            ).create_args(&["-p", "9090:9090"]),
+            )
+            .create_args(&["-p", "9090:9090"]),
         ],
         true,
         logs_dir,
@@ -210,7 +214,8 @@ async fn test_runner() -> Result<()> {
         .await
         .unwrap());
 
-    // note: check out https://crates.io/crates/prometheus for running your own Prometheus metrics client
+    // note: check out https://crates.io/crates/prometheus
+    // for running your own Prometheus metrics client
 
     Ok(())
 }

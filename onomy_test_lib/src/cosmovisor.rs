@@ -7,6 +7,7 @@ use super_orchestrator::{
     stacked_errors::{MapAddError, Result},
     wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
+use tokio::time::sleep;
 
 use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
 
@@ -350,6 +351,8 @@ pub async fn cosmovisor_start(
         .await?;
     // wait for status to be ok and daemon to be running
     info!("waiting for daemon to run");
+    // avoid the initial debug failure
+    sleep(Duration::from_millis(300)).await;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
     wait_for_height(25, Duration::from_millis(300), 1)
         .await

@@ -4,10 +4,9 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor, wait_for_height},
     hermes::{create_channel_pair, create_connection_pair, sh_hermes},
-    onomy_std_init,
+    json_inner, onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork},
-        get_separated_val,
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{MapAddError, Result},
@@ -279,24 +278,18 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     // In the mean time get consensus key assignment done
 
-    // FIXME this should be from $DAEMON_HOME/config/priv_validator_key.json, not
-    // some random thing from the validator set
-    let tmp_s = get_separated_val(
-        &sh_cosmovisor("query tendermint-validator-set", &[]).await?,
-        "\n",
-        "value",
-        ":",
+    let tendermint_key: Value = serde_json::from_str(
+        &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
+            .await?,
     )?;
-    let mut consensus_pubkey = r#"{"@type":"/cosmos.crypto.ed25519.PubKey","key":""#.to_owned();
-    consensus_pubkey.push_str(&tmp_s);
-    consensus_pubkey.push_str("\"}}");
-
-    //info!("ccvkey: {consensus_pubkey}");
+    let tendermint_key = json_inner(&tendermint_key["pub_key"]["value"]);
+    let tendermint_key =
+        format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
 
     // do this before getting the consumer-genesis
     sh_cosmovisor(
         "tx provider assign-consensus-key market",
-        &[[consensus_pubkey.as_str()].as_slice(), gas_args].concat(),
+        &[[tendermint_key.as_str()].as_slice(), gas_args].concat(),
     )
     .await?;
 
