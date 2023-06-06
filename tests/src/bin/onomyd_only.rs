@@ -5,10 +5,13 @@ use onomy_test_lib::{
         self, cosmovisor_start, get_apr_annual, get_staking_pool, get_treasury,
         get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_num_blocks,
     },
-    onomy_std_init, Args, TIMEOUT,
+    onomy_std_init,
+    super_orchestrator::{
+        get_separated_val, sh,
+        stacked_errors::{MapAddError, Result},
+    },
+    Args, TIMEOUT,
 };
-use stacked_errors::{MapAddError, Result};
-use super_orchestrator::{get_separated_val, sh};
 use tokio::time::sleep;
 
 #[tokio::main]

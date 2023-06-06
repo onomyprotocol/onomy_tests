@@ -1,8 +1,14 @@
 use common::container_runner;
 use log::info;
-use onomy_test_lib::{onomy_std_init, TIMEOUT};
-use stacked_errors::{MapAddError, Result};
-use super_orchestrator::{net_message::NetMessenger, STD_DELAY, STD_TRIES};
+use onomy_test_lib::{
+    onomy_std_init,
+    super_orchestrator::{
+        net_message::NetMessenger,
+        stacked_errors::{MapAddError, Result},
+        STD_DELAY, STD_TRIES,
+    },
+    TIMEOUT,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {

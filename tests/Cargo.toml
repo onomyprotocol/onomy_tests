@@ -8,11 +8,22 @@ publish = false
 name = "common"
 path = "src/lib/common.rs"
 
+[[bin]]
+name = "geth_test"
+# we want to avoid bringing in a ton of dependencies unless we want to run this
+required-features = ["geth"]
+
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }
+clarity = { git = "https://github.com/onomyprotocol/clarity.git", rev = "3e875b608a2d9302c8b23dd40dc8705901db230c", optional = true }
+deep_space = { git = "https://github.com/onomyprotocol/deep_space.git", rev = "36aa611a1ccfd4a48e1248d029a11cb026106254", optional = true }
 log = "0.4"
-onomy_test_lib = { path = "../onomy_test_lib" }
+onomy_test_lib = { path = "../onomy_test_lib", features = ["reqwest_support"] }
+reqwest = "0.11"
 serde_json = "1.0"
-stacked_errors = { version = "0.1", default-features = false, features = ["serde_json_support", "toml_support"] }
-super_orchestrator = { version = "0.1", default-features = false, features = ["serde_json_support", "env_logger_support", "ctrlc_support", "serde_yaml_support"] }
 tokio = { version = "1.28", features = ["full"] }
+web30 = { git = "https://github.com/onomyprotocol/web30.git", rev = "e5f7eac019d9c9f2730316295564e69336ef036c", features = ["warn_on_rpc_error"], optional = true }
+
+[features]
+default = []
+geth = ["clarity", "deep_space", "web30"]

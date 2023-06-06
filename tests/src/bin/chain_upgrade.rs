@@ -6,10 +6,13 @@ use onomy_test_lib::{
         get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
         wait_for_num_blocks,
     },
-    nom, onomy_std_init, Args, TIMEOUT,
+    nom, onomy_std_init,
+    super_orchestrator::{
+        stacked_errors::{MapAddError, Result},
+        STD_DELAY, STD_TRIES,
+    },
+    Args, TIMEOUT,
 };
-use stacked_errors::{MapAddError, Result};
-use super_orchestrator::{STD_DELAY, STD_TRIES};
 use tokio::time::sleep;
 
 #[tokio::main]
