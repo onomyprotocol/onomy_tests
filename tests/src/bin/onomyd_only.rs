@@ -45,12 +45,11 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").unwrap();
     info!("{}", get_apr_annual(valoper_addr).await?);
 
-    dbg!(get_delegations_to(valoper_addr).await?);
-
-    dbg!(get_staking_pool().await?);
-    dbg!(get_treasury().await?);
-    dbg!(get_treasury_inflation_annual().await?);
-    dbg!(get_apr_annual(valoper_addr).await?);
+    info!("{}", get_delegations_to(valoper_addr).await?);
+    info!("{:?}", get_staking_pool().await?);
+    info!("{}", get_treasury().await?);
+    info!("{}", get_treasury_inflation_annual().await?);
+    info!("{}", get_apr_annual(valoper_addr).await?);
 
     wait_for_num_blocks(5).await?;
     info!("{}", get_apr_annual(valoper_addr).await?);

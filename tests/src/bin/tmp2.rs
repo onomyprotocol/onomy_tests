@@ -14,7 +14,7 @@ use onomy_test_lib::{
 async fn main() -> Result<()> {
     let args = onomy_std_init()?;
 
-    dbg!(&args);
+    info!("{:?}", &args);
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {

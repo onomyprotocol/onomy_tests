@@ -1,4 +1,5 @@
 use common::container_runner;
+use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_start, get_block_height, get_staking_pool, get_treasury,
@@ -101,9 +102,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         onomy_upgrade_version
     );
 
-    dbg!(get_staking_pool().await?);
-    dbg!(get_treasury().await?);
-    dbg!(get_treasury_inflation_annual().await?);
+    info!("{:?}", get_staking_pool().await?);
+    info!("{}", get_treasury().await?);
+    info!("{}", get_treasury_inflation_annual().await?);
 
     sleep(TIMEOUT).await;
     cosmovisor_runner.terminate().await?;

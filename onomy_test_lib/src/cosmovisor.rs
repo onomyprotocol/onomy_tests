@@ -378,7 +378,6 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
             .map_add_err(|| ())?,
     )
     .map_add_err(|| ())?;
-    dbg!(&validator);
     Ok(json_inner(&validator[0]["address"]))
 }
 
