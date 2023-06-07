@@ -32,6 +32,42 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .to_owned())
 }
 
+pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
+    // speed up block speed to be one second. NOTE: keep the inflation calculations
+    // to expect 5s block times, and just assume 5 second block time because the
+    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
+    // that we keep constant
+    //
+    //genesis["app_state"]["mint"]["params"]["blocks_per_year"] =
+    // "31536000000".into();
+    //
+    //genesis["app_state"]["gravity"]["params"]["average_block_time"] =
+    // "1000".into();
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    // reduce all of these by a factor of 5
+    /*
+    timeout_propose = "3s"
+    timeout_propose_delta = "500ms"
+    timeout_prevote = "1s"
+    timeout_prevote_delta = "500ms"
+    timeout_precommit = "1s"
+    timeout_precommit_delta = "500ms"
+    timeout_commit = "5s"
+     */
+    config["consensus"]["timeout_propose"] = "600ms".into();
+    config["consensus"]["timeout_propose_delta"] = "100ms".into();
+    config["consensus"]["timeout_prevote"] = "200ms".into();
+    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
+    config["consensus"]["timeout_precommit"] = "200ms".into();
+    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
+    config["consensus"]["timeout_commit"] = "1000ms".into();
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_file_path, &config_s).await?;
+    Ok(())
+}
+
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
@@ -73,39 +109,6 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.to_owned().into();
 
-    // speed up block speed to be one second. NOTE: keep the inflation calculations
-    // to expect 5s block times, and just assume 5 second block time because the
-    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
-    // that we keep constant
-    //
-    //genesis["app_state"]["mint"]["params"]["blocks_per_year"] =
-    // "31536000000".into();
-    //
-    //genesis["app_state"]["gravity"]["params"]["average_block_time"] =
-    // "1000".into();
-    let config_file_path = format!("{daemon_home}/config/config.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path).await?;
-    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
-    // reduce all of these by a factor of 5
-    /*
-    timeout_propose = "3s"
-    timeout_propose_delta = "500ms"
-    timeout_prevote = "1s"
-    timeout_prevote_delta = "500ms"
-    timeout_precommit = "1s"
-    timeout_precommit_delta = "500ms"
-    timeout_commit = "5s"
-     */
-    config["consensus"]["timeout_propose"] = "600ms".into();
-    config["consensus"]["timeout_propose_delta"] = "100ms".into();
-    config["consensus"]["timeout_prevote"] = "200ms".into();
-    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
-    config["consensus"]["timeout_precommit"] = "200ms".into();
-    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
-    config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config)?;
-    FileOptions::write_str(&config_file_path, &config_s).await?;
-
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
@@ -116,6 +119,8 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -201,20 +206,6 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.into();
 
-    // speed up block speed to be one second.
-    let config_file_path = format!("{daemon_home}/config/config.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path).await?;
-    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
-    config["consensus"]["timeout_propose"] = "600ms".into();
-    config["consensus"]["timeout_propose_delta"] = "100ms".into();
-    config["consensus"]["timeout_prevote"] = "200ms".into();
-    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
-    config["consensus"]["timeout_precommit"] = "200ms".into();
-    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
-    config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config)?;
-    FileOptions::write_str(&config_file_path, &config_s).await?;
-
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
@@ -225,6 +216,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
