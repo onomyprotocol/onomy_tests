@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "tests",
     "onomy_test_lib",
+    "tests",
 ]
 
 [patch.crates-io]

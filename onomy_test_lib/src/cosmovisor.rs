@@ -2,11 +2,12 @@ use std::time::Duration;
 
 use log::info;
 use serde_json::{json, Value};
-use stacked_errors::{MapAddError, Result};
 use super_orchestrator::{
-    get_separated_val, sh, sh_no_dbg, wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY,
-    STD_TRIES,
+    get_separated_val, sh, sh_no_dbg,
+    stacked_errors::{MapAddError, Result},
+    wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
+use tokio::time::sleep;
 
 use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
 
@@ -29,6 +30,42 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .map_add_err(|| "cosmovisor run command did not have expected info line")?
         .1
         .to_owned())
+}
+
+pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
+    // speed up block speed to be one second. NOTE: keep the inflation calculations
+    // to expect 5s block times, and just assume 5 second block time because the
+    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
+    // that we keep constant
+    //
+    //genesis["app_state"]["mint"]["params"]["blocks_per_year"] =
+    // "31536000000".into();
+    //
+    //genesis["app_state"]["gravity"]["params"]["average_block_time"] =
+    // "1000".into();
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    // reduce all of these by a factor of 5
+    /*
+    timeout_propose = "3s"
+    timeout_propose_delta = "500ms"
+    timeout_prevote = "1s"
+    timeout_prevote_delta = "500ms"
+    timeout_precommit = "1s"
+    timeout_precommit_delta = "500ms"
+    timeout_commit = "5s"
+     */
+    config["consensus"]["timeout_propose"] = "600ms".into();
+    config["consensus"]["timeout_propose_delta"] = "100ms".into();
+    config["consensus"]["timeout_prevote"] = "200ms".into();
+    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
+    config["consensus"]["timeout_precommit"] = "200ms".into();
+    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
+    config["consensus"]["timeout_commit"] = "1000ms".into();
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_file_path, &config_s).await?;
+    Ok(())
 }
 
 /// NOTE: this is stuff you would not want to run in production.
@@ -72,39 +109,6 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.to_owned().into();
 
-    // speed up block speed to be one second. NOTE: keep the inflation calculations
-    // to expect 5s block times, and just assume 5 second block time because the
-    // staking calculations will also assume `app_state.mint.params.blocks_per_year`
-    // that we keep constant
-    //
-    //genesis["app_state"]["mint"]["params"]["blocks_per_year"] =
-    // "31536000000".into();
-    //
-    //genesis["app_state"]["gravity"]["params"]["average_block_time"] =
-    // "1000".into();
-    let config_file_path = format!("{daemon_home}/config/config.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path).await?;
-    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
-    // reduce all of these by a factor of 5
-    /*
-    timeout_propose = "3s"
-    timeout_propose_delta = "500ms"
-    timeout_prevote = "1s"
-    timeout_prevote_delta = "500ms"
-    timeout_precommit = "1s"
-    timeout_precommit_delta = "500ms"
-    timeout_commit = "5s"
-     */
-    config["consensus"]["timeout_propose"] = "600ms".into();
-    config["consensus"]["timeout_propose_delta"] = "100ms".into();
-    config["consensus"]["timeout_prevote"] = "200ms".into();
-    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
-    config["consensus"]["timeout_precommit"] = "200ms".into();
-    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
-    config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config)?;
-    FileOptions::write_str(&config_file_path, &config_s).await?;
-
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
@@ -115,6 +119,8 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -200,20 +206,6 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
         global_min_self_delegation.into();
 
-    // speed up block speed to be one second.
-    let config_file_path = format!("{daemon_home}/config/config.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path).await?;
-    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
-    config["consensus"]["timeout_propose"] = "600ms".into();
-    config["consensus"]["timeout_propose_delta"] = "100ms".into();
-    config["consensus"]["timeout_prevote"] = "200ms".into();
-    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
-    config["consensus"]["timeout_precommit"] = "200ms".into();
-    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
-    config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config)?;
-    FileOptions::write_str(&config_file_path, &config_s).await?;
-
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
@@ -224,6 +216,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -350,6 +344,8 @@ pub async fn cosmovisor_start(
         .await?;
     // wait for status to be ok and daemon to be running
     info!("waiting for daemon to run");
+    // avoid the initial debug failure
+    sleep(Duration::from_millis(300)).await;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
     wait_for_height(25, Duration::from_millis(300), 1)
         .await
@@ -368,37 +364,18 @@ pub async fn cosmovisor_start(
     Ok(cosmovisor_runner)
 }
 
-pub async fn get_valoper_addr() -> Result<String> {
-    let validator_addr = get_separated_val(
-        &sh_cosmovisor("keys show validator", &[]).await?,
-        "\n",
-        "address",
-        ":",
-    )?;
-    let addr_bytes = get_separated_val(
-        &sh_cosmovisor("keys parse", &[&validator_addr]).await?,
-        "\n",
-        "bytes",
-        ":",
-    )?;
-    let valoper_addr = format!(
-        "onomyvaloper1{}",
-        get_separated_val(
-            &sh_cosmovisor("keys parse", &[&addr_bytes]).await?,
-            "\n",
-            "- onomyvaloper",
-            "1"
-        )?
-    );
-    Ok(valoper_addr)
+pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
+    let validator = yaml_str_to_json_value(
+        &sh_cosmovisor("keys show", &[key_name])
+            .await
+            .map_add_err(|| ())?,
+    )
+    .map_add_err(|| ())?;
+    Ok(json_inner(&validator[0]["address"]))
 }
 
-// TODO some of these become flaky if more than one addresse and delegator gets
-// involved
-
-pub async fn get_delegations_to_validator() -> Result<String> {
-    let valoper_addr = get_valoper_addr().await?;
-    sh_cosmovisor("query staking delegations-to", &[&valoper_addr]).await
+pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {
+    sh_cosmovisor("query staking delegations-to", &[valoper_addr]).await
 }
 
 pub async fn get_treasury() -> Result<f64> {
@@ -438,12 +415,11 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
     })
 }
 
-pub async fn get_validator_outstanding_rewards() -> Result<f64> {
-    let valoper_addr = get_valoper_addr().await?;
+pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
     anom_to_nom(&json_inner(
         &yaml_str_to_json_value(
             &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
-                &valoper_addr,
+                valoper_addr,
             ])
             .await?,
         )?["rewards"][0]["amount"],
@@ -465,11 +441,11 @@ pub async fn get_validator_delegated() -> Result<f64> {
 
 /// APR calculation is: [Amount(Rewards End) - Amount(Rewards
 /// Beg)]/Amount(Delegated) * # of Blocks/Blocks_per_year
-pub async fn get_apr_annual() -> Result<f64> {
+pub async fn get_apr_annual(valoper_addr: &str) -> Result<f64> {
     wait_for_num_blocks(1).await?;
     let delegated = get_validator_delegated().await?;
-    let reward_start = get_validator_outstanding_rewards().await?;
+    let reward_start = get_outstanding_rewards(valoper_addr).await?;
     wait_for_num_blocks(1).await?;
-    let reward_end = get_validator_outstanding_rewards().await?;
+    let reward_end = get_outstanding_rewards(valoper_addr).await?;
     Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
 }

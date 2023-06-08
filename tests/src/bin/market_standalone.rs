@@ -1,10 +1,13 @@
 use common::container_runner;
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
-    onomy_std_init, Args, TIMEOUT,
+    onomy_std_init,
+    super_orchestrator::{
+        sh,
+        stacked_errors::{MapAddError, Result},
+    },
+    Args, TIMEOUT,
 };
-use stacked_errors::{MapAddError, Result};
-use super_orchestrator::{remove_files_in_dir, sh};
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -25,9 +28,6 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;
-
-        // prepare volumed resources
-        remove_files_in_dir("./resources/keyring-test/", &["address", "info"]).await?;
         container_runner(&args, &[("market_standaloned", "market_standaloned")]).await
     }
 }
