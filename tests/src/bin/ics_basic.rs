@@ -225,7 +225,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let mnemonic = onomyd_setup(daemon_home, false).await?;
 
-    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", true, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     let proposal_id = "1";
 
@@ -397,8 +397,7 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     )
     .await?;
 
-    let mut cosmovisor_runner =
-        cosmovisor_start(&format!("{chain_id}d_runner.log"), true, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None).await?;
 
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;

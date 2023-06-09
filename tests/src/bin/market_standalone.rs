@@ -35,8 +35,7 @@ async fn main() -> Result<()> {
 async fn market_standaloned_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     market_standaloned_setup(daemon_home).await?;
-    let mut cosmovisor_runner =
-        cosmovisor_start("market_standaloned_runner.log", true, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("market_standaloned_runner.log", None).await?;
 
     // also `show-` versions of all these
     sh_cosmovisor("query market list-asset", &[]).await?;

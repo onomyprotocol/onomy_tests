@@ -312,6 +312,10 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     Ok(format!("{tendermint_id}@{hostname}:26656"))
 }
 
+pub struct CosmovisorOptions {
+    pub halt_height: Option<u64>,
+}
+
 /// This starts cosmovisor and waits for height 1
 ///
 /// If `listen`, then `--p2p.laddr` is used on the standard"tcp://0.0.0.0:26656"
@@ -319,22 +323,27 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
 /// `peer` should be the `tendermint_id@host_ip:port` of the peer
 pub async fn cosmovisor_start(
     log_file_name: &str,
-    listen: bool,
-    peer: Option<String>,
+    options: Option<CosmovisorOptions>,
 ) -> Result<CommandRunner> {
     let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
-    if listen {
-        // TODO this is actually the default?
-        //args.push("--p2p.laddr");
-        //args.push("tcp://0.0.0.0:26656");
-        args.push("--rpc.laddr");
-        args.push("tcp://0.0.0.0:26657");
-    }
-    if let Some(ref peer) = peer {
+    // TODO this is actually the default?
+    //args.push("--p2p.laddr");
+    //args.push("tcp://0.0.0.0:26656");
+    args.push("--rpc.laddr");
+    args.push("tcp://0.0.0.0:26657");
+    /*if let Some(ref peer) = peer {
         args.push("--p2p.persistent_peers");
         args.push(peer);
+    }*/
+    let halt_height_s;
+    if let Some(options) = options {
+        if let Some(halt_height) = options.halt_height {
+            args.push("--halt-height");
+            halt_height_s = format!("{}", halt_height);
+            args.push(&halt_height_s);
+        }
     }
 
     let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &args)
@@ -347,20 +356,28 @@ pub async fn cosmovisor_start(
     // avoid the initial debug failure
     sleep(Duration::from_millis(300)).await;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
-    wait_for_height(25, Duration::from_millis(300), 1)
+    // account for if we are not starting at height 0
+    let current_height = get_block_height().await?;
+    wait_for_height(25, Duration::from_millis(300), current_height + 1)
         .await
         .map_add_err(|| {
-            "daemon could not reach height 1, probably a genesis issue, check runner logs"
+            format!(
+                "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                current_height + 1
+            )
         })?;
-    info!("daemon has reached height 1");
+    info!("daemon has reached height {}", current_height + 1);
     // we also wait for height 2, because there are consensus failures and reward
     // propogations that only start on height 2
-    wait_for_height(25, Duration::from_millis(300), 2)
+    wait_for_height(25, Duration::from_millis(300), current_height + 2)
         .await
         .map_add_err(|| {
-            "daemon could not reach height 2, probably a consensus failure, check runner logs"
+            format!(
+                "daemon could not reach height {}, probably a consensus failure, check runner logs",
+                current_height + 2
+            )
         })?;
-    info!("daemon has reached height 2");
+    info!("daemon has reached height {}", current_height + 2);
     Ok(cosmovisor_runner)
 }
 

@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     onomyd_setup(daemon_home, false).await?;
-    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").unwrap();
