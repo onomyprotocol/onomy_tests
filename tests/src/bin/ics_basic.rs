@@ -233,7 +233,11 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // native "native" or IBC NOM as the gas denom (may take a gov proposal for
     // bootstrap)
 
-    // `json!` doesn't like large literals beyond i32
+    // `json!` doesn't like large literals beyond i32.
+    // note: when changing this, check market_genesis.json
+    // to see if changes are going all the way through.
+    // note: the deposit is for the submission on the producer side, so we want to
+    // use 2k NOM.
     let proposal_s = &format!(
         r#"{{
         "title": "Propose the addition of a new chain",
@@ -253,9 +257,12 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         "transfer_timeout_period": 3600000000000,
         "unbonding_period": 1728000000000000,
         "deposit": "2000000000000000000000anom",
-        "provider_reward_denoms": []
+        "soft_opt_out_threshold": 0.0,
+        "provider_reward_denoms": [],
+        "reward_denoms": []
     }}"#
     );
+
     // we will just place the file under the config folder
     let proposal_file_path = format!("{daemon_home}/config/consumer_add_proposal.json");
     FileOptions::write_str(&proposal_file_path, proposal_s)
@@ -311,6 +318,13 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         "json",
     ])
     .await?;
+
+    let mut state: Value = serde_json::from_str(&ccvconsumer_state)?;
+    // TODO because of the differing canonical producer and consumer versions, the
+    // `consumer-genesis` currently does not handle all keys, we have to set
+    // `soft_opt_out_threshold` here.
+    state["params"]["soft_opt_out_threshold"] = "0.0".into();
+    let ccvconsumer_state = serde_json::to_string(&state)?;
 
     nm_hermes.send::<String>(&mnemonic).await?;
 
