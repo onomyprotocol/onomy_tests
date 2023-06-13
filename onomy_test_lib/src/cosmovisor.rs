@@ -306,6 +306,37 @@ pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
     wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
 }
 
+/// Returns the number of proposals
+pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
+    let comres = Command::new(
+        "cosmovisor run query gov proposals --count-total --limit 1",
+        &[],
+    )
+    .run_to_completion()
+    .await?;
+    if let Err(e) = comres.assert_success() {
+        // work around bad zero casing design
+        if comres
+            .stderr
+            .trim()
+            .starts_with("Error: no proposals found")
+        {
+            return Ok(0)
+        } else {
+            return Err(e)
+        }
+    }
+    let stdout = comres
+        .stdout
+        .split_once('\n')
+        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .1;
+
+    let v = yaml_str_to_json_value(stdout)?;
+    let total = v["pagination"]["total"].as_str().map_add_err(|| ())?;
+    total.parse::<u64>().map_add_err(|| ())
+}
+
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;
     let tendermint_id = s.trim();

@@ -1,18 +1,18 @@
 use serde_json::Value;
 use super_orchestrator::{
     stacked_errors::{MapAddError, Result},
-    FileOptions, STD_DELAY, STD_TRIES,
+    FileOptions,
 };
 
 use crate::{
-    cosmovisor::{cosmovisor_get_addr, fast_block_times, sh_cosmovisor, wait_for_height},
+    cosmovisor::{
+        cosmovisor_get_addr, cosmovisor_get_num_proposals, fast_block_times, sh_cosmovisor,
+    },
     json_inner, token18,
 };
 
 /// This should be run from the provider. Returns the ccv state.
 pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Result<String> {
-    let proposal_id = "1";
-
     // `json!` doesn't like large literals beyond i32.
     // note: when changing this, check market_genesis.json
     // to see if changes are going all the way through.
@@ -66,10 +66,11 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         &[&[proposal_file_path.as_str()], gas_args].concat(),
     )
     .await?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
     // the deposit is done as part of the chain addition proposal
     sh_cosmovisor(
         "tx gov vote",
-        &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
+        &[[&proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
     .await?;
 
@@ -90,7 +91,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
     )
     .await?;
 
-    wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
+    // It appears we do not have to wait any blocks
 
     let ccvconsumer_state = sh_cosmovisor("query provider consumer-genesis", &[
         consumer_id,
