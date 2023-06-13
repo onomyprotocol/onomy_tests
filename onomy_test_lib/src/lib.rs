@@ -1,4 +1,5 @@
 pub mod cosmovisor;
+pub mod cosmovisor_ics;
 pub mod hermes;
 mod misc;
 
