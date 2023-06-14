@@ -128,14 +128,14 @@ pub async fn marketd_setup(
     let genesis_s = genesis.to_string();
 
     // I will name the token "native" because it won't be staked in the normal sense
-    let genesis_s = genesis_s.replace("\"stake\"", "\"native\"");
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "native")]).await?;
+    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),

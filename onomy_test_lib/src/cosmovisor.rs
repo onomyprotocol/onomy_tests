@@ -182,8 +182,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
-    // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    // rename all "stake" to "native"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
     genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
@@ -219,9 +219,9 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
 
-    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    sh_cosmovisor("add-genesis-account validator", &[&token18(2.0e6, "anative")]).await?;
     sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
+        &token18(1.0e6, "anative"),
         "--chain-id",
         chain_id,
         "--min-self-delegation",
