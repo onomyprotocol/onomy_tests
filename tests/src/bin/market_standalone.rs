@@ -61,6 +61,6 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
     // cancel-order [uid]").await?;
 
     sleep(TIMEOUT).await;
-    cosmovisor_runner.terminate().await?;
+    cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }

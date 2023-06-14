@@ -343,8 +343,37 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     Ok(format!("{tendermint_id}@{hostname}:26656"))
 }
 
+pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
+    let comres = sh_no_dbg("cosmovisor run version", &[]).await?;
+    let val = get_separated_val(
+        comres.lines().next().map_add_err(|| ())?,
+        " ",
+        "\u{1b}[36mpath=\u{1b}[0m",
+        "",
+    )?;
+    Ok(val)
+}
+
 pub struct CosmovisorOptions {
     pub halt_height: Option<u64>,
+}
+
+/// `cosmovisor run start` spawns the cosmos binary as a completely separate
+/// child process, meaning that terminating the parent `Command` does not
+/// actually terminate the running binary. This sends a `SIGTERM` signal to
+/// properly terminate cosmovisor.
+///
+/// Note however that other commands like `wait_with_timeout` work as expected
+/// on the internal runner
+pub struct CosmovisorRunner {
+    pub runner: CommandRunner,
+}
+
+impl CosmovisorRunner {
+    pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
+        self.runner.send_unix_sigterm()?;
+        self.runner.wait_with_timeout(timeout).await
+    }
 }
 
 /// This starts cosmovisor and waits for height 1
@@ -355,7 +384,7 @@ pub struct CosmovisorOptions {
 pub async fn cosmovisor_start(
     log_file_name: &str,
     options: Option<CosmovisorOptions>,
-) -> Result<CommandRunner> {
+) -> Result<CosmovisorRunner> {
     let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
@@ -409,7 +438,9 @@ pub async fn cosmovisor_start(
             )
         })?;
     info!("daemon has reached height {}", current_height + 2);
-    Ok(cosmovisor_runner)
+    Ok(CosmovisorRunner {
+        runner: cosmovisor_runner,
+    })
 }
 
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {

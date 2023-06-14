@@ -12,7 +12,6 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -107,8 +106,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     info!("{}", get_treasury().await?);
     info!("{}", get_treasury_inflation_annual().await?);
 
-    sleep(TIMEOUT).await;
-    cosmovisor_runner.terminate().await?;
-
+    cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }
