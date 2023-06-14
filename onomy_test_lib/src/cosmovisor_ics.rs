@@ -131,6 +131,7 @@ pub async fn marketd_setup(
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
 

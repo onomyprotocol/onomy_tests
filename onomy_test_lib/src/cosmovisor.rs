@@ -201,7 +201,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
 
