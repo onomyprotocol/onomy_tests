@@ -1,5 +1,5 @@
 use onomy_test_lib::{
-    cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor},
+    cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor_no_dbg},
     cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
     hermes::{hermes_start, onomy_setup_pair, sh_hermes},
     onomy_std_init,
@@ -220,6 +220,10 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     nm_onomyd.recv::<()>().await?;
 
     cosmovisor_runner.terminate(TIMEOUT).await?;
-    FileOptions::write_str("/logs/exported_market_genesis.json", &sh_cosmovisor("export", &[]).await?).await?;
+    FileOptions::write_str(
+        "/logs/exported_market_genesis.json",
+        &sh_cosmovisor_no_dbg("export", &[]).await?,
+    )
+    .await?;
     Ok(())
 }
