@@ -219,9 +219,11 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
 
-    sh_cosmovisor("add-genesis-account validator", &[&token18(2.0e6, "anative")]).await?;
+    let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6, "afootoken");
+    let stake_coin = token18(1.0e6, "anative");
+    sh_cosmovisor("add-genesis-account validator", &[&gen_coins]).await?;
     sh_cosmovisor("gentx validator", &[
-        &token18(1.0e6, "anative"),
+        &stake_coin,
         "--chain-id",
         chain_id,
         "--min-self-delegation",

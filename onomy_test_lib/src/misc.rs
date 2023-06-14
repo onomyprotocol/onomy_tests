@@ -14,11 +14,25 @@ pub const TIMEOUT: Duration = Duration::from_secs(1000);
 // the `json` macro does not support const
 
 pub fn nom_denom() -> Value {
-    json!([{"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description": "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom", "exponent": 18}]}])
+    json!([
+        {"name": "Foo Token", "symbol": "FOO", "base": "afootoken", "display": "footoken",
+        "description": "Foo token", "denom_units": [{"denom": "afootoken", "exponent": 0},
+        {"denom": "footoken", "exponent": 18}]},
+        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom",
+        "description": "Nom token", "denom_units": [{"denom": "anom", "exponent": 0},
+        {"denom": "nom", "exponent": 18}]}
+    ])
 }
 
 pub fn native_denom() -> Value {
-    json!([{"name": "Native Token", "symbol": "NATIVE", "base": "anative", "display": "native","description": "Native token", "denom_units": [{"denom": "anative", "exponent": 0}, {"denom": "native", "exponent": 18}]}])
+    json!([
+        {"name": "Foo Token", "symbol": "FOO", "base": "afootoken", "display": "footoken",
+        "description": "Foo token", "denom_units": [{"denom": "afootoken", "exponent": 0},
+        {"denom": "footoken", "exponent": 18}]},
+        {"name": "Native Token", "symbol": "NATIVE", "base": "anative", "display": "native",
+        "description": "Native token", "denom_units": [{"denom": "anative", "exponent": 0},
+        {"denom": "native", "exponent": 18}]}
+    ])
 }
 
 /// Runs the given entrypoint
