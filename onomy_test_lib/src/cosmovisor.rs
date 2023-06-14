@@ -9,7 +9,9 @@ use super_orchestrator::{
 };
 use tokio::time::sleep;
 
-use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
+use crate::{
+    anom_to_nom, json_inner, native_denom, nom, nom_denom, token18, yaml_str_to_json_value,
+};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -87,14 +89,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
     // put in the test `footoken` and the staking `anom`
-    let denom_metadata = json!(
-        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
-        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
-        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
-        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
-        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
-        "exponent": 18}]}]
-    );
+    let denom_metadata = nom_denom();
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
 
     // init DAO balance
@@ -191,16 +186,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    // put in the test `footoken` and the staking `anom`
-    let denom_metadata = json!(
-        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
-        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
-        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
-        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
-        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
-        "exponent": 18}]}]
-    );
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
     // min_global_self_delegation
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =

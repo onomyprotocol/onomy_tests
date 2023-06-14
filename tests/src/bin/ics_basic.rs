@@ -1,24 +1,17 @@
-use std::time::Duration;
-
-use log::info;
 use onomy_test_lib::{
-    cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_start, fast_block_times, onomyd_setup, sh_cosmovisor,
-        wait_for_height,
-    },
-    hermes::{create_channel_pair, create_connection_pair, sh_hermes},
-    json_inner, onomy_std_init,
+    cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor},
+    cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
+    hermes::{hermes_start, onomy_setup_pair, sh_hermes},
+    onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork},
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{MapAddError, Result},
-        Command, FileOptions, STD_DELAY, STD_TRIES,
+        FileOptions, STD_DELAY, STD_TRIES,
     },
-    token18, Args, TIMEOUT,
+    Args, TIMEOUT,
 };
-use serde_json::Value;
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -120,6 +113,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 async fn hermes_runner() -> Result<()> {
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
 
+    // get mnemonic from onomyd
     let mnemonic: String = nm_onomyd.recv().await?;
     // set keys for our chains
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
@@ -134,79 +128,14 @@ async fn hermes_runner() -> Result<()> {
     )
     .await?;
 
+    // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    // https://hermes.informal.systems/tutorials/local-chains/add-a-new-relay-path.html
+    let ibc_pair = onomy_setup_pair("market", "onomy").await?;
+    let mut hermes_runner = hermes_start().await?;
+    ibc_pair.check_acks().await?;
 
-    // Note: For ICS, there is a point where a handshake must be initiated by the
-    // consumer chain, so we must make the consumer chain the "a-chain" and the
-    // producer chain the "b-chain"
-
-    let b_chain = "onomy";
-    let a_chain = "market";
-    // a client is already created because of the ICS setup
-    //let client_pair = create_client_pair(a_chain, b_chain).await?;
-    // create one client and connection pair that will be used for IBC transfer and
-    // ICS communication
-    let connection_pair = create_connection_pair(a_chain, b_chain).await?;
-
-    // a_chain<->b_chain transfer<->transfer
-    let transfer_channel_pair =
-        create_channel_pair(a_chain, &connection_pair.0, "transfer", "transfer", false).await?;
-
-    // a_chain<->b_chain consumer<->provider
-    let ics_channel_pair =
-        create_channel_pair(a_chain, &connection_pair.0, "consumer", "provider", true).await?;
-
-    let hermes_log = FileOptions::write2("/logs", "hermes_runner.log");
-    let mut hermes_runner = Command::new("hermes start", &[])
-        .stderr_log(&hermes_log)
-        .stdout_log(&hermes_log)
-        .run()
-        .await?;
-
-    info!("Onomy Network has been setup");
-
-    sleep(Duration::from_secs(5)).await;
-
-    // check all channels on both sides
-    sh_hermes("query packet acks --chain", &[
-        b_chain,
-        "--port",
-        "transfer",
-        "--channel",
-        &transfer_channel_pair.0,
-    ])
-    .await?;
-    sh_hermes("query packet acks --chain", &[
-        a_chain,
-        "--port",
-        "transfer",
-        "--channel",
-        &transfer_channel_pair.1,
-    ])
-    .await?;
-    sh_hermes("query packet acks --chain", &[
-        b_chain,
-        "--port",
-        "provider",
-        "--channel",
-        &ics_channel_pair.0,
-    ])
-    .await?;
-    sh_hermes("query packet acks --chain", &[
-        a_chain,
-        "--port",
-        "consumer",
-        "--channel",
-        &ics_channel_pair.1,
-    ])
-    .await?;
-
-    //hermes tx ft-transfer --timeout-seconds 10 --dst-chain interchain-security-c
-    // --src-chain onomy --src-port transfer --src-channel channel-0 --amount
-    // 1337 --denom anom
-
+    // tell that chains have been connected
     nm_onomyd.send::<()>(&()).await?;
 
     hermes_runner.terminate().await?;
@@ -224,113 +153,17 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .map_add_err(|| ())?;
 
     let mnemonic = onomyd_setup(daemon_home, false).await?;
+    // send mnemonic to hermes
+    nm_hermes.send::<String>(&mnemonic).await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
-    let proposal_id = "1";
-
-    // TODO we think we will make the redistribution fraction 0 and either make a
-    // native "native" or IBC NOM as the gas denom (may take a gov proposal for
-    // bootstrap)
-
-    // `json!` doesn't like large literals beyond i32.
-    // note: when changing this, check market_genesis.json
-    // to see if changes are going all the way through.
-    // note: the deposit is for the submission on the producer side, so we want to
-    // use 2k NOM.
-    let proposal_s = &format!(
-        r#"{{
-        "title": "Propose the addition of a new chain",
-        "description": "add consumer chain",
-        "chain_id": "{consumer_id}",
-        "initial_height": {{
-            "revision_number": 0,
-            "revision_height": 1
-        }},
-        "genesis_hash": "Z2VuX2hhc2g=",
-        "binary_hash": "YmluX2hhc2g=",
-        "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
-        "consumer_redistribution_fraction": "0.0",
-        "blocks_per_distribution_transmission": 1000,
-        "historical_entries": 10000,
-        "ccv_timeout_period": 2419200000000000,
-        "transfer_timeout_period": 3600000000000,
-        "unbonding_period": 1728000000000000,
-        "deposit": "2000000000000000000000anom",
-        "soft_opt_out_threshold": 0.0,
-        "provider_reward_denoms": [],
-        "reward_denoms": []
-    }}"#
-    );
-
-    // we will just place the file under the config folder
-    let proposal_file_path = format!("{daemon_home}/config/consumer_add_proposal.json");
-    FileOptions::write_str(&proposal_file_path, proposal_s)
-        .await
-        .map_add_err(|| ())?;
-
-    let gas_args = [
-        "--gas",
-        "auto",
-        "--gas-adjustment",
-        "1.3",
-        "-y",
-        "-b",
-        "block",
-        "--from",
-        "validator",
-    ]
-    .as_slice();
-    sh_cosmovisor(
-        "tx gov submit-proposal consumer-addition",
-        &[&[proposal_file_path.as_str()], gas_args].concat(),
-    )
-    .await?;
-    // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor(
-        "tx gov vote",
-        &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
-    )
-    .await?;
-
-    // In the mean time get consensus key assignment done
-
-    let tendermint_key: Value = serde_json::from_str(
-        &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
-            .await?,
-    )?;
-    let tendermint_key = json_inner(&tendermint_key["pub_key"]["value"]);
-    let tendermint_key =
-        format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
-
-    // do this before getting the consumer-genesis
-    sh_cosmovisor(
-        "tx provider assign-consensus-key",
-        &[[consumer_id, tendermint_key.as_str()].as_slice(), gas_args].concat(),
-    )
-    .await?;
-
-    wait_for_height(STD_TRIES, STD_DELAY, 5).await?;
-
-    let ccvconsumer_state = sh_cosmovisor("query provider consumer-genesis", &[
-        consumer_id,
-        "-o",
-        "json",
-    ])
-    .await?;
-
-    let mut state: Value = serde_json::from_str(&ccvconsumer_state)?;
-    // TODO because of the differing canonical producer and consumer versions, the
-    // `consumer-genesis` currently does not handle all keys, we have to set
-    // `soft_opt_out_threshold` here.
-    state["params"]["soft_opt_out_threshold"] = "0.0".into();
-    let ccvconsumer_state = serde_json::to_string(&state)?;
-
-    nm_hermes.send::<String>(&mnemonic).await?;
+    let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id).await?;
 
     // send to consumer
     nm_consumer.send::<String>(&ccvconsumer_state).await?;
 
+    // send keys
     nm_consumer
         .send::<String>(
             &FileOptions::read_to_string(&format!("{daemon_home}/config/node_key.json")).await?,
@@ -352,62 +185,29 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // finish
     nm_consumer.send::<()>(&()).await?;
 
-    //cosmovisor("tx ibc-transfer transfer", &[port, channel, receiver,
-    // amount]).await?;
-
-    cosmovisor_runner.terminate().await?;
+    cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }
 
 async fn marketd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     let chain_id = "market";
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
-    let ccvconsumer_state: Value = serde_json::from_str(&ccvconsumer_state_s)?;
 
-    // add `ccvconsumer_state` to genesis
+    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
 
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
-    let genesis_s = genesis.to_string();
-
-    // I will name the token "native" because it won't be staked in the normal sense
-    let genesis_s = genesis_s.replace("\"stake\"", "\"native\"");
-
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-
-    let addr: &String = &cosmovisor_get_addr("validator").await?;
-
-    // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "native")]).await?;
-
-    FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
-    )
-    .await?;
-
-    fast_block_times(daemon_home).await?;
-
+    // get keys
+    let node_key = nm_onomyd.recv::<String>().await?;
     // we used same keys for consumer as producer, need to copy them over or else
     // the node will not be a working validator for itself
-    FileOptions::write_str(
-        &format!("{daemon_home}/config/node_key.json"),
-        &nm_onomyd.recv::<String>().await?,
-    )
-    .await?;
+    FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key).await?;
+
+    let priv_validator_key = nm_onomyd.recv::<String>().await?;
     FileOptions::write_str(
         &format!("{daemon_home}/config/priv_validator_key.json"),
-        &nm_onomyd.recv::<String>().await?,
+        &priv_validator_key,
     )
     .await?;
 
@@ -416,8 +216,10 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
 
+    // wait for finish
     nm_onomyd.recv::<()>().await?;
 
-    cosmovisor_runner.terminate().await?;
+    cosmovisor_runner.terminate(TIMEOUT).await?;
+    FileOptions::write_str("/logs/exported_market_genesis.json", &sh_cosmovisor("export", &[]).await?).await?;
     Ok(())
 }
