@@ -1,8 +1,13 @@
+use std::time::Duration;
+
+use log::info;
 use onomy_test_lib::{
-    cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor_no_dbg},
+    cosmovisor::{
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
+        onomyd_setup, set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+    },
     cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
-    hermes::{hermes_start, sh_hermes},
-    ibc::IbcPair,
+    hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork},
@@ -13,6 +18,7 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,7 +28,7 @@ async fn main() -> Result<()> {
         match s.as_str() {
             "onomyd" => onomyd_runner(&args).await,
             "marketd" => marketd_runner(&args).await,
-            "hermes" => hermes_runner().await,
+            "hermes" => hermes_runner(&args).await,
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
@@ -111,7 +117,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn hermes_runner() -> Result<()> {
+async fn hermes_runner(args: &Args) -> Result<()> {
+    let hermes_home = args.hermes_home.as_ref().map_add_err(|| ())?;
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
 
     // get mnemonic from onomyd
@@ -137,8 +144,19 @@ async fn hermes_runner() -> Result<()> {
     ibc_pair.hermes_check_acks().await?;
 
     // tell that chains have been connected
+    nm_onomyd.send::<IbcPair>(&ibc_pair).await?;
+
+    // signal to update gas denom
+    let ibc_nom = nm_onomyd.recv::<String>().await?;
+    hermes_runner.terminate(TIMEOUT).await?;
+    hermes_set_gas_price_denom(hermes_home, "market", &ibc_nom).await?;
+
+    // restart
+    let mut hermes_runner = hermes_start().await?;
     nm_onomyd.send::<()>(&()).await?;
 
+    // termination signal
+    nm_onomyd.recv::<()>().await?;
     hermes_runner.terminate(TIMEOUT).await?;
     Ok(())
 }
@@ -156,6 +174,10 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let mnemonic = onomyd_setup(daemon_home, false).await?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await?;
+
+    // keep these here for local testing purposes
+    let addr = cosmovisor_get_addr("validator").await?;
+    sleep(Duration::ZERO).await;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
@@ -182,11 +204,44 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // notify hermes to connect the chains
     nm_hermes.send::<()>(&()).await?;
     // when hermes is done
+    let ibc_pair = nm_hermes.recv::<IbcPair>().await?;
+    info!("IbcPair: {ibc_pair:?}");
+
+    // send anom to market
+    ibc_pair
+        .b
+        .cosmovisor_ibc_transfer("validator", &addr, "1337000000", "anom")
+        .await?;
+    // it takes time for the relayer to complete relaying
+    wait_for_num_blocks(2).await?;
+    // notify consumer that we have sent NOM
+    nm_consumer.send::<IbcPair>(&ibc_pair).await?;
+
+    // tell hermes to restart with updated gas denom on its side
+    let ibc_nom = nm_consumer.recv::<String>().await?;
+    nm_hermes.send::<String>(&ibc_nom).await?;
     nm_hermes.recv::<()>().await?;
-    // finish
     nm_consumer.send::<()>(&()).await?;
 
+    // recieve round trip signal
+    nm_consumer.recv::<()>().await?;
+    // check that the IBC NOM converted back to regular NOM
+    assert_eq!(
+        cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3").await?["anom"],
+        "5000"
+    );
+
+    // signal to collectively terminate
+    nm_hermes.send::<()>(&()).await?;
+    nm_consumer.send::<()>(&()).await?;
     cosmovisor_runner.terminate(TIMEOUT).await?;
+
+    FileOptions::write_str(
+        "/logs/onomyd_export.json",
+        &sh_cosmovisor_no_dbg("export", &[]).await?,
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -198,6 +253,8 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
 
     marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
+    // make sure switching is possible
+    set_minimum_gas_price(daemon_home, "1anative").await?;
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await?;
@@ -212,19 +269,57 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     )
     .await?;
 
-    let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None).await?;
+    let mut cosmovisor_runner =
+        cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
 
-    // wait for finish
+    // wait for producer to send us stuff
+    let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
+    // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
+    // it has to be with respect to the market side
+    let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
+    assert_eq!(
+        ibc_nom,
+        "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B"
+    );
+    let addr = cosmovisor_get_addr("validator").await?;
+    let balances = cosmovisor_get_balances(&addr).await?;
+    assert!(balances.contains_key(&ibc_nom));
+
+    // we have IBC NOM, shut down, change gas in app.toml, restart
+    cosmovisor_runner.terminate(TIMEOUT).await?;
+    set_minimum_gas_price(daemon_home, &format!("1{ibc_nom}")).await?;
+    let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None).await?;
+    // tell hermes to restart with updated gas denom on its side
+    nm_onomyd.send::<String>(&ibc_nom).await?;
     nm_onomyd.recv::<()>().await?;
 
+    // test normal transfer
+    let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";
+    cosmovisor_bank_send(&addr, dst_addr, "5000", &ibc_nom).await?;
+    assert_eq!(cosmovisor_get_balances(dst_addr).await?[&ibc_nom], "5000");
+
+    // send some IBC NOM back to origin chain using it as gas
+    ibc_pair
+        .a
+        .cosmovisor_ibc_transfer("validator", dst_addr, "5000", &ibc_nom)
+        .await?;
+    wait_for_num_blocks(2).await?;
+
+    // round trip signal
+    nm_onomyd.send::<()>(&()).await?;
+
+    // termination signal
+    nm_onomyd.recv::<()>().await?;
     cosmovisor_runner.terminate(TIMEOUT).await?;
+
     FileOptions::write_str(
-        "/logs/exported_market_genesis.json",
+        "/logs/market_export.json",
         &sh_cosmovisor_no_dbg("export", &[]).await?,
     )
     .await?;
+
     Ok(())
 }

@@ -8,4 +8,4 @@ ENV PATH=$PATH:/root/.hermes/bin
 
 ENV HERMES_HOME="/root/.hermes"
 
-ADD ./dockerfile_resources/hermes_config_bootstrap.toml $HERMES_HOME/config.toml
+ADD ./dockerfile_resources/hermes_config.toml $HERMES_HOME/config.toml

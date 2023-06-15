@@ -195,7 +195,7 @@ max_gas = 400000
 # paid for each unit of gas per transaction.
 #
 # Required
-gas_price = { price = 0.001, denom = 'anom' }
+gas_price = { price = 1.0, denom = 'anom' }
 
 # Multiply this amount with the gas estimate, used to compute the fee
 # and account for potential estimation error.
@@ -313,7 +313,8 @@ key_name = 'validator'
 store_prefix = 'ibc'
 default_gas = 100000
 max_gas = 400000
-gas_price = { price = 0.001, denom = 'native' }
+# note: this is changed to IBC NOM during bootstrap
+gas_price = { price = 1.0, denom = 'anative' }
 gas_multiplier = 1.1
 max_msg_num = 30
 max_tx_size = 2097152
