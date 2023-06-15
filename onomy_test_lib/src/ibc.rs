@@ -45,6 +45,7 @@ impl IbcSide {
             &self.transfer_channel,
             target_addr,
             &coins_to_send,
+            "-y",
             "-b",
             "block",
             "--gas",

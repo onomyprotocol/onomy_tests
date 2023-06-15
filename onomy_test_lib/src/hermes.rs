@@ -256,17 +256,26 @@ pub async fn hermes_start() -> Result<HermesRunner> {
     })
 }
 
-pub async fn hermes_set_gas_price_base(
+/// Note: uses "price = 1.0"
+pub async fn hermes_set_gas_price_denom(
     hermes_home: &str,
     chain_id: &str,
-    gas_price_base: &str,
+    gas_price_denom: &str,
 ) -> Result<()> {
+    // can't get simpler than this without importing a lot of stuff
+    let outer_table: toml::Value = toml::from_str(&format!(
+        "gas-price = {{ price = 1.0, denom = '{gas_price_denom}' }}"
+    ))
+    .unwrap();
+    let inner_table = outer_table["gas-price"].clone();
+
     let config_path = format!("{hermes_home}/config.toml");
     let config_s = FileOptions::read_to_string(&config_path).await?;
     let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
     for chain in config["chains"].as_array_mut().map_add_err(|| ())? {
         if chain["id"].as_str().map_add_err(|| ())? == chain_id {
-            chain["gas_price"] = gas_price_base.into();
+            chain["gas_price"] = inner_table;
+            break
         }
     }
     let config_s = toml::to_string_pretty(&config)?;
