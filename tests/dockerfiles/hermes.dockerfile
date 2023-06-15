@@ -6,4 +6,6 @@ ADD https://github.com/informalsystems/hermes/releases/download/v1.5.1/hermes-v1
 RUN cd /root/.hermes/bin/ && tar -vxf *
 ENV PATH=$PATH:/root/.hermes/bin
 
-ADD ./dockerfile_resources/hermes_config.toml /root/.hermes/config.toml
+ENV HERMES_HOME="/root/.hermes"
+
+ADD ./dockerfile_resources/hermes_config_bootstrap.toml $HERMES_HOME/config.toml

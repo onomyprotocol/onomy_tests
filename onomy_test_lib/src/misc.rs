@@ -53,6 +53,8 @@ pub struct Args {
     #[arg(long, env)]
     pub daemon_home: Option<String>,
     #[arg(long, env)]
+    pub hermes_home: Option<String>,
+    #[arg(long, env)]
     pub onomy_current_version: Option<String>,
     #[arg(long, env)]
     pub onomy_upgrade_version: Option<String>,

@@ -10,7 +10,7 @@ use crate::{
 
 impl IbcSide {
     /// This call needs to be made on the source side
-    pub async fn cosmovisor_transfer(
+    pub async fn cosmovisor_ibc_transfer_with_flags(
         &self,
         target_addr: &str,
         coins_to_send: &str,
@@ -24,6 +24,38 @@ impl IbcSide {
             "tx ibc-transfer transfer transfer",
             &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
         )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Sends `denom` and uses same `denom` for gas. Uses the flags
+    /// "-b block --gas auto --gas-adjustment 1.3 --gas-prices 1{denom} --from
+    /// {from_key}"
+    pub async fn cosmovisor_ibc_transfer(
+        &self,
+        from_key: &str,
+        target_addr: &str,
+        amount: &str,
+        denom: &str,
+    ) -> Result<()> {
+        let coins_to_send = format!("{amount}{denom}");
+        let base = format!("1{denom}");
+        sh_cosmovisor_no_dbg("tx ibc-transfer transfer transfer", &[
+            &self.transfer_channel,
+            target_addr,
+            &coins_to_send,
+            "-b",
+            "block",
+            "--gas",
+            "auto",
+            "--gas-adjustment",
+            "1.3",
+            "--gas-prices",
+            &base,
+            "--from",
+            from_key,
+        ])
         .await?;
 
         Ok(())

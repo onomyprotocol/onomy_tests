@@ -86,7 +86,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
 
     // do this before getting the consumer-genesis
-    sh_cosmovisor(
+    sh_cosmovisor_no_dbg(
         "tx provider assign-consensus-key",
         &[[consumer_id, tendermint_key.as_str()].as_slice(), gas_args].concat(),
     )
@@ -94,7 +94,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
 
     // It appears we do not have to wait any blocks
 
-    let ccvconsumer_state = sh_cosmovisor("query provider consumer-genesis", &[
+    let ccvconsumer_state = sh_cosmovisor_no_dbg("query provider consumer-genesis", &[
         consumer_id,
         "-o",
         "json",

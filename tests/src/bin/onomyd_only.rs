@@ -59,7 +59,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sh(
         &format!(
             "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-             1337anom --gas auto --gas-adjustment 1.3 -y -b block --from validator"
+             1337anom --gas auto --gas-adjustment 1.3 -y -b block"
         ),
         &[],
     )

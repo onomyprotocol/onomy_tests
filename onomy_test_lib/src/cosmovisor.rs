@@ -70,6 +70,16 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
+    let app_toml_path = format!("{daemon_home}/config/app.toml");
+    let app_toml_s = FileOptions::read_to_string(&app_toml_path).await?;
+    let mut app_toml: toml::Value = toml::from_str(&app_toml_s).map_add_err(|| ())?;
+    app_toml["minimum-gas-prices"] = min_gas_price.into();
+    let app_toml_s = toml::to_string_pretty(&app_toml)?;
+    FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
+    Ok(())
+}
+
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
@@ -455,6 +465,25 @@ pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, Stri
         );
     }
     Ok(res)
+}
+
+/// This uses flags "-b block --gas auto --gas-adjustment 1.3 --gas-prices
+/// 1{denom}"
+pub async fn cosmovisor_bank_send(
+    src_addr: &str,
+    dst_addr: &str,
+    amount: &str,
+    denom: &str,
+) -> Result<()> {
+    sh_cosmovisor_no_dbg(
+        &format!(
+            "tx bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
+             --gas-adjustment 1.3 --gas-prices 1{denom}"
+        ),
+        &[],
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {

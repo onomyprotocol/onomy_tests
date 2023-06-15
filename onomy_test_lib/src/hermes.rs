@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
@@ -231,12 +233,43 @@ impl IbcPair {
     }
 }
 
-pub async fn hermes_start() -> Result<CommandRunner> {
+pub struct HermesRunner {
+    pub runner: CommandRunner,
+}
+
+impl HermesRunner {
+    pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
+        self.runner.send_unix_sigterm()?;
+        self.runner.wait_with_timeout(timeout).await
+    }
+}
+
+pub async fn hermes_start() -> Result<HermesRunner> {
     let hermes_log = FileOptions::write2("/logs", "hermes_runner.log");
     let hermes_runner = Command::new("hermes start", &[])
         .stderr_log(&hermes_log)
         .stdout_log(&hermes_log)
         .run()
         .await?;
-    Ok(hermes_runner)
+    Ok(HermesRunner {
+        runner: hermes_runner,
+    })
+}
+
+pub async fn hermes_set_gas_price_base(
+    hermes_home: &str,
+    chain_id: &str,
+    gas_price_base: &str,
+) -> Result<()> {
+    let config_path = format!("{hermes_home}/config.toml");
+    let config_s = FileOptions::read_to_string(&config_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    for chain in config["chains"].as_array_mut().map_add_err(|| ())? {
+        if chain["id"].as_str().map_add_err(|| ())? == chain_id {
+            chain["gas_price"] = gas_price_base.into();
+        }
+    }
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_path, &config_s).await?;
+    Ok(())
 }

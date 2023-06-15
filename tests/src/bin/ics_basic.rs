@@ -139,7 +139,7 @@ async fn hermes_runner() -> Result<()> {
     // tell that chains have been connected
     nm_onomyd.send::<()>(&()).await?;
 
-    hermes_runner.terminate().await?;
+    hermes_runner.terminate(TIMEOUT).await?;
     Ok(())
 }
 

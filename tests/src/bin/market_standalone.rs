@@ -41,11 +41,11 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
     dbg!(addr);
     println!(
         "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-         1337afootoken --gas auto --gas-adjustment 1.3 -y -b block --from validator"
+         1337afootoken --gas auto --gas-adjustment 1.3 -y -b block"
     );
     println!(
         "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-         1337afootoken -y -b block --from validator --fees 100000afootoken"
+         1337afootoken -y -b block --fees 100000afootoken"
     );
     // --gas-prices
 
