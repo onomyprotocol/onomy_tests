@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use log::info;
 use serde_json::{json, Value};
@@ -79,7 +79,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -155,7 +155,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
             global_min_self_delegation,
         ])
         .await?;
-        sh_cosmovisor("gravity collect-gentxs", &[]).await?;
+        sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
     } else {
         sh_cosmovisor("gentx validator", &[
             &nom(1.0e6),
@@ -167,7 +167,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
         .await?;
     }
 
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
@@ -177,7 +177,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let global_min_self_delegation = "225000000000000000000000";
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -230,7 +230,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         global_min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
@@ -257,8 +257,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         global_min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor("gravity collect-gentxs", &[]).await?;
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 */
 
 /// Note that this interprets "null" height as 0
@@ -439,6 +439,22 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
     )
     .map_add_err(|| ())?;
     Ok(json_inner(&validator[0]["address"]))
+}
+
+/// Returns a mapping of denoms to amounts
+pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, String>> {
+    let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
+        .await
+        .map_add_err(|| ())?;
+    let balances = yaml_str_to_json_value(&balances)?;
+    let mut res = BTreeMap::new();
+    for balance in balances["balances"].as_array().map_add_err(|| ())? {
+        res.insert(
+            json_inner(&balance["denom"]),
+            json_inner(&balance["amount"]),
+        );
+    }
+    Ok(res)
 }
 
 pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {

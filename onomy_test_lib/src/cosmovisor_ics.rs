@@ -7,6 +7,7 @@ use super_orchestrator::{
 use crate::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_get_num_proposals, fast_block_times, sh_cosmovisor,
+        sh_cosmovisor_no_dbg,
     },
     json_inner, token18,
 };
@@ -61,14 +62,14 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "validator",
     ]
     .as_slice();
-    sh_cosmovisor(
+    sh_cosmovisor_no_dbg(
         "tx gov submit-proposal consumer-addition",
         &[&[proposal_file_path.as_str()], gas_args].concat(),
     )
     .await?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
     // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor(
+    sh_cosmovisor_no_dbg(
         "tx gov vote",
         &[[&proposal_id, "yes"].as_slice(), gas_args].concat(),
     )
@@ -117,7 +118,7 @@ pub async fn marketd_setup(
 ) -> Result<()> {
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // add `ccvconsumer_state` to genesis

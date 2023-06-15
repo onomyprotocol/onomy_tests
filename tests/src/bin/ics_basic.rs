@@ -1,7 +1,8 @@
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_start, onomyd_setup, sh_cosmovisor_no_dbg},
     cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
-    hermes::{hermes_start, onomy_setup_pair, sh_hermes},
+    hermes::{hermes_start, sh_hermes},
+    ibc::IbcPair,
     onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork},
@@ -131,9 +132,9 @@ async fn hermes_runner() -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    let ibc_pair = onomy_setup_pair("market", "onomy").await?;
+    let ibc_pair = IbcPair::hermes_setup_pair("market", "onomy").await?;
     let mut hermes_runner = hermes_start().await?;
-    ibc_pair.check_acks().await?;
+    ibc_pair.hermes_check_acks().await?;
 
     // tell that chains have been connected
     nm_onomyd.send::<()>(&()).await?;

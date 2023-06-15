@@ -6,6 +6,7 @@ use super_orchestrator::{
     Command, CommandRunner, FileOptions,
 };
 
+pub use crate::ibc::IbcPair;
 use crate::json_inner;
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
@@ -191,88 +192,43 @@ pub async fn create_channel_pair(
     ))
 }
 
-#[derive(Debug, Clone)]
-pub struct IbcPair {
-    pub a_chain: String,
-    pub b_chain: String,
-    pub connection_pair: (String, String),
-    pub transfer_channel_pair: (String, String),
-    pub ics_channel_pair: (String, String),
-}
-
 impl IbcPair {
-    pub async fn check_acks(&self) -> Result<()> {
+    pub async fn hermes_check_acks(&self) -> Result<()> {
         // check all channels on both sides
-        sh_hermes("query packet acks --chain", &[
-            &self.b_chain,
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.b.chain_id,
             "--port",
             "transfer",
             "--channel",
-            &self.transfer_channel_pair.0,
+            &self.a.transfer_channel,
         ])
         .await?;
-        sh_hermes("query packet acks --chain", &[
-            &self.a_chain,
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.a.chain_id,
             "--port",
             "transfer",
             "--channel",
-            &self.transfer_channel_pair.1,
+            &self.b.transfer_channel,
         ])
         .await?;
-        sh_hermes("query packet acks --chain", &[
-            &self.b_chain,
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.b.chain_id,
             "--port",
             "provider",
             "--channel",
-            &self.ics_channel_pair.0,
+            &self.a.ics_channel,
         ])
         .await?;
-        sh_hermes("query packet acks --chain", &[
-            &self.a_chain,
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.a.chain_id,
             "--port",
             "consumer",
             "--channel",
-            &self.ics_channel_pair.1,
+            &self.b.ics_channel,
         ])
         .await?;
         Ok(())
     }
-}
-
-/// Sets up transfer and consumer-provider IBC channels. This function assumes
-/// ICS setup has been performed, which creates a client pair automatically.
-pub async fn onomy_setup_pair(consumer: &str, provider: &str) -> Result<IbcPair> {
-    // https://hermes.informal.systems/tutorials/local-chains/add-a-new-relay-path.html
-
-    // Note: For ICS, there is a point where a handshake must be initiated by the
-    // consumer chain, so we must make the consumer chain the "a-chain" and the
-    // producer chain the "b-chain"
-    let a_chain = consumer.to_owned();
-    let b_chain = provider.to_owned();
-
-    // a client is already created because of the ICS setup
-    //let client_pair = create_client_pair(a_chain, b_chain).await?;
-    // create one client and connection pair that will be used for IBC transfer and
-    // ICS communication
-    let connection_pair = create_connection_pair(&a_chain, &b_chain).await?;
-
-    // a_chain<->b_chain transfer<->transfer
-    let transfer_channel_pair =
-        create_channel_pair(&a_chain, &connection_pair.0, "transfer", "transfer", false).await?;
-
-    // a_chain<->b_chain consumer<->provider
-    let ics_channel_pair =
-        create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true).await?;
-
-    info!("{consumer} <-> {provider} transfer and consumer-provider channels have been set up");
-
-    Ok(IbcPair {
-        a_chain,
-        b_chain,
-        connection_pair,
-        transfer_channel_pair,
-        ics_channel_pair,
-    })
 }
 
 pub async fn hermes_start() -> Result<CommandRunner> {
