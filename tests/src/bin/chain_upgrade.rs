@@ -2,8 +2,8 @@ use common::container_runner;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_start, get_block_height, get_staking_pool, get_treasury,
-        get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
+        cosmovisor_get_num_proposals, cosmovisor_start, get_block_height, get_staking_pool,
+        get_treasury, get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
     },
     nom, onomy_std_init,
     super_orchestrator::{
@@ -12,7 +12,6 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -41,7 +40,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     assert_ne!(onomy_current_version, onomy_upgrade_version);
     onomyd_setup(daemon_home, true).await?;
-    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     assert_eq!(
         sh_cosmovisor("version", &[]).await?.trim(),
@@ -50,7 +49,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let upgrade_prepare_start = get_block_height().await?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
-    let proposal_id = "1";
 
     let gas_args = [
         "--gas",
@@ -84,6 +82,8 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .concat(),
     )
     .await?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    let proposal_id = proposal_id.as_str();
     sh_cosmovisor(
         "tx gov deposit",
         &[[proposal_id, &nom(2000.0)].as_slice(), gas_args].concat(),
@@ -106,8 +106,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     info!("{}", get_treasury().await?);
     info!("{}", get_treasury_inflation_annual().await?);
 
-    sleep(TIMEOUT).await;
-    cosmovisor_runner.terminate().await?;
-
+    cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }

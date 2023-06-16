@@ -1,10 +1,14 @@
+use std::time::Duration;
+
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
     sh, sh_no_dbg,
     stacked_errors::{Error, MapAddError, Result},
+    Command, CommandRunner, FileOptions,
 };
 
+pub use crate::ibc::IbcPair;
 use crate::json_inner;
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
@@ -188,4 +192,93 @@ pub async fn create_channel_pair(
         json_inner(&res["a_side"]["channel_id"]),
         json_inner(&res["b_side"]["channel_id"]),
     ))
+}
+
+impl IbcPair {
+    pub async fn hermes_check_acks(&self) -> Result<()> {
+        // check all channels on both sides
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.b.chain_id,
+            "--port",
+            "transfer",
+            "--channel",
+            &self.a.transfer_channel,
+        ])
+        .await?;
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.a.chain_id,
+            "--port",
+            "transfer",
+            "--channel",
+            &self.b.transfer_channel,
+        ])
+        .await?;
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.b.chain_id,
+            "--port",
+            "provider",
+            "--channel",
+            &self.a.ics_channel,
+        ])
+        .await?;
+        sh_hermes_no_dbg("query packet acks --chain", &[
+            &self.a.chain_id,
+            "--port",
+            "consumer",
+            "--channel",
+            &self.b.ics_channel,
+        ])
+        .await?;
+        Ok(())
+    }
+}
+
+pub struct HermesRunner {
+    pub runner: CommandRunner,
+}
+
+impl HermesRunner {
+    pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
+        self.runner.send_unix_sigterm()?;
+        self.runner.wait_with_timeout(timeout).await
+    }
+}
+
+pub async fn hermes_start() -> Result<HermesRunner> {
+    let hermes_log = FileOptions::write2("/logs", "hermes_runner.log");
+    let hermes_runner = Command::new("hermes start", &[])
+        .stderr_log(&hermes_log)
+        .stdout_log(&hermes_log)
+        .run()
+        .await?;
+    Ok(HermesRunner {
+        runner: hermes_runner,
+    })
+}
+
+/// Note: uses "price = 1.0"
+pub async fn hermes_set_gas_price_denom(
+    hermes_home: &str,
+    chain_id: &str,
+    gas_price_denom: &str,
+) -> Result<()> {
+    // can't get simpler than this without importing a lot of stuff
+    let outer_table: toml::Value = toml::from_str(&format!(
+        "gas-price = {{ price = 1.0, denom = '{gas_price_denom}' }}"
+    ))
+    .unwrap();
+    let inner_table = outer_table["gas-price"].clone();
+
+    let config_path = format!("{hermes_home}/config.toml");
+    let config_s = FileOptions::read_to_string(&config_path).await?;
+    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    for chain in config["chains"].as_array_mut().map_add_err(|| ())? {
+        if chain["id"].as_str().map_add_err(|| ())? == chain_id {
+            chain["gas_price"] = inner_table;
+            break
+        }
+    }
+    let config_s = toml::to_string_pretty(&config)?;
+    FileOptions::write_str(&config_path, &config_s).await?;
+    Ok(())
 }

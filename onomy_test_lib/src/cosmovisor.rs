@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use log::info;
 use serde_json::{json, Value};
@@ -9,7 +9,9 @@ use super_orchestrator::{
 };
 use tokio::time::sleep;
 
-use crate::{anom_to_nom, json_inner, nom, token18, yaml_str_to_json_value};
+use crate::{
+    anom_to_nom, json_inner, native_denom, nom, nom_denom, token18, yaml_str_to_json_value,
+};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -68,6 +70,16 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
+    let app_toml_path = format!("{daemon_home}/config/app.toml");
+    let app_toml_s = FileOptions::read_to_string(&app_toml_path).await?;
+    let mut app_toml: toml::Value = toml::from_str(&app_toml_s).map_add_err(|| ())?;
+    app_toml["minimum-gas-prices"] = min_gas_price.into();
+    let app_toml_s = toml::to_string_pretty(&app_toml)?;
+    FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
+    Ok(())
+}
+
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
@@ -77,7 +89,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
@@ -87,14 +99,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
     // put in the test `footoken` and the staking `anom`
-    let denom_metadata = json!(
-        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
-        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
-        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
-        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
-        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
-        "exponent": 18}]}]
-    );
+    let denom_metadata = nom_denom();
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
 
     // init DAO balance
@@ -160,7 +165,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
             global_min_self_delegation,
         ])
         .await?;
-        sh_cosmovisor("gravity collect-gentxs", &[]).await?;
+        sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
     } else {
         sh_cosmovisor("gentx validator", &[
             &nom(1.0e6),
@@ -172,7 +177,7 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
         .await?;
     }
 
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
@@ -182,25 +187,16 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let global_min_self_delegation = "225000000000000000000000";
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
-    // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    // rename all "stake" to "native"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    // put in the test `footoken` and the staking `anom`
-    let denom_metadata = json!(
-        [{"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
-        "description": "A non-staking test token", "denom_units": [{"denom": "footoken",
-        "exponent": 0}, {"denom": "mfootoken", "exponent": 6}]},
-        {"name": "NOM", "symbol": "NOM", "base": "anom", "display": "nom","description":
-        "Nom token", "denom_units": [{"denom": "anom", "exponent": 0}, {"denom": "nom",
-        "exponent": 18}]}]
-    );
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
     // min_global_self_delegation
     genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
@@ -215,7 +211,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
 
@@ -233,16 +229,18 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
 
-    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6, "afootoken");
+    let stake_coin = token18(1.0e6, "anative");
+    sh_cosmovisor("add-genesis-account validator", &[&gen_coins]).await?;
     sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
+        &stake_coin,
         "--chain-id",
         chain_id,
         "--min-self-delegation",
         global_min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
     Ok(mnemonic)
 }
@@ -269,8 +267,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         global_min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor("gravity collect-gentxs", &[]).await?;
-    sh_cosmovisor("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 */
 
 /// Note that this interprets "null" height as 0
@@ -306,10 +304,74 @@ pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
     wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
 }
 
+/// Returns the number of proposals
+pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
+    let comres = Command::new(
+        "cosmovisor run query gov proposals --count-total --limit 1",
+        &[],
+    )
+    .run_to_completion()
+    .await?;
+    if let Err(e) = comres.assert_success() {
+        // work around bad zero casing design
+        if comres
+            .stderr
+            .trim()
+            .starts_with("Error: no proposals found")
+        {
+            return Ok(0)
+        } else {
+            return Err(e)
+        }
+    }
+    let stdout = comres
+        .stdout
+        .split_once('\n')
+        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .1;
+
+    let v = yaml_str_to_json_value(stdout)?;
+    let total = v["pagination"]["total"].as_str().map_add_err(|| ())?;
+    total.parse::<u64>().map_add_err(|| ())
+}
+
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;
     let tendermint_id = s.trim();
     Ok(format!("{tendermint_id}@{hostname}:26656"))
+}
+
+pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
+    let comres = sh_no_dbg("cosmovisor run version", &[]).await?;
+    let val = get_separated_val(
+        comres.lines().next().map_add_err(|| ())?,
+        " ",
+        "\u{1b}[36mpath=\u{1b}[0m",
+        "",
+    )?;
+    Ok(val)
+}
+
+pub struct CosmovisorOptions {
+    pub halt_height: Option<u64>,
+}
+
+/// `cosmovisor run start` spawns the cosmos binary as a completely separate
+/// child process, meaning that terminating the parent `Command` does not
+/// actually terminate the running binary. This sends a `SIGTERM` signal to
+/// properly terminate cosmovisor.
+///
+/// Note however that other commands like `wait_with_timeout` work as expected
+/// on the internal runner
+pub struct CosmovisorRunner {
+    pub runner: CommandRunner,
+}
+
+impl CosmovisorRunner {
+    pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
+        self.runner.send_unix_sigterm()?;
+        self.runner.wait_with_timeout(timeout).await
+    }
 }
 
 /// This starts cosmovisor and waits for height 1
@@ -319,22 +381,27 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
 /// `peer` should be the `tendermint_id@host_ip:port` of the peer
 pub async fn cosmovisor_start(
     log_file_name: &str,
-    listen: bool,
-    peer: Option<String>,
-) -> Result<CommandRunner> {
+    options: Option<CosmovisorOptions>,
+) -> Result<CosmovisorRunner> {
     let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
-    if listen {
-        // TODO this is actually the default?
-        //args.push("--p2p.laddr");
-        //args.push("tcp://0.0.0.0:26656");
-        args.push("--rpc.laddr");
-        args.push("tcp://0.0.0.0:26657");
-    }
-    if let Some(ref peer) = peer {
+    // TODO this is actually the default?
+    //args.push("--p2p.laddr");
+    //args.push("tcp://0.0.0.0:26656");
+    args.push("--rpc.laddr");
+    args.push("tcp://0.0.0.0:26657");
+    /*if let Some(ref peer) = peer {
         args.push("--p2p.persistent_peers");
         args.push(peer);
+    }*/
+    let halt_height_s;
+    if let Some(options) = options {
+        if let Some(halt_height) = options.halt_height {
+            args.push("--halt-height");
+            halt_height_s = format!("{}", halt_height);
+            args.push(&halt_height_s);
+        }
     }
 
     let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &args)
@@ -347,21 +414,31 @@ pub async fn cosmovisor_start(
     // avoid the initial debug failure
     sleep(Duration::from_millis(300)).await;
     wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
-    wait_for_height(25, Duration::from_millis(300), 1)
+    // account for if we are not starting at height 0
+    let current_height = get_block_height().await?;
+    wait_for_height(25, Duration::from_millis(300), current_height + 1)
         .await
         .map_add_err(|| {
-            "daemon could not reach height 1, probably a genesis issue, check runner logs"
+            format!(
+                "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                current_height + 1
+            )
         })?;
-    info!("daemon has reached height 1");
+    info!("daemon has reached height {}", current_height + 1);
     // we also wait for height 2, because there are consensus failures and reward
     // propogations that only start on height 2
-    wait_for_height(25, Duration::from_millis(300), 2)
+    wait_for_height(25, Duration::from_millis(300), current_height + 2)
         .await
         .map_add_err(|| {
-            "daemon could not reach height 2, probably a consensus failure, check runner logs"
+            format!(
+                "daemon could not reach height {}, probably a consensus failure, check runner logs",
+                current_height + 2
+            )
         })?;
-    info!("daemon has reached height 2");
-    Ok(cosmovisor_runner)
+    info!("daemon has reached height {}", current_height + 2);
+    Ok(CosmovisorRunner {
+        runner: cosmovisor_runner,
+    })
 }
 
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
@@ -372,6 +449,41 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
     )
     .map_add_err(|| ())?;
     Ok(json_inner(&validator[0]["address"]))
+}
+
+/// Returns a mapping of denoms to amounts
+pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, String>> {
+    let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
+        .await
+        .map_add_err(|| ())?;
+    let balances = yaml_str_to_json_value(&balances)?;
+    let mut res = BTreeMap::new();
+    for balance in balances["balances"].as_array().map_add_err(|| ())? {
+        res.insert(
+            json_inner(&balance["denom"]),
+            json_inner(&balance["amount"]),
+        );
+    }
+    Ok(res)
+}
+
+/// This uses flags "-b block --gas auto --gas-adjustment 1.3 --gas-prices
+/// 1{denom}"
+pub async fn cosmovisor_bank_send(
+    src_addr: &str,
+    dst_addr: &str,
+    amount: &str,
+    denom: &str,
+) -> Result<()> {
+    sh_cosmovisor_no_dbg(
+        &format!(
+            "tx bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
+             --gas-adjustment 1.3 --gas-prices 1{denom}"
+        ),
+        &[],
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {

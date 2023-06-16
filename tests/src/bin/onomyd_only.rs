@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use common::container_runner;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_start, get_apr_annual, get_delegations_to,
-        get_staking_pool, get_treasury, get_treasury_inflation_annual, onomyd_setup,
+        get_staking_pool, get_treasury, get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor,
         wait_for_num_blocks,
     },
     onomy_std_init, reprefix_bech32,
@@ -39,7 +41,7 @@ async fn main() -> Result<()> {
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     onomyd_setup(daemon_home, false).await?;
-    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", false, None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").unwrap();
@@ -57,14 +59,16 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sh(
         &format!(
             "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-             1337anom --gas auto --gas-adjustment 1.3 -y -b block --from validator"
+             1337anom --gas auto --gas-adjustment 1.3 -y -b block"
         ),
         &[],
     )
     .await?;
 
-    sleep(TIMEOUT).await;
-    cosmovisor_runner.terminate().await?;
+    sleep(Duration::from_secs(3)).await;
+    cosmovisor_runner.terminate(TIMEOUT).await?;
+    // test that exporting works
+    let _ = sh_cosmovisor("export", &[]).await?;
 
     Ok(())
 }

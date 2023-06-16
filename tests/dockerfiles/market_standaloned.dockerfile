@@ -7,9 +7,7 @@ ENV DAEMON_NAME="market_standaloned"
 ENV DAEMON_HOME="/root/.onomy_market_standalone"
 ENV MARKET_CURRENT_VERSION=v0.1.0
 
-# FIXME
 ADD ./dockerfile_resources/market_standaloned $DAEMON_HOME/cosmovisor/genesis/$MARKET_CURRENT_VERSION/bin/market_standaloned
-#ADD https://github.com/pendulum-labs/market/releases/download/$MARKET_CURRENT_VERSION/market_standaloned $DAEMON_HOME/cosmovisor/genesis/$MARKET_CURRENT_VERSION/bin/market_standaloned
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$MARKET_CURRENT_VERSION/bin/market_standaloned
