@@ -135,13 +135,14 @@ async fn geth_runner() -> Result<()> {
     .await?;
 
     sh(
-        "geth --identity \"testnet\" --nodiscover --networkid 15 init",
+        "geth --identity \"testnet\" --networkid 15 init",
         &[genesis_file],
     )
     .await?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
     let mut geth_runner = Command::new("geth", &[
+        "--nodiscover",
         "--allow-insecure-unlock",
         "--unlock",
         "0xBf660843528035a5A4921534E156a27e64B231fE",
