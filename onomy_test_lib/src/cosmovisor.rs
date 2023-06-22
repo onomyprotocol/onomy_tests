@@ -224,7 +224,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
 }
 
 pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
-    let chain_id = "onomy";
+    let chain_id = "gravity";
     let min_self_delegation = &token18(1.0, "");
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
@@ -253,7 +253,6 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
 
@@ -292,6 +291,12 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     ])
     .await?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+
+    FileOptions::write_str(
+        &format!("/logs/{chain_id}_genesis.json"),
+        &FileOptions::read_to_string(&genesis_file_path).await?,
+    )
+    .await?;
 
     Ok(mnemonic)
 }

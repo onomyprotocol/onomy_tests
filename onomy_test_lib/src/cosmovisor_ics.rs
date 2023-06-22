@@ -178,7 +178,6 @@ pub async fn arc_ethd_setup(
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/arc_eth_genesis.json", &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
     let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await?;
