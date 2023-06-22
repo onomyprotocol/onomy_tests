@@ -39,7 +39,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let onomy_upgrade_version = args.onomy_upgrade_version.as_ref().map_add_err(|| ())?;
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     assert_ne!(onomy_current_version, onomy_upgrade_version);
-    onomyd_setup(daemon_home, true).await?;
+    onomyd_setup(daemon_home).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     assert_eq!(

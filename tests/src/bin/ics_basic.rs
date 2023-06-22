@@ -171,7 +171,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .map_add_err(|| ())?;
 
-    let mnemonic = onomyd_setup(daemon_home, false).await?;
+    let mnemonic = onomyd_setup(daemon_home).await?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await?;
 

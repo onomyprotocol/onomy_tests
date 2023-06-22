@@ -84,7 +84,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String> {
+pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
