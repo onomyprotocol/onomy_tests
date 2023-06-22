@@ -9,6 +9,9 @@ async fn main() -> Result<()> {
     remove_files_in_dir("./tests/dockerfiles/dockerfile_resources", &[
         "onomyd",
         "marketd",
+        "market_standaloned",
+        "gravity",
+        "arc_ethd",
         "interchain-security-cd",
     ])
     .await?;

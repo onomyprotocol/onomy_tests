@@ -139,13 +139,72 @@ pub async fn marketd_setup(
     // we need some native token in the bank, and don't need gentx
     sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
 
+    fast_block_times(daemon_home).await?;
+
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
         &FileOptions::read_to_string(&genesis_file_path).await?,
     )
     .await?;
 
+    Ok(())
+}
+
+pub async fn arc_ethd_setup(
+    daemon_home: &str,
+    chain_id: &str,
+    ccvconsumer_state_s: &str,
+) -> Result<()> {
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+
+    // add `ccvconsumer_state` to genesis
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    let genesis_s = genesis.to_string();
+
+    // I will name the token "native" because it won't be staked in the normal sense
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
+
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+
+    let addr: &String = &cosmovisor_get_addr("validator").await?;
+    let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await?;
+
+    // we need some native token in the bank, and don't need gentx
+    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
+    sh_cosmovisor("add-genesis-account", &[
+        orch_addr,
+        &token18(2.0e6, "anative"),
+    ])
+    .await?;
+
+    /*let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
+    sh_cosmovisor("gravity gentx validator", &[
+        &token18(1.0e6, "anative"),
+        eth_addr,
+        orch_addr,
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        &token18(0.0, ""),
+    ])
+    .await?;
+    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;*/
+
     fast_block_times(daemon_home).await?;
+
+    FileOptions::write_str(
+        &format!("/logs/{chain_id}_genesis.json"),
+        &FileOptions::read_to_string(&genesis_file_path).await?,
+    )
+    .await?;
 
     Ok(())
 }

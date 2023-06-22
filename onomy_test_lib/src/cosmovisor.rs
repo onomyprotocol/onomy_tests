@@ -142,40 +142,18 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
         .to_owned();
     sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
 
-    if arc_module {
-        // Even if we don't test the bridge, we need this because SetValsetRequest is
-        // called by the gravity module. There are parallel validators for the
-        // gravity module, and they need all their own `gravity` variations of `gentx`
-        // and `collect-gentxs`
-        sh_cosmovisor("keys add orchestrator", &[]).await?;
-        let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-        let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-        let orch_addr = &sh_cosmovisor("keys show orchestrator -a", &[])
-            .await?
-            .trim()
-            .to_owned();
-        sh_cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
-        sh_cosmovisor("gravity gentx validator", &[
-            &nom(1.0e6),
-            eth_addr,
-            orch_addr,
-            "--chain-id",
-            chain_id,
-            "--min-self-delegation",
-            global_min_self_delegation,
-        ])
-        .await?;
-        sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
-    } else {
-        sh_cosmovisor("gentx validator", &[
-            &nom(1.0e6),
-            "--chain-id",
-            chain_id,
-            "--min-self-delegation",
-            global_min_self_delegation,
-        ])
-        .await?;
-    }
+    // unconditionally needed for some Arc tests
+    sh_cosmovisor("keys add orchestrator", &[]).await?;
+    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)]).await?;
+
+    sh_cosmovisor("gentx validator", &[
+        &nom(1.0e6),
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
+    ])
+    .await?;
 
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
@@ -242,6 +220,85 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     .await?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
+    Ok(mnemonic)
+}
+
+pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
+    let chain_id = "onomy";
+    let min_self_delegation = &token18(1.0, "");
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+
+    // rename all "stake" to "anom"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    // Under some dirty commit conditions, we need to reset this
+    genesis["chain_id"] = chain_id.into();
+
+    // put in the test `footoken` and the staking `anom`
+    let denom_metadata = nom_denom();
+    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // write back genesis
+    let genesis_s = serde_json::to_string(&genesis)?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
+
+    // we need the stderr to get the mnemonic
+    let comres = Command::new("cosmovisor run keys add validator", &[])
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let mnemonic = comres
+        .stderr
+        .trim()
+        .lines()
+        .last()
+        .map_add_err(|| "no last line")?
+        .trim()
+        .to_owned();
+    // TODO for unknown reasons, add-genesis-account cannot find the keys
+    let addr = cosmovisor_get_addr("validator").await?;
+    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)]).await?;
+
+    // unconditionally needed for some Arc tests
+    sh_cosmovisor("keys add orchestrator", &[]).await?;
+    let orch_addr = cosmovisor_get_addr("orchestrator").await?;
+    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)]).await?;
+
+    // Even if we don't test the bridge, we need this because SetValsetRequest is
+    // called by the gravity module. There are parallel validators for the
+    // gravity module, and they need all their own `gravity` variations of `gentx`
+    // and `collect-gentxs`
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
+    sh_cosmovisor("gentx validator", &[
+        &nom(1.0e6),
+        eth_addr,
+        &orch_addr,
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        min_self_delegation,
+    ])
+    .await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+
+    // the standalone version requires this for some reason
+    set_minimum_gas_price(daemon_home, "1anom").await?;
     Ok(mnemonic)
 }
 

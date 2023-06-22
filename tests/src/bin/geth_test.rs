@@ -134,10 +134,9 @@ async fn geth_runner() -> Result<()> {
     ])
     .await?;
 
-    sh(
-        "geth --identity \"testnet\" --networkid 15 init",
-        &[genesis_file],
-    )
+    sh("geth --identity \"testnet\" --networkid 15 init", &[
+        genesis_file,
+    ])
     .await?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
