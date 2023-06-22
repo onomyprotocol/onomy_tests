@@ -279,10 +279,6 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     let orch_addr = cosmovisor_get_addr("orchestrator").await?;
     sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)]).await?;
 
-    // Even if we don't test the bridge, we need this because SetValsetRequest is
-    // called by the gravity module. There are parallel validators for the
-    // gravity module, and they need all their own `gravity` variations of `gentx`
-    // and `collect-gentxs`
     let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
     sh_cosmovisor("gentx validator", &[
@@ -297,36 +293,8 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     .await?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
-    // the standalone version requires this for some reason
-    set_minimum_gas_price(daemon_home, "1anom").await?;
     Ok(mnemonic)
 }
-
-// TODO when reintroducing the bridge we need
-/*
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-    let orch_addr = &sh_cosmovisor("keys show orchestrator -a", &[])
-        .await?
-        .trim()
-        .to_owned();
-    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
-
-    // note the special gravity variation
-    sh_cosmovisor("gravity gentx validator", &[
-        &nom(95.0e6),
-        eth_addr,
-        orch_addr,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        global_min_self_delegation,
-    ])
-    .await?;
-    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
-*/
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {

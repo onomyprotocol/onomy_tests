@@ -1,5 +1,6 @@
 use serde_json::Value;
 use super_orchestrator::{
+    get_separated_val,
     stacked_errors::{MapAddError, Result},
     FileOptions,
 };
@@ -169,9 +170,15 @@ pub async fn arc_ethd_setup(
 
     // I will name the token "native" because it won't be staked in the normal sense
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
+    // Under some dirty commit conditions, we need to reset this
+    genesis["chain_id"] = chain_id.into();
+
+    // write back genesis
+    let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+    FileOptions::write_str("/logs/arc_eth_genesis.json", &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
     let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await?;
@@ -184,19 +191,20 @@ pub async fn arc_ethd_setup(
     ])
     .await?;
 
-    /*let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-    sh_cosmovisor("gravity gentx validator", &[
+    let min_self_delegation = &token18(1.0, "");
+    sh_cosmovisor("gentx validator", &[
         &token18(1.0e6, "anative"),
         eth_addr,
-        orch_addr,
+        &orch_addr,
         "--chain-id",
         chain_id,
         "--min-self-delegation",
-        &token18(0.0, ""),
+        min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;*/
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
     fast_block_times(daemon_home).await?;
 
