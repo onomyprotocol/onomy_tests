@@ -10,7 +10,7 @@ use onomy_test_lib::{
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
     super_orchestrator::{
-        docker::{Container, ContainerNetwork},
+        docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{MapAddError, Result},
@@ -70,49 +70,42 @@ async fn container_runner(args: &Args) -> Result<()> {
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
     let entrypoint = entrypoint.as_deref();
-    let volumes = vec![(logs_dir, "/logs")];
-    let mut onomyd_volumes = volumes.clone();
-    let mut consumer_volumes = volumes.clone();
-    onomyd_volumes.push((
-        "./tests/resources/keyring-test",
-        "/root/.onomy/keyring-test",
-    ));
-    consumer_volumes.push((
-        "./tests/resources/keyring-test",
-        "/root/.onomy_arc_eth/keyring-test",
-    ));
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "hermes",
-                Some("./tests/dockerfiles/hermes.dockerfile"),
-                None,
-                &volumes,
+                Dockerfile::Path("./tests/dockerfiles/hermes.dockerfile".to_owned()),
                 entrypoint,
                 &["--entry-name", "hermes"],
             ),
             Container::new(
                 "onomyd",
-                Some("./tests/dockerfiles/onomyd.dockerfile"),
-                None,
-                &onomyd_volumes,
+                Dockerfile::Path("./tests/dockerfiles/onomyd.dockerfile".to_owned()),
                 entrypoint,
                 &["--entry-name", "onomyd"],
-            ),
+            )
+            .volumes(&[(
+                "./tests/resources/keyring-test",
+                "/root/.onomy/keyring-test",
+            )]),
             Container::new(
                 "arc_ethd",
-                Some("./tests/dockerfiles/arc_ethd.dockerfile"),
-                None,
-                &consumer_volumes,
+                Dockerfile::Path("./tests/dockerfiles/arc_ethd.dockerfile".to_owned()),
                 entrypoint,
                 &["--entry-name", "arc_ethd"],
-            ),
+            )
+            .volumes(&[(
+                "./tests/resources/keyring-test",
+                "/root/.onomy_arc_eth/keyring-test",
+            )]),
         ],
+        None,
         true,
         logs_dir,
-    )?;
+    )?
+    .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await?;
     Ok(())

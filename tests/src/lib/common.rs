@@ -1,6 +1,6 @@
 use onomy_test_lib::{
     super_orchestrator::{
-        docker::{Container, ContainerNetwork},
+        docker::{Container, ContainerNetwork, Dockerfile},
         sh,
         stacked_errors::Result,
     },
@@ -32,9 +32,7 @@ pub async fn container_runner(
             .map(|(dockerfile, entry_name)| {
                 Container::new(
                     entry_name,
-                    Some(&format!("./tests/dockerfiles/{dockerfile}.dockerfile")),
-                    None,
-                    &[(logs_dir, "/logs")],
+                    Dockerfile::Path(format!("./tests/dockerfiles/{dockerfile}.dockerfile")),
                     Some(&format!(
                         "./target/{container_target}/release/{bin_entrypoint}"
                     )),
@@ -42,10 +40,11 @@ pub async fn container_runner(
                 )
             })
             .collect(),
-        // TODO
+        Some("./dockerfiles"),
         true,
         logs_dir,
-    )?;
+    )?
+    .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
     Ok(())
