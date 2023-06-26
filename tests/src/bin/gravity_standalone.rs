@@ -48,14 +48,6 @@ async fn gravity_runner(args: &Args) -> Result<()> {
     info!("{}", get_delegations_to(valoper_addr).await?);
     info!("{:?}", get_staking_pool().await?);
 
-    /*
-    tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-
-    ctx := app.NewContext(true, tmproto.Header{Height: app.LastBlockHeight()})
-    feePool := app.DistrKeeper.GetFeePool(ctx)
-    panic(feePool)
-    */
-
     sleep(Duration::from_secs(3)).await;
     cosmovisor_runner.terminate(TIMEOUT).await?;
     // test that exporting works

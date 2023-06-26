@@ -426,8 +426,12 @@ pub async fn cosmovisor_start(
         args.push(peer);
     }*/
     let halt_height_s;
+    let mut quick_halt = false;
     if let Some(options) = options {
         if let Some(halt_height) = options.halt_height {
+            if halt_height <= 2 {
+                quick_halt = true;
+            }
             args.push("--halt-height");
             halt_height_s = format!("{}", halt_height);
             args.push(&halt_height_s);
@@ -439,33 +443,39 @@ pub async fn cosmovisor_start(
         .stdout_log(&cosmovisor_log)
         .run()
         .await?;
-    // wait for status to be ok and daemon to be running
-    info!("waiting for daemon to run");
-    // avoid the initial debug failure
-    sleep(Duration::from_millis(300)).await;
-    wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
-    // account for if we are not starting at height 0
-    let current_height = get_block_height().await?;
-    wait_for_height(25, Duration::from_millis(300), current_height + 1)
-        .await
-        .map_add_err(|| {
-            format!(
-                "daemon could not reach height {}, probably a genesis issue, check runner logs",
-                current_height + 1
-            )
-        })?;
-    info!("daemon has reached height {}", current_height + 1);
-    // we also wait for height 2, because there are consensus failures and reward
-    // propogations that only start on height 2
-    wait_for_height(25, Duration::from_millis(300), current_height + 2)
-        .await
-        .map_add_err(|| {
-            format!(
-                "daemon could not reach height {}, probably a consensus failure, check runner logs",
-                current_height + 2
-            )
-        })?;
-    info!("daemon has reached height {}", current_height + 2);
+
+    if quick_halt {
+        info!("skipping waiting because halt_height <= 2");
+    } else {
+        // wait for status to be ok and daemon to be running
+        info!("waiting for daemon to run");
+        // avoid the initial debug failure
+        sleep(Duration::from_millis(300)).await;
+        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
+        // account for if we are not starting at height 0
+        let current_height = get_block_height().await?;
+        wait_for_height(25, Duration::from_millis(300), current_height + 1)
+            .await
+            .map_add_err(|| {
+                format!(
+                    "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                    current_height + 1
+                )
+            })?;
+        info!("daemon has reached height {}", current_height + 1);
+        // we also wait for height 2, because there are consensus failures and reward
+        // propogations that only start on height 2
+        wait_for_height(25, Duration::from_millis(300), current_height + 2)
+            .await
+            .map_add_err(|| {
+                format!(
+                    "daemon could not reach height {}, probably a consensus failure, check runner \
+                     logs",
+                    current_height + 2
+                )
+            })?;
+        info!("daemon has reached height {}", current_height + 2);
+    }
     Ok(CosmovisorRunner {
         runner: cosmovisor_runner,
     })
