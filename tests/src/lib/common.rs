@@ -9,13 +9,11 @@ use onomy_test_lib::{
 
 /// Useful for running simple container networks that have a standard format and
 /// don't need extra build or volume arguments.
-pub async fn container_runner(
-    args: &Args,
-    dockerfiles_and_entry_names: &[(&str, &str)],
-) -> Result<()> {
+pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -> Result<()> {
+    let logs_dir = "./tests/logs";
+    let dockerfiles_dir = "./tests/dockerfiles";
     let bin_entrypoint = &args.bin_name;
     let container_target = "x86_64-unknown-linux-gnu";
-    let logs_dir = "./tests/logs";
 
     // build internal runner
     sh("cargo build --release --bin", &[
@@ -27,20 +25,20 @@ pub async fn container_runner(
 
     let mut cn = ContainerNetwork::new(
         "test",
-        dockerfiles_and_entry_names
+        name_and_contents
             .iter()
-            .map(|(dockerfile, entry_name)| {
+            .map(|(name, contents)| {
                 Container::new(
-                    entry_name,
-                    Dockerfile::Path(format!("./tests/dockerfiles/{dockerfile}.dockerfile")),
+                    name,
+                    Dockerfile::Contents(contents.to_string()),
                     Some(&format!(
                         "./target/{container_target}/release/{bin_entrypoint}"
                     )),
-                    &["--entry-name", entry_name],
+                    &["--entry-name", name],
                 )
             })
             .collect(),
-        Some("./dockerfiles"),
+        Some(dockerfiles_dir),
         true,
         logs_dir,
     )?

@@ -8,6 +8,7 @@ use onomy_test_lib::{
         get_staking_pool, get_treasury, get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor,
         wait_for_num_blocks,
     },
+    dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init, reprefix_bech32,
     super_orchestrator::{
         sh,
@@ -34,7 +35,11 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;
-        container_runner(&args, &[("onomyd", "onomyd")]).await
+        container_runner(&args, &[(
+            "onomyd",
+            &onomy_std_cosmos_daemon("onomyd", ".onomy", "v1.1.1", "onomyd"),
+        )])
+        .await
     }
 }
 

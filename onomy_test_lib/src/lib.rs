@@ -1,5 +1,6 @@
 pub mod cosmovisor;
 pub mod cosmovisor_ics;
+pub mod dockerfiles;
 pub mod hermes;
 pub mod ibc;
 mod misc;
