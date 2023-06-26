@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -7,6 +8,7 @@ use onomy_test_lib::{
         onomyd_setup, set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
     cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
+    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
     super_orchestrator::{
@@ -50,9 +52,10 @@ async fn main() -> Result<()> {
 }
 
 async fn container_runner(args: &Args) -> Result<()> {
+    let logs_dir = "./tests/logs";
+    let dockerfiles_dir = "./tests/dockerfiles";
     let bin_entrypoint = &args.bin_name;
     let container_target = "x86_64-unknown-linux-gnu";
-    let logs_dir = "./tests/logs";
 
     // build internal runner with `--release`
     sh("cargo build --release --bin", &[
@@ -75,13 +78,13 @@ async fn container_runner(args: &Args) -> Result<()> {
         vec![
             Container::new(
                 "hermes",
-                Dockerfile::Path("./tests/dockerfiles/hermes.dockerfile".to_owned()),
+                Dockerfile::Contents(dockerfile_hermes("hermes_config.toml")),
                 entrypoint,
                 &["--entry-name", "hermes"],
             ),
             Container::new(
                 "onomyd",
-                Dockerfile::Path("./tests/dockerfiles/onomyd.dockerfile".to_owned()),
+                Dockerfile::Contents(dockerfile_onomyd()),
                 entrypoint,
                 &["--entry-name", "onomyd"],
             )
@@ -91,7 +94,12 @@ async fn container_runner(args: &Args) -> Result<()> {
             )]),
             Container::new(
                 "marketd",
-                Dockerfile::Path("./tests/dockerfiles/marketd.dockerfile".to_owned()),
+                Dockerfile::Contents(onomy_std_cosmos_daemon(
+                    "marketd",
+                    ".onomy_market",
+                    "v0.1.0",
+                    "marketd",
+                )),
                 entrypoint,
                 &["--entry-name", "marketd"],
             )
@@ -100,7 +108,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "/root/.onomy_market/keyring-test",
             )]),
         ],
-        None,
+        Some(dockerfiles_dir),
         true,
         logs_dir,
     )?

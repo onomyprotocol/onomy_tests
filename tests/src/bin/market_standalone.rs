@@ -1,6 +1,7 @@
 use common::container_runner;
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_get_addr, cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
+    dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
     super_orchestrator::{
         sh,
@@ -28,7 +29,16 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;
-        container_runner(&args, &[("market_standaloned", "market_standaloned")]).await
+        container_runner(&args, &[(
+            "market_standaloned",
+            &onomy_std_cosmos_daemon(
+                "market_standaloned",
+                ".onomy_market_standalone",
+                "v0.1.0",
+                "market_standaloned",
+            ),
+        )])
+        .await
     }
 }
 

@@ -3,6 +3,7 @@ use std::{str::FromStr, time::Duration};
 use clarity::Address;
 use log::info;
 use onomy_test_lib::{
+    dockerfiles::ONOMY_STD,
     onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
@@ -30,10 +31,18 @@ async fn main() -> Result<()> {
     }
 }
 
+#[rustfmt::skip]
+const GETH: &str = r#"ADD https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.12.0-e501b3b0.tar.gz /tmp/geth.tar.gz
+RUN cd /tmp && tar -xvf * && mv /tmp/geth-linux-amd64-1.12.0-e501b3b0/geth /usr/bin/geth
+
+RUN mkdir /resources
+"#;
+
 async fn container_runner(args: &Args) -> Result<()> {
+    let logs_dir = "./tests/logs";
+    let dockerfiles_dir = "./tests/dockerfiles";
     let bin_entrypoint = &args.bin_name;
     let container_target = "x86_64-unknown-linux-gnu";
-    let logs_dir = "./tests/logs";
 
     // build internal runner with `--release`
     sh("cargo build --release --bin", &[
@@ -55,13 +64,13 @@ async fn container_runner(args: &Args) -> Result<()> {
         vec![
             Container::new(
                 "geth",
-                Dockerfile::Path("./tests/dockerfiles/geth.dockerfile".to_owned()),
+                Dockerfile::Contents(format!("{ONOMY_STD} {GETH}")),
                 entrypoint,
                 &["--entry-name", "geth"],
             ),
             Container::new(
                 "test",
-                Dockerfile::Path("./tests/dockerfiles/onomy_std.dockerfile".to_owned()),
+                Dockerfile::Contents(ONOMY_STD.to_owned()),
                 entrypoint,
                 &["--entry-name", "test"],
             ),
@@ -73,7 +82,7 @@ async fn container_runner(args: &Args) -> Result<()> {
             )
             .create_args(&["-p", "9090:9090"]),
         ],
-        None,
+        Some(dockerfiles_dir),
         true,
         logs_dir,
     )?

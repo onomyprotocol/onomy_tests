@@ -1,4 +1,5 @@
 use onomy_test_lib::{
+    dockerfiles::onomy_std_cosmos_daemon,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
@@ -6,6 +7,10 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
+
+pub fn dockerfile_onomyd() -> String {
+    onomy_std_cosmos_daemon("onomyd", ".onomy", "v1.1.1", "onomyd")
+}
 
 /// Useful for running simple container networks that have a standard format and
 /// don't need extra build or volume arguments.

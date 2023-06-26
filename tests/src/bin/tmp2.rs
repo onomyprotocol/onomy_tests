@@ -1,6 +1,7 @@
 use common::container_runner;
 use log::info;
 use onomy_test_lib::{
+    dockerfiles::ONOMY_STD,
     onomy_std_init,
     super_orchestrator::{
         net_message::NetMessenger,
@@ -23,7 +24,7 @@ async fn main() -> Result<()> {
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
-        container_runner(&args, &[("onomy_std", "tmp0"), ("onomy_std", "tmp1")]).await
+        container_runner(&args, &[("tmp0", ONOMY_STD), ("tmp1", ONOMY_STD)]).await
     }
 }
 

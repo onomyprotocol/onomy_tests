@@ -9,6 +9,24 @@ pub const COSMOVISOR: &str = r#"RUN go install cosmossdk.io/tools/cosmovisor/cmd
 ENV PATH=$PATH:/root/go/bin
 "#;
 
+#[rustfmt::skip]
+pub const HERMES: &str = r#"ADD https://github.com/informalsystems/hermes/releases/download/v1.5.1/hermes-v1.5.1-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
+RUN cd /root/.hermes/bin/ && tar -vxf *
+ENV PATH=$PATH:/root/.hermes/bin
+ENV HERMES_HOME="/root/.hermes"
+"#;
+
+pub fn dockerfile_hermes(config_resource: &str) -> String {
+    format!(
+        r#"{ONOMY_STD}
+
+{HERMES}
+
+ADD ./dockerfile_resources/{config_resource} $HERMES_HOME/config.toml
+"#
+    )
+}
+
 //ADD https://github.com/onomyprotocol/onomy/releases/download/$DAEMON_VERSION/{daemon_name}
 //$DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/{daemon_name}
 

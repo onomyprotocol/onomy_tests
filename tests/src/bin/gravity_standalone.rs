@@ -7,6 +7,7 @@ use onomy_test_lib::{
         cosmovisor_get_addr, cosmovisor_start, get_apr_annual, get_delegations_to,
         get_staking_pool, gravity_standalone_setup, sh_cosmovisor,
     },
+    dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init, reprefix_bech32,
     super_orchestrator::{
         sh,
@@ -32,7 +33,11 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;
-        container_runner(&args, &[("gravity_standaloned", "gravity")]).await
+        container_runner(&args, &[(
+            "gravity",
+            &onomy_std_cosmos_daemon("gravity", ".gravity", "v0.1.0", "gravity"),
+        )])
+        .await
     }
 }
 
