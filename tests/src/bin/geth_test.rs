@@ -5,7 +5,7 @@ use log::info;
 use onomy_test_lib::{
     onomy_std_init,
     super_orchestrator::{
-        docker::{Container, ContainerNetwork},
+        docker::{Container, ContainerNetwork, Dockerfile},
         sh,
         stacked_errors::{Error, MapAddError, Result},
         wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
@@ -49,40 +49,35 @@ async fn container_runner(args: &Args) -> Result<()> {
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
     let entrypoint = entrypoint.as_deref();
-    let volumes = vec![(logs_dir, "/logs")];
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "geth",
-                Some("./tests/dockerfiles/geth.dockerfile"),
-                None,
-                &volumes,
+                Dockerfile::Path("./tests/dockerfiles/geth.dockerfile".to_owned()),
                 entrypoint,
                 &["--entry-name", "geth"],
             ),
             Container::new(
                 "test",
-                Some("./tests/dockerfiles/onomy_std.dockerfile"),
-                None,
-                &volumes,
+                Dockerfile::Path("./tests/dockerfiles/onomy_std.dockerfile".to_owned()),
                 entrypoint,
                 &["--entry-name", "test"],
             ),
             Container::new(
                 "prometheus",
-                None,
-                Some("prom/prometheus:v2.44.0"),
-                &[],
+                Dockerfile::NameTag("prom/prometheus:v2.44.0".to_owned()),
                 None,
                 &[],
             )
             .create_args(&["-p", "9090:9090"]),
         ],
+        None,
         true,
         logs_dir,
-    )?;
+    )?
+    .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await?;
     Ok(())

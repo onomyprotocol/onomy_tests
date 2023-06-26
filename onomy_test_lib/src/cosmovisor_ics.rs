@@ -196,7 +196,7 @@ pub async fn arc_ethd_setup(
     sh_cosmovisor("gentx validator", &[
         &token18(1.0e6, "anative"),
         eth_addr,
-        &orch_addr,
+        orch_addr,
         "--chain-id",
         chain_id,
         "--min-self-delegation",
