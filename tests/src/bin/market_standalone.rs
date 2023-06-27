@@ -1,6 +1,7 @@
 use common::container_runner;
 use onomy_test_lib::{
     cosmovisor::{cosmovisor_get_addr, cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
+    dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
     super_orchestrator::{
         sh,
@@ -28,7 +29,16 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;
-        container_runner(&args, &[("market_standaloned", "market_standaloned")]).await
+        container_runner(&args, &[(
+            "market_standaloned",
+            &onomy_std_cosmos_daemon(
+                "market_standaloned",
+                ".onomy_market_standalone",
+                "v0.1.0",
+                "market_standaloned",
+            ),
+        )])
+        .await
     }
 }
 
@@ -49,16 +59,19 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
     );
     // --gas-prices
 
-    // also `show-` versions of all these
-    sh_cosmovisor("query market list-asset", &[]).await?;
+    // there are also `show-` versions of these
     sh_cosmovisor("query market list-burnings", &[]).await?;
     sh_cosmovisor("query market list-drop", &[]).await?;
     sh_cosmovisor("query market list-member", &[]).await?;
+    sh_cosmovisor("query market list-order", &[]).await?;
     sh_cosmovisor("query market list-pool", &[]).await?;
 
     sh_cosmovisor("query market params", &[]).await?;
-    //sh_cosmovisor("query market get-book [denom-a] [denom-b] [order-type]",
+
+    //sh_cosmovisor("query market book [denom-a] [denom-b] [order-type]",
     // &[]).await?;
+    //sh_cosmovisor("query market bookends [coin-a] [coin-b] [order-type] [rate]
+    // [flags]", &[]).await?;
 
     //sh_cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
 

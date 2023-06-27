@@ -34,6 +34,20 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .to_owned())
 }
 
+/// Cosmos-SDK configuration gets messed up by different Git commit and tag
+/// states, this overwrites the "chain-id" in client.toml and in the given
+/// genesis.
+pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
+    genesis["chain_id"] = chain_id.into();
+    let client_file_path = format!("{daemon_home}/config/client.toml");
+    let client_s = FileOptions::read_to_string(&client_file_path).await?;
+    let mut client: toml::Value = toml::from_str(&client_s).map_add_err(|| ())?;
+    client["chain-id"] = chain_id.into();
+    let client_s = toml::to_string_pretty(&client).map_add_err(|| ())?;
+    FileOptions::write_str(&client_file_path, &client_s).await?;
+    Ok(())
+}
+
 pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     // speed up block speed to be one second. NOTE: keep the inflation calculations
     // to expect 5s block times, and just assume 5 second block time because the
@@ -84,7 +98,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String> {
+pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
@@ -97,6 +111,8 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
@@ -142,40 +158,18 @@ pub async fn onomyd_setup(daemon_home: &str, arc_module: bool) -> Result<String>
         .to_owned();
     sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
 
-    if arc_module {
-        // Even if we don't test the bridge, we need this because SetValsetRequest is
-        // called by the gravity module. There are parallel validators for the
-        // gravity module, and they need all their own `gravity` variations of `gentx`
-        // and `collect-gentxs`
-        sh_cosmovisor("keys add orchestrator", &[]).await?;
-        let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-        let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-        let orch_addr = &sh_cosmovisor("keys show orchestrator -a", &[])
-            .await?
-            .trim()
-            .to_owned();
-        sh_cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
-        sh_cosmovisor("gravity gentx validator", &[
-            &nom(1.0e6),
-            eth_addr,
-            orch_addr,
-            "--chain-id",
-            chain_id,
-            "--min-self-delegation",
-            global_min_self_delegation,
-        ])
-        .await?;
-        sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
-    } else {
-        sh_cosmovisor("gentx validator", &[
-            &nom(1.0e6),
-            "--chain-id",
-            chain_id,
-            "--min-self-delegation",
-            global_min_self_delegation,
-        ])
-        .await?;
-    }
+    // unconditionally needed for some Arc tests
+    sh_cosmovisor("keys add orchestrator", &[]).await?;
+    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)]).await?;
+
+    sh_cosmovisor("gentx validator", &[
+        &nom(1.0e6),
+        "--chain-id",
+        chain_id,
+        "--min-self-delegation",
+        global_min_self_delegation,
+    ])
+    .await?;
 
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
 
@@ -196,11 +190,9 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
-    // min_global_self_delegation
-    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
-        global_min_self_delegation.into();
+    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
@@ -245,31 +237,82 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     Ok(mnemonic)
 }
 
-// TODO when reintroducing the bridge we need
-/*
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-    let orch_addr = &sh_cosmovisor("keys show orchestrator -a", &[])
-        .await?
+pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
+    let chain_id = "gravity";
+    let min_self_delegation = &token18(1.0, "");
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+
+    // rename all "stake" to "anom"
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+
+    // put in the test `footoken` and the staking `anom`
+    let denom_metadata = nom_denom();
+    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    // write back genesis
+    let genesis_s = serde_json::to_string(&genesis)?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+
+    fast_block_times(daemon_home).await?;
+
+    // we need the stderr to get the mnemonic
+    let comres = Command::new("cosmovisor run keys add validator", &[])
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let mnemonic = comres
+        .stderr
+        .trim()
+        .lines()
+        .last()
+        .map_add_err(|| "no last line")?
         .trim()
         .to_owned();
-    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(1.0e6)]).await?;
+    // TODO for unknown reasons, add-genesis-account cannot find the keys
+    let addr = cosmovisor_get_addr("validator").await?;
+    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)]).await?;
 
-    // note the special gravity variation
-    sh_cosmovisor("gravity gentx validator", &[
-        &nom(95.0e6),
+    // unconditionally needed for some Arc tests
+    sh_cosmovisor("keys add orchestrator", &[]).await?;
+    let orch_addr = cosmovisor_get_addr("orchestrator").await?;
+    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)]).await?;
+
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
+    sh_cosmovisor("gentx validator", &[
+        &nom(1.0e6),
         eth_addr,
-        orch_addr,
+        &orch_addr,
         "--chain-id",
         chain_id,
         "--min-self-delegation",
-        global_min_self_delegation,
+        min_self_delegation,
     ])
     .await?;
-    sh_cosmovisor_no_dbg("gravity collect-gentxs", &[]).await?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
-*/
+
+    FileOptions::write_str(
+        &format!("/logs/{chain_id}_genesis.json"),
+        &FileOptions::read_to_string(&genesis_file_path).await?,
+    )
+    .await?;
+
+    Ok(mnemonic)
+}
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
@@ -396,8 +439,12 @@ pub async fn cosmovisor_start(
         args.push(peer);
     }*/
     let halt_height_s;
+    let mut quick_halt = false;
     if let Some(options) = options {
         if let Some(halt_height) = options.halt_height {
+            if halt_height <= 2 {
+                quick_halt = true;
+            }
             args.push("--halt-height");
             halt_height_s = format!("{}", halt_height);
             args.push(&halt_height_s);
@@ -409,33 +456,39 @@ pub async fn cosmovisor_start(
         .stdout_log(&cosmovisor_log)
         .run()
         .await?;
-    // wait for status to be ok and daemon to be running
-    info!("waiting for daemon to run");
-    // avoid the initial debug failure
-    sleep(Duration::from_millis(300)).await;
-    wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
-    // account for if we are not starting at height 0
-    let current_height = get_block_height().await?;
-    wait_for_height(25, Duration::from_millis(300), current_height + 1)
-        .await
-        .map_add_err(|| {
-            format!(
-                "daemon could not reach height {}, probably a genesis issue, check runner logs",
-                current_height + 1
-            )
-        })?;
-    info!("daemon has reached height {}", current_height + 1);
-    // we also wait for height 2, because there are consensus failures and reward
-    // propogations that only start on height 2
-    wait_for_height(25, Duration::from_millis(300), current_height + 2)
-        .await
-        .map_add_err(|| {
-            format!(
-                "daemon could not reach height {}, probably a consensus failure, check runner logs",
-                current_height + 2
-            )
-        })?;
-    info!("daemon has reached height {}", current_height + 2);
+
+    if quick_halt {
+        info!("skipping waiting because halt_height <= 2");
+    } else {
+        // wait for status to be ok and daemon to be running
+        info!("waiting for daemon to run");
+        // avoid the initial debug failure
+        sleep(Duration::from_millis(300)).await;
+        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
+        // account for if we are not starting at height 0
+        let current_height = get_block_height().await?;
+        wait_for_height(25, Duration::from_millis(300), current_height + 1)
+            .await
+            .map_add_err(|| {
+                format!(
+                    "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                    current_height + 1
+                )
+            })?;
+        info!("daemon has reached height {}", current_height + 1);
+        // we also wait for height 2, because there are consensus failures and reward
+        // propogations that only start on height 2
+        wait_for_height(25, Duration::from_millis(300), current_height + 2)
+            .await
+            .map_add_err(|| {
+                format!(
+                    "daemon could not reach height {}, probably a consensus failure, check runner \
+                     logs",
+                    current_height + 2
+                )
+            })?;
+        info!("daemon has reached height {}", current_height + 2);
+    }
     Ok(CosmovisorRunner {
         runner: cosmovisor_runner,
     })

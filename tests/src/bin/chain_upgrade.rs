@@ -1,4 +1,3 @@
-use common::container_runner;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -7,6 +6,8 @@ use onomy_test_lib::{
     },
     nom, onomy_std_init,
     super_orchestrator::{
+        docker::{Container, ContainerNetwork, Dockerfile},
+        sh,
         stacked_errors::{MapAddError, Result},
         STD_DELAY, STD_TRIES,
     },
@@ -30,16 +31,52 @@ async fn main() -> Result<()> {
             &[],
         )
         .await?;*/
-        container_runner(&args, &[("chain_upgrade", "onomyd")]).await
+        container_runner(&args).await
     }
+}
+
+async fn container_runner(args: &Args) -> Result<()> {
+    let logs_dir = "./tests/logs";
+    let dockerfiles_dir = "./tests/dockerfiles";
+    let bin_entrypoint = &args.bin_name;
+    let container_target = "x86_64-unknown-linux-gnu";
+
+    // build internal runner
+    sh("cargo build --release --bin", &[
+        bin_entrypoint,
+        "--target",
+        container_target,
+    ])
+    .await?;
+
+    let mut cn = ContainerNetwork::new(
+        "test",
+        vec![Container::new(
+            "onomyd",
+            Dockerfile::Path(format!("{dockerfiles_dir}/chain_upgrade.dockerfile")),
+            Some(&format!(
+                "./target/{container_target}/release/{bin_entrypoint}"
+            )),
+            &["--entry-name", "onomyd"],
+        )],
+        None,
+        true,
+        logs_dir,
+    )?
+    .add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.run_all(true).await?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
+    Ok(())
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let onomy_current_version = args.onomy_current_version.as_ref().map_add_err(|| ())?;
     let onomy_upgrade_version = args.onomy_upgrade_version.as_ref().map_add_err(|| ())?;
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    assert_ne!(onomy_current_version, onomy_upgrade_version);
-    onomyd_setup(daemon_home, true).await?;
+
+    info!("current version: {onomy_current_version}, upgrade version: {onomy_upgrade_version}");
+
+    onomyd_setup(daemon_home).await?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     assert_eq!(

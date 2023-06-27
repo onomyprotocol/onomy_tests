@@ -7,7 +7,7 @@ use onomy_test_lib::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
         onomyd_setup, set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    cosmovisor_ics::{cosmovisor_add_consumer, marketd_setup},
+    cosmovisor_ics::{arc_ethd_setup, cosmovisor_add_consumer},
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
@@ -28,14 +28,14 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "onomyd" => onomyd_runner(&args).await,
-            "marketd" => marketd_runner(&args).await,
             "hermes" => hermes_runner(&args).await,
+            "onomyd" => onomyd_runner(&args).await,
+            "arc_ethd" => arc_ethd_runner(&args).await,
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
         sh("make --directory ./../onomy/ build", &[]).await?;
-        sh("make --directory ./../market/ build", &[]).await?;
+        sh("make --directory ./../arc/module build-consumer", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
@@ -43,7 +43,8 @@ async fn main() -> Result<()> {
         )
         .await?;
         sh(
-            "cp ./../market/marketd ./tests/dockerfiles/dockerfile_resources/marketd",
+            "cp ./../arc/module/build_consumer/consumer \
+             ./tests/dockerfiles/dockerfile_resources/arc_ethd",
             &[],
         )
         .await?;
@@ -93,19 +94,19 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "/root/.onomy/keyring-test",
             )]),
             Container::new(
-                "marketd",
+                "arc_ethd",
                 Dockerfile::Contents(onomy_std_cosmos_daemon(
-                    "marketd",
-                    ".onomy_market",
+                    "arc_ethd",
+                    ".onomy_arc_eth",
                     "v0.1.0",
-                    "marketd",
+                    "arc_ethd",
                 )),
                 entrypoint,
-                &["--entry-name", "marketd"],
+                &["--entry-name", "arc_ethd"],
             )
             .volumes(&[(
                 "./tests/resources/keyring-test",
-                "/root/.onomy_market/keyring-test",
+                "/root/.onomy_arc_eth/keyring-test",
             )]),
         ],
         Some(dockerfiles_dir),
@@ -132,7 +133,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     )
     .await?;
     sh_hermes(
-        "keys add --chain market --mnemonic-file /root/.hermes/mnemonic.txt",
+        "keys add --chain arc_eth --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
     .await?;
@@ -140,7 +141,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    let ibc_pair = IbcPair::hermes_setup_pair("market", "onomy").await?;
+    let ibc_pair = IbcPair::hermes_setup_pair("arc_eth", "onomy").await?;
     let mut hermes_runner = hermes_start().await?;
     ibc_pair.hermes_check_acks().await?;
 
@@ -150,7 +151,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // signal to update gas denom
     let ibc_nom = nm_onomyd.recv::<String>().await?;
     hermes_runner.terminate(TIMEOUT).await?;
-    hermes_set_gas_price_denom(hermes_home, "market", &ibc_nom).await?;
+    hermes_set_gas_price_denom(hermes_home, "arc_eth", &ibc_nom).await?;
 
     // restart
     let mut hermes_runner = hermes_start().await?;
@@ -163,12 +164,12 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
-    let consumer_id = "market";
+    let consumer_id = "arc_eth";
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .map_add_err(|| ())?;
-    let mut nm_consumer = NetMessenger::connect(STD_TRIES, STD_DELAY, "marketd:26001")
+    let mut nm_consumer = NetMessenger::connect(STD_TRIES, STD_DELAY, "arc_ethd:26001")
         .await
         .map_add_err(|| ())?;
 
@@ -208,7 +209,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let ibc_pair = nm_hermes.recv::<IbcPair>().await?;
     info!("IbcPair: {ibc_pair:?}");
 
-    // send anom to market
+    // send anom to consumer
     ibc_pair
         .b
         .cosmovisor_ibc_transfer("validator", &addr, "1337000000", "anom")
@@ -246,14 +247,14 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn marketd_runner(args: &Args) -> Result<()> {
+async fn arc_ethd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    let chain_id = "market";
+    let chain_id = "arc_eth";
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
 
-    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
+    arc_ethd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
     // make sure switching is possible
     set_minimum_gas_price(daemon_home, "1anative").await?;
 
@@ -279,7 +280,7 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     // wait for producer to send us stuff
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
-    // it has to be with respect to the market side
+    // it has to be with respect to the consumer side
     let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
     assert_eq!(
         ibc_nom,
@@ -317,7 +318,7 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     cosmovisor_runner.terminate(TIMEOUT).await?;
 
     FileOptions::write_str(
-        "/logs/market_export.json",
+        "/logs/arc_eth_export.json",
         &sh_cosmovisor_no_dbg("export", &[]).await?,
     )
     .await?;

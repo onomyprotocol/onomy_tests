@@ -8,7 +8,6 @@ use super_orchestrator::{
     std_init,
 };
 
-pub const ONOMY_BASE: &str = "fedora:38";
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
 
 // the `json` macro does not support const

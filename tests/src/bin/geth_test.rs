@@ -3,9 +3,10 @@ use std::{str::FromStr, time::Duration};
 use clarity::Address;
 use log::info;
 use onomy_test_lib::{
+    dockerfiles::ONOMY_STD,
     onomy_std_init,
     super_orchestrator::{
-        docker::{Container, ContainerNetwork},
+        docker::{Container, ContainerNetwork, Dockerfile},
         sh,
         stacked_errors::{Error, MapAddError, Result},
         wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
@@ -30,10 +31,18 @@ async fn main() -> Result<()> {
     }
 }
 
+#[rustfmt::skip]
+const GETH: &str = r#"ADD https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.12.0-e501b3b0.tar.gz /tmp/geth.tar.gz
+RUN cd /tmp && tar -xvf * && mv /tmp/geth-linux-amd64-1.12.0-e501b3b0/geth /usr/bin/geth
+
+RUN mkdir /resources
+"#;
+
 async fn container_runner(args: &Args) -> Result<()> {
+    let logs_dir = "./tests/logs";
+    let dockerfiles_dir = "./tests/dockerfiles";
     let bin_entrypoint = &args.bin_name;
     let container_target = "x86_64-unknown-linux-gnu";
-    let logs_dir = "./tests/logs";
 
     // build internal runner with `--release`
     sh("cargo build --release --bin", &[
@@ -49,40 +58,35 @@ async fn container_runner(args: &Args) -> Result<()> {
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
     let entrypoint = entrypoint.as_deref();
-    let volumes = vec![(logs_dir, "/logs")];
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "geth",
-                Some("./tests/dockerfiles/geth.dockerfile"),
-                None,
-                &volumes,
+                Dockerfile::Contents(format!("{ONOMY_STD} {GETH}")),
                 entrypoint,
                 &["--entry-name", "geth"],
             ),
             Container::new(
                 "test",
-                Some("./tests/dockerfiles/onomy_std.dockerfile"),
-                None,
-                &volumes,
+                Dockerfile::Contents(ONOMY_STD.to_owned()),
                 entrypoint,
                 &["--entry-name", "test"],
             ),
             Container::new(
                 "prometheus",
-                None,
-                Some("prom/prometheus:v2.44.0"),
-                &[],
+                Dockerfile::NameTag("prom/prometheus:v2.44.0".to_owned()),
                 None,
                 &[],
             )
             .create_args(&["-p", "9090:9090"]),
         ],
+        Some(dockerfiles_dir),
         true,
         logs_dir,
-    )?;
+    )?
+    .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await?;
     Ok(())
@@ -109,46 +113,47 @@ const ETH_GENESIS: &str = r#"
     },
     "difficulty": "1",
     "gasLimit": "8000000",
-    "extradata": "0x00000000000000000000000000000000000000000000000000000000000000009c368ed60a6899c57bc56fcab8a2d37bb1fab6930000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "extradata": "0x0000000000000000000000000000000000000000000000000000000000000000Bf660843528035a5A4921534E156a27e64B231fE0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
     "alloc": {
-      "9c368ed60a6899c57bc56fcab8a2d37bb1fab693": { "balance": "0x1337000000000000000000" }
+      "0xBf660843528035a5A4921534E156a27e64B231fE": { "balance": "0x1337000000000000000000" }
     }
 }
 "#;
-
-#[rustfmt::skip]
-const TEST_PASSWORD: &str = r#"{"address":"9c368ed60a6899c57bc56fcab8a2d37bb1fab693","crypto":{"cipher":"aes-128-ctr","ciphertext":"8fb2e26560d5b47a520e4f559ad292645e28b096250f0a013461e4e1ea42f770","cipherparams":{"iv":"67326c1a7c4e30c63c53d74e6e4627fc"},"kdf":"scrypt","kdfparams":{"dklen":32,"n":262144,"p":1,"r":8,"salt":"e0e4748acc131684b345297904da9f15682511e1031c9ce5a5a73c2314f56ea9"},"mac":"637d4a21aaf6dfa8b6d5e3163310c699bcb69c292401f408499ca15af75b2a81"},"id":"853f7da5-f871-4396-9a84-035963221e8d","version":3}"#;
 
 async fn geth_runner() -> Result<()> {
     let genesis_file = "/resources/eth_genesis.json";
     FileOptions::write_str(genesis_file, ETH_GENESIS).await?;
 
-    sh(
-        "geth --identity \"testnet\" --nodiscover --networkid 15 init",
-        &[genesis_file],
-    )
+    // the private key must not have the leading "0x"
+    let private_key_no_0x = "b1bab011e03a9862664706fc3bbaa1b16651528e5f0e7fbfcbfdd8be302a13e7";
+    let private_key_path = "/resources/test_private_key.txt";
+    let test_password = "testpassword";
+    let test_password_path = "/resources/test_password.txt";
+    FileOptions::write_str(private_key_path, private_key_no_0x).await?;
+    FileOptions::write_str(test_password_path, test_password).await?;
+
+    sh("geth account import --password", &[
+        test_password_path,
+        private_key_path,
+    ])
     .await?;
 
-    FileOptions::write_str(
-        "/root/.ethereum/keystore/UTC--2023-06-05T22-24-51.\
-         178377094Z--9c368ed60a6899c57bc56fcab8a2d37bb1fab693",
-        TEST_PASSWORD,
-    )
+    sh("geth --identity \"testnet\" --networkid 15 init", &[
+        genesis_file,
+    ])
     .await?;
-    // password file
-    let password_file = "/root/.ethereum/keystore/testpassword.txt";
-    FileOptions::write_str(password_file, "testpassword").await?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
     let mut geth_runner = Command::new("geth", &[
+        "--nodiscover",
         "--allow-insecure-unlock",
         "--unlock",
-        "0x9c368ed60a6899c57bc56fcab8a2d37bb1fab693",
+        "0xBf660843528035a5A4921534E156a27e64B231fE",
         "--password",
-        "/root/.ethereum/keystore/testpassword.txt",
+        test_password_path,
         "--mine",
         "--miner.etherbase",
-        "0x9c368ed60a6899c57bc56fcab8a2d37bb1fab693",
+        "0xBf660843528035a5A4921534E156a27e64B231fE",
         "--http",
         "--http.addr",
         "0.0.0.0",
@@ -210,7 +215,7 @@ async fn test_runner() -> Result<()> {
     info!("geth is running");
 
     dbg!(web3
-        .eth_get_balance(Address::from_str("0x9c368ed60a6899c57bc56fcab8a2d37bb1fab693").unwrap())
+        .eth_get_balance(Address::from_str("0xBf660843528035a5A4921534E156a27e64B231fE").unwrap())
         .await
         .unwrap());
 
