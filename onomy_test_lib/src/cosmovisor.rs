@@ -176,10 +176,6 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
 
     genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
-    // min_global_self_delegation
-    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
-        global_min_self_delegation.into();
-
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
