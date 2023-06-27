@@ -34,6 +34,20 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .to_owned())
 }
 
+/// Cosmos-SDK configuration gets messed up by different Git commit and tag
+/// states, this overwrites the "chain-id" in client.toml and in the given
+/// genesis.
+pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
+    genesis["chain_id"] = chain_id.into();
+    let client_file_path = format!("{daemon_home}/config/client.toml");
+    let client_s = FileOptions::read_to_string(&client_file_path).await?;
+    let mut client: toml::Value = toml::from_str(&client_s).map_add_err(|| ())?;
+    client["chain-id"] = chain_id.into();
+    let client_s = toml::to_string_pretty(&client).map_add_err(|| ())?;
+    FileOptions::write_str(&client_file_path, &client_s).await?;
+    Ok(())
+}
+
 pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     // speed up block speed to be one second. NOTE: keep the inflation calculations
     // to expect 5s block times, and just assume 5 second block time because the
@@ -97,6 +111,8 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
@@ -174,6 +190,8 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+
     genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
     // decrease the governing period for fast tests
@@ -233,8 +251,7 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    // Under some dirty commit conditions, we need to reset this
-    genesis["chain_id"] = chain_id.into();
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();

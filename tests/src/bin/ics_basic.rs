@@ -66,7 +66,7 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await?;
 
     // prepare volumed resources
-    remove_files_in_dir("./tests/resources/keyring-test/", &["address", "info"]).await?;
+    remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"]).await?;
 
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"

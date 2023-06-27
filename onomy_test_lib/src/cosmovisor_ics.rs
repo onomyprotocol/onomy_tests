@@ -7,8 +7,8 @@ use super_orchestrator::{
 
 use crate::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_get_num_proposals, fast_block_times, sh_cosmovisor,
-        sh_cosmovisor_no_dbg,
+        cosmovisor_get_addr, cosmovisor_get_num_proposals, fast_block_times, force_chain_id,
+        sh_cosmovisor, sh_cosmovisor_no_dbg,
     },
     json_inner, token18,
 };
@@ -124,13 +124,17 @@ pub async fn marketd_setup(
 
     // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
-    let genesis_s = genesis.to_string();
 
     // I will name the token "native" because it won't be staked in the normal sense
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+
+    let genesis_s = genesis.to_string();
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
@@ -163,17 +167,15 @@ pub async fn arc_ethd_setup(
 
     // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
-    let genesis_s = genesis.to_string();
 
     // I will name the token "native" because it won't be staked in the normal sense
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
-    // Under some dirty commit conditions, we need to reset this
-    genesis["chain_id"] = chain_id.into();
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
