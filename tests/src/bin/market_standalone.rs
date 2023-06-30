@@ -68,6 +68,38 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
 
     sh_cosmovisor("query market params", &[]).await?;
 
+    pub async fn market_create_pool(
+        from_key: &str,
+        gas_base: &str,
+        coin_a: &str,
+        coin_b: &str,
+    ) -> Result<()> {
+        sh_cosmovisor("tx market create-pool", &[
+            coin_a,
+            coin_b,
+            "-y",
+            "-b",
+            "block",
+            "--gas",
+            "auto",
+            "--gas-adjustment",
+            "1.3",
+            "--gas-prices",
+            gas_base,
+            "--from",
+            from_key,
+        ])
+        .await?;
+
+        Ok(())
+    }
+
+    let gas_base = "1anative";
+    let coin_a = "5000000afootoken";
+    let coin_b = "1000000anative";
+
+    market_create_pool(addr, gas_base, coin_a, coin_b).await?;
+
     //sh_cosmovisor("query market book [denom-a] [denom-b] [order-type]",
     // &[]).await?;
     //sh_cosmovisor("query market bookends [coin-a] [coin-b] [order-type] [rate]

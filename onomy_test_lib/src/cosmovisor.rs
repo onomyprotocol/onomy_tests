@@ -35,10 +35,11 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
 }
 
 /// Cosmos-SDK configuration gets messed up by different Git commit and tag
-/// states, this overwrites the "chain-id" in client.toml and in the given
-/// genesis.
+/// states, this overwrites the in the given genesis and client.toml
 pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
+    // genesis
     genesis["chain_id"] = chain_id.into();
+    // client.toml
     let client_file_path = format!("{daemon_home}/config/client.toml");
     let client_s = FileOptions::read_to_string(&client_file_path).await?;
     let mut client: toml::Value = toml::from_str(&client_s).map_add_err(|| ())?;
@@ -142,6 +143,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
+    set_minimum_gas_price(daemon_home, "1anom").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -206,6 +208,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
     FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
+    set_minimum_gas_price(daemon_home, "1anative").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -268,6 +271,7 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
+    set_minimum_gas_price(daemon_home, "1anom").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])

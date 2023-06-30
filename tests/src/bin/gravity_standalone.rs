@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
+        sh("make --directory ./../arc/module clean", &[]).await?;
         sh("make --directory ./../arc/module build", &[]).await?;
         sh(
             "cp ./../arc/module/build/gravity ./tests/dockerfiles/dockerfile_resources/gravity",
