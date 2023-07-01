@@ -2,9 +2,10 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_num_proposals, cosmovisor_start, get_block_height, get_staking_pool,
-        get_treasury, get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor, wait_for_height,
+        get_treasury, get_treasury_inflation_annual, sh_cosmovisor, wait_for_height,
     },
     nom, onomy_std_init,
+    setups::onomyd_setup,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,

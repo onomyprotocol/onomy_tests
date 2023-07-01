@@ -5,10 +5,11 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_start, get_apr_annual, get_delegations_to,
-        get_staking_pool, get_treasury, get_treasury_inflation_annual, onomyd_setup, sh_cosmovisor,
+        get_staking_pool, get_treasury, get_treasury_inflation_annual, sh_cosmovisor,
         wait_for_num_blocks,
     },
     onomy_std_init, reprefix_bech32,
+    setups::onomyd_setup,
     super_orchestrator::{
         sh,
         stacked_errors::{MapAddError, Result},

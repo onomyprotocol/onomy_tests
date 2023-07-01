@@ -1,8 +1,9 @@
 use common::container_runner;
 use onomy_test_lib::{
-    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
+    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, sh_cosmovisor},
     dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
+    setups::market_standaloned_setup,
     super_orchestrator::{
         sh,
         stacked_errors::{MapAddError, Result},

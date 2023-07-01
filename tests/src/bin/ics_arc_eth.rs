@@ -5,12 +5,12 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        onomyd_setup, set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+        set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    cosmovisor_ics::{arc_ethd_setup, cosmovisor_add_consumer},
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
+    setups::{arc_ethd_setup, cosmovisor_add_consumer, onomyd_setup},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,

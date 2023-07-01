@@ -5,10 +5,11 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_start, get_apr_annual, get_delegations_to,
-        get_staking_pool, gravity_standalone_setup, sh_cosmovisor,
+        get_staking_pool, sh_cosmovisor,
     },
     dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init, reprefix_bech32,
+    setups::gravity_standalone_setup,
     super_orchestrator::{
         sh,
         stacked_errors::{MapAddError, Result},
