@@ -4,14 +4,21 @@ use super_orchestrator::{
     stacked_errors::{MapAddError, Result},
     Command, FileOptions,
 };
+use tokio::time::sleep;
 
 use crate::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_get_num_proposals, fast_block_times, force_chain_id,
+        cosmovisor_get_addr, cosmovisor_gov_change, fast_block_times, force_chain_id,
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    json_inner, native_denom, nom, nom_denom, token18,
+    json_inner, native_denom, nom, nom_denom, token18, TIMEOUT,
 };
+
+// make sure some things are imported so we don't have to wrangle with this for
+// manual debugging
+fn _unused() {
+    drop(sleep(TIMEOUT));
+}
 
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
@@ -267,41 +274,8 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "reward_denoms": []
     }}"#
     );
-
-    // we will just place the file under the config folder
-    let proposal_file_path = format!("{daemon_home}/config/consumer_add_proposal.json");
-    FileOptions::write_str(&proposal_file_path, proposal_s)
-        .await
-        .map_add_err(|| ())?;
-
-    let gas_args = [
-        "--gas",
-        "auto",
-        "--gas-adjustment",
-        "1.3",
-        "-y",
-        "-b",
-        "block",
-        "--from",
-        "validator",
-    ]
-    .as_slice();
-    sh_cosmovisor(
-        "tx gov submit-proposal consumer-addition",
-        &[&[proposal_file_path.as_str()], gas_args].concat(),
-    )
-    .await?;
-    tokio::time::sleep(crate::TIMEOUT).await;
+    cosmovisor_gov_change(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
     wait_for_num_blocks(1).await?;
-    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
-    // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor(
-        "tx gov vote",
-        &[[&proposal_id, "yes"].as_slice(), gas_args].concat(),
-    )
-    .await?;
-
-    // In the mean time get consensus key assignment done
 
     let tendermint_key: Value = serde_json::from_str(
         &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
@@ -312,10 +286,19 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
 
     // do this before getting the consumer-genesis
-    sh_cosmovisor_no_dbg(
-        "tx provider assign-consensus-key",
-        &[[consumer_id, tendermint_key.as_str()].as_slice(), gas_args].concat(),
-    )
+    sh_cosmovisor_no_dbg("tx provider assign-consensus-key", &[
+        consumer_id,
+        &tendermint_key,
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
     .await?;
 
     // It appears we do not have to wait any blocks

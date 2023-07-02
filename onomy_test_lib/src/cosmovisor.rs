@@ -4,7 +4,7 @@ use log::info;
 use serde_json::Value;
 use super_orchestrator::{
     get_separated_val, sh, sh_no_dbg,
-    stacked_errors::{MapAddError, Result},
+    stacked_errors::{Error, MapAddError, Result},
     wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
@@ -172,10 +172,78 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
 }
  */
 
+/// Writes the proposal at `{daemon_home}/config/proposal.json` and runs `tx gov
+/// submit-proposal [proposal_type]`.
+///
 /// Gov proposals have the annoying property that error statuses (e.x. bad fees
 /// will not result in an error at the `Command` level) are not propogated, this
 /// will detect if an error happens.
-pub async fn make_gov_proposal() {}
+pub async fn cosmovisor_submit_gov_proposal(
+    daemon_home: &str,
+    proposal_type: &str,
+    proposal_s: &str,
+    base_fee: &str,
+) -> Result<()> {
+    let proposal_file_path = format!("{daemon_home}/config/proposal.json");
+    FileOptions::write_str(&proposal_file_path, proposal_s)
+        .await
+        .map_add_err(|| ())?;
+    let res = sh_cosmovisor_no_dbg("tx gov submit-proposal", &[
+        proposal_type,
+        &proposal_file_path,
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await
+    .map_add_err(|| ())?;
+    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
+    if res["code"].as_u64().map_add_err(|| ())? == 0 {
+        Ok(())
+    } else {
+        Error::from(res["raw_log"].to_string()).map_add_err(|| {
+            format!("make_gov_proposal(proposal_type: {proposal_type}, proposal_s: {proposal_s})")
+        })
+    }
+}
+
+pub async fn cosmovisor_gov_change(
+    daemon_home: &str,
+    proposal_type: &str,
+    proposal_s: &str,
+    base_fee: &str,
+) -> Result<()> {
+    cosmovisor_submit_gov_proposal(daemon_home, proposal_type, proposal_s, base_fee)
+        .await
+        .map_add_err(|| ())?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    // the deposit is done as part of the chain addition proposal
+    sh_cosmovisor("tx gov vote", &[
+        &proposal_id,
+        "yes",
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
+    Ok(())
+}
 
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;

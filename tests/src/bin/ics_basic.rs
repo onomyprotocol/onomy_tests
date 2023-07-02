@@ -296,6 +296,7 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     // tell hermes to restart with updated gas denom on its side
     nm_onomyd.send::<String>(&ibc_nom).await?;
     nm_onomyd.recv::<()>().await?;
+    info!("restarted with new gas denom");
 
     // test normal transfer
     let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";
