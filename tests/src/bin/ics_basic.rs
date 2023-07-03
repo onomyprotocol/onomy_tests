@@ -180,6 +180,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let addr = cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
 
+    // FIXME
+    set_minimum_gas_price(daemon_home, "1anom").await?;
+
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id).await?;
@@ -273,6 +276,8 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner =
         cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
+    let addr = cosmovisor_get_addr("validator").await?;
+
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
 
@@ -285,7 +290,6 @@ async fn marketd_runner(args: &Args) -> Result<()> {
         ibc_nom,
         "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B"
     );
-    let addr = cosmovisor_get_addr("validator").await?;
     let balances = cosmovisor_get_balances(&addr).await?;
     assert!(balances.contains_key(&ibc_nom));
 

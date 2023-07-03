@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
         "interchain-security-cd",
     ])
     .await?;
-    remove_files_in_dir("./tests/logs", &[".log", ".json"]).await?;
+    remove_files_in_dir("./tests/logs", &[".log", ".json", ".toml"]).await?;
     remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"]).await?;
 
     Ok(())

@@ -68,7 +68,9 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
-    set_minimum_gas_price(daemon_home, "1anom").await?;
+
+    // FIXME why does this cause a bank send failure in the consumer on ics_basic
+    //set_minimum_gas_price(daemon_home, "1anom").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -353,6 +355,7 @@ pub async fn marketd_setup(
     sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
 
     fast_block_times(daemon_home).await?;
+    set_minimum_gas_price(daemon_home, "1anative").await?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
