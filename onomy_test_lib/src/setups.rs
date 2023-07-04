@@ -8,7 +8,7 @@ use tokio::time::sleep;
 
 use crate::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_gov_change, fast_block_times, force_chain_id,
+        cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
     json_inner, native_denom, nom, nom_denom, token18, TIMEOUT,
@@ -70,7 +70,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     fast_block_times(daemon_home).await?;
 
     // FIXME why does this cause a bank send failure in the consumer on ics_basic
-    //set_minimum_gas_price(daemon_home, "1anom").await?;
+    set_minimum_gas_price(daemon_home, "1anom").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -276,7 +276,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "reward_denoms": []
     }}"#
     );
-    cosmovisor_gov_change(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
+    cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
     wait_for_num_blocks(1).await?;
 
     let tendermint_key: Value = serde_json::from_str(

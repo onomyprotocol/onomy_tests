@@ -10,7 +10,6 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -118,7 +117,6 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
     // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
     // cancel-order [uid]").await?;
 
-    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }

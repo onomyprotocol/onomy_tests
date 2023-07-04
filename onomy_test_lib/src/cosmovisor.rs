@@ -178,7 +178,7 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
 /// Gov proposals have the annoying property that error statuses (e.x. bad fees
 /// will not result in an error at the `Command` level) are not propogated, this
 /// will detect if an error happens.
-pub async fn cosmovisor_submit_gov_proposal(
+pub async fn cosmovisor_submit_gov_file_proposal(
     daemon_home: &str,
     proposal_type: &str,
     proposal_s: &str,
@@ -210,21 +210,107 @@ pub async fn cosmovisor_submit_gov_proposal(
         Ok(())
     } else {
         Error::from(res["raw_log"].to_string()).map_add_err(|| {
-            format!("make_gov_proposal(proposal_type: {proposal_type}, proposal_s: {proposal_s})")
+            format!(
+                "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
+                 {proposal_s})"
+            )
         })
     }
 }
 
-pub async fn cosmovisor_gov_change(
+pub async fn cosmovisor_gov_file_proposal(
     daemon_home: &str,
     proposal_type: &str,
     proposal_s: &str,
     base_fee: &str,
 ) -> Result<()> {
-    cosmovisor_submit_gov_proposal(daemon_home, proposal_type, proposal_s, base_fee)
+    cosmovisor_submit_gov_file_proposal(daemon_home, proposal_type, proposal_s, base_fee)
         .await
         .map_add_err(|| ())?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    // the deposit is done as part of the chain addition proposal
+    sh_cosmovisor("tx gov vote", &[
+        &proposal_id,
+        "yes",
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
+    Ok(())
+}
+
+pub async fn cosmovisor_submit_gov_proposal(
+    proposal_type: &str,
+    proposal_args: &[&str],
+    base_fee: &str,
+) -> Result<()> {
+    let mut args = vec![];
+    args.push(proposal_type);
+    args.extend(proposal_args);
+    args.extend([
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ]);
+    let res = sh_cosmovisor_no_dbg("tx gov submit-proposal", &args)
+        .await
+        .map_add_err(|| ())?;
+    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
+    if res["code"].as_u64().map_add_err(|| ())? == 0 {
+        Ok(())
+    } else {
+        Error::from(res["raw_log"].to_string()).map_add_err(|| {
+            format!(
+                "cosmovisor_submit_gov_proposal(proposal_type: {proposal_type}, proposal_args: \
+                 {proposal_args:?})"
+            )
+        })
+    }
+}
+
+pub async fn cosmovisor_gov_proposal(
+    proposal_type: &str,
+    proposal_args: &[&str],
+    deposit: &str,
+    base_fee: &str,
+) -> Result<()> {
+    cosmovisor_submit_gov_proposal(proposal_type, proposal_args, base_fee)
+        .await
+        .map_add_err(|| ())?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    sh_cosmovisor("tx gov deposit", &[
+        &proposal_id,
+        deposit,
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
     // the deposit is done as part of the chain addition proposal
     sh_cosmovisor("tx gov vote", &[
         &proposal_id,

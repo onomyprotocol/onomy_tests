@@ -1,7 +1,7 @@
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_get_num_proposals, cosmovisor_start, get_block_height, get_staking_pool,
+        cosmovisor_gov_proposal, cosmovisor_start, get_block_height, get_staking_pool,
         get_treasury, get_treasury_inflation_annual, sh_cosmovisor, wait_for_height,
     },
     nom, onomy_std_init,
@@ -88,48 +88,21 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let upgrade_prepare_start = get_block_height().await?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
 
-    let gas_args = [
-        "--gas",
-        "auto",
-        "--gas-adjustment",
-        "1.3",
-        "-y",
-        "-b",
-        "block",
-        "--from",
-        "validator",
-    ]
-    .as_slice();
-
     let description = &format!("\"upgrade {onomy_upgrade_version}\"");
-    sh_cosmovisor(
-        "tx gov submit-proposal software-upgrade",
+
+    cosmovisor_gov_proposal(
+        "software-upgrade",
         &[
-            [
-                onomy_upgrade_version,
-                "--title",
-                description,
-                "--description",
-                description,
-                "--upgrade-height",
-                upgrade_height,
-            ]
-            .as_slice(),
-            gas_args,
-        ]
-        .concat(),
-    )
-    .await?;
-    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
-    let proposal_id = proposal_id.as_str();
-    sh_cosmovisor(
-        "tx gov deposit",
-        &[[proposal_id, &nom(2000.0)].as_slice(), gas_args].concat(),
-    )
-    .await?;
-    sh_cosmovisor(
-        "tx gov vote",
-        &[[proposal_id, "yes"].as_slice(), gas_args].concat(),
+            onomy_upgrade_version,
+            "--title",
+            description,
+            "--description",
+            description,
+            "--upgrade-height",
+            upgrade_height,
+        ],
+        &nom(2000.0),
+        "1anom",
     )
     .await?;
 
