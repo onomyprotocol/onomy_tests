@@ -302,6 +302,29 @@ memo_prefix = ''
 # fee_granter = ''
 
 [[chains]]
+id = 'interchain-security-c'
+ccv_consumer_chain = true
+rpc_addr = 'http://interchain-security-cd:26657'
+grpc_addr = 'http://interchain-security-cd:9090'
+websocket_addr = 'ws://interchain-security-cd:26657/websocket'
+rpc_timeout = '10s'
+account_prefix = 'cosmos'
+key_name = 'validator'
+store_prefix = 'ibc'
+default_gas = 100000
+max_gas = 400000
+# note: this is changed to IBC NOM during bootstrap
+gas_price = { price = 1.0, denom = 'anative' }
+gas_multiplier = 1.1
+max_msg_num = 30
+max_tx_size = 2097152
+clock_drift = '5s'
+max_block_time = '2s'
+trusting_period = '14days'
+trust_threshold = { numerator = '1', denominator = '3' }
+address_type = { derivation = 'cosmos' }
+
+[[chains]]
 id = 'market'
 ccv_consumer_chain = true
 rpc_addr = 'http://marketd:26657'
