@@ -4,8 +4,9 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
+        cosmovisor_gov_file_proposal, cosmovisor_start, set_minimum_gas_price, sh_cosmovisor,
+        sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
@@ -18,7 +19,7 @@ use onomy_test_lib::{
         stacked_errors::{MapAddError, Result},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    Args, ONOMY_IBC_NOM, TIMEOUT,
+    token18, yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -214,7 +215,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // send anom to market
     ibc_pair
         .b
-        .cosmovisor_ibc_transfer("validator", &addr, "1337000000", "anom")
+        .cosmovisor_ibc_transfer("validator", &addr, &token18(100.0e3, ""), "anom")
         .await?;
     // it takes time for the relayer to complete relaying
     wait_for_num_blocks(2).await?;
@@ -316,13 +317,51 @@ async fn marketd_runner(args: &Args) -> Result<()> {
 
     // termination signal
     nm_onomyd.recv::<()>().await?;
-    cosmovisor_runner.terminate(TIMEOUT).await?;
 
-    FileOptions::write_str(
-        "/logs/market_export.json",
-        &sh_cosmovisor_no_dbg("export", &[]).await?,
+    // but first, test governance with IBC NOM as the token
+    let test_crisis_denom = ONOMY_IBC_NOM;
+    let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
+    wait_for_num_blocks(1).await?;
+    cosmovisor_gov_file_proposal(
+        daemon_home,
+        "param-change",
+        &format!(
+            r#"
+    {{
+        "title": "Parameter Change",
+        "description": "Making a parameter change",
+        "changes": [
+          {{
+            "subspace": "crisis",
+            "key": "ConstantFee",
+            "value": {{"denom":"{test_crisis_denom}","amount":"1337"}}
+          }}
+        ],
+        "deposit": "{test_deposit}"
+    }}
+    "#
+        ),
+        &format!("1{ibc_nom}"),
     )
     .await?;
+    wait_for_num_blocks(5).await?;
+    // just running this for debug, param querying is weird because it is json
+    // inside of yaml, so we will instead test the exported genesis
+    sh_cosmovisor("query params subspace crisis ConstantFee", &[]).await?;
+
+    cosmovisor_runner.terminate(TIMEOUT).await?;
+
+    let exported = sh_cosmovisor_no_dbg("export", &[]).await?;
+    FileOptions::write_str("/logs/market_export.json", &exported).await?;
+    let exported = yaml_str_to_json_value(&exported)?;
+    assert_eq!(
+        exported["app_state"]["crisis"]["constant_fee"]["denom"],
+        test_crisis_denom
+    );
+    assert_eq!(
+        exported["app_state"]["crisis"]["constant_fee"]["amount"],
+        "1337"
+    );
 
     Ok(())
 }

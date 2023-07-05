@@ -9,7 +9,8 @@ use tokio::time::sleep;
 use crate::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        wait_for_num_blocks,
     },
     json_inner, native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TIMEOUT,
 };
@@ -288,7 +289,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
 
     // do this before getting the consumer-genesis
-    sh_cosmovisor_no_dbg("tx provider assign-consensus-key", &[
+    sh_cosmovisor_tx("provider assign-consensus-key", &[
         consumer_id,
         &tendermint_key,
         "--gas",
@@ -342,6 +343,12 @@ pub async fn marketd_setup(
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // Set governance token (for param changes and upgrades) to IBC NOM
     genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"] =

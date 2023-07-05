@@ -1,6 +1,6 @@
 use common::container_runner;
 use onomy_test_lib::{
-    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, sh_cosmovisor},
+    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, sh_cosmovisor, sh_cosmovisor_tx},
     dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
     setups::market_standaloned_setup,
@@ -74,7 +74,7 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
         coin_a: &str,
         coin_b: &str,
     ) -> Result<()> {
-        sh_cosmovisor("tx market create-pool", &[
+        sh_cosmovisor_tx("market create-pool", &[
             coin_a,
             coin_b,
             "-y",
@@ -105,15 +105,15 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
     //sh_cosmovisor("query market bookends [coin-a] [coin-b] [order-type] [rate]
     // [flags]", &[]).await?;
 
-    //sh_cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
+    //sh_cosmovisor_tx("market create-pool [coin-a] [coin-b]").await?;
 
-    //sh_cosmovisor("tx market create-drop [pair] [drops]").await?;
-    //sh_cosmovisor("tx market redeem-drop [uid]").await?;
+    //sh_cosmovisor_tx("market create-drop [pair] [drops]").await?;
+    //sh_cosmovisor_tx("market redeem-drop [uid]").await?;
 
-    //sh_cosmovisor("tx market market-order [denom-ask] [denom-bid] [amount-bid]
+    //sh_cosmovisor_tx("market market-order [denom-ask] [denom-bid] [amount-bid]
     // [quote-ask] [slippage]").await?;
 
-    //sh_cosmovisor("tx market create-order [denom-ask] [denom-bid] [order-type]
+    //sh_cosmovisor_tx("market create-order [denom-ask] [denom-bid] [order-type]
     // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
     // cancel-order [uid]").await?;
 

@@ -4,7 +4,7 @@ use super_orchestrator::{get_separated_val, stacked_errors::MapAddError};
 
 pub use crate::types::{IbcPair, IbcSide};
 use crate::{
-    cosmovisor::sh_cosmovisor_no_dbg,
+    cosmovisor::{sh_cosmovisor_no_dbg, sh_cosmovisor_tx},
     hermes::{create_channel_pair, create_connection_pair},
 };
 
@@ -20,8 +20,8 @@ impl IbcSide {
         // tx ibc-transfer transfer transfer [channel to right chain]
         // [target cosmos addr] [coins to send] [gas flags] --from [source key name]
 
-        sh_cosmovisor_no_dbg(
-            "tx ibc-transfer transfer transfer",
+        sh_cosmovisor_tx(
+            "ibc-transfer transfer transfer",
             &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
         )
         .await?;
@@ -41,7 +41,7 @@ impl IbcSide {
     ) -> Result<()> {
         let coins_to_send = format!("{amount}{denom}");
         let base = format!("1{denom}");
-        sh_cosmovisor_no_dbg("tx ibc-transfer transfer transfer", &[
+        sh_cosmovisor_tx("ibc-transfer transfer transfer", &[
             &self.transfer_channel,
             target_addr,
             &coins_to_send,

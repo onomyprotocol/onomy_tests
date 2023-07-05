@@ -6,7 +6,7 @@ use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, cosmovisor_start, get_apr_annual,
         get_delegations_to, get_staking_pool, get_treasury, get_treasury_inflation_annual,
-        sh_cosmovisor, wait_for_num_blocks,
+        sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
     onomy_std_init, reprefix_bech32,
     setups::onomyd_setup,
@@ -93,15 +93,15 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     )
     .await?;
     wait_for_num_blocks(1).await?;
-    // just running this for debug, param querying is wierd because it is json insid
-    // of yaml, so we will instead test the exported genesis
+    // just running this for debug, param querying is weird because it is json
+    // inside of yaml, so we will instead test the exported genesis
     sh_cosmovisor("query params subspace crisis ConstantFee", &[]).await?;
 
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await?;
     // test that exporting works
-    let exported = sh_cosmovisor("export", &[]).await?;
-    FileOptions::write_str("/logs/onomyd_exported.json", &exported).await?;
+    let exported = sh_cosmovisor_no_dbg("export", &[]).await?;
+    FileOptions::write_str("/logs/onomyd_export.json", &exported).await?;
     let exported = yaml_str_to_json_value(&exported)?;
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],

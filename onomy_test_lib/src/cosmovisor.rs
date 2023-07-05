@@ -32,6 +32,27 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .to_owned())
 }
 
+/// This adds on a "tx" command arg and adds extra handling to propogate if the
+/// chain level transaction failed (cosmovisor will not return a successful
+/// status if the transaction was at least successfully transmitted, ignoring if
+/// the transaction result was unsuccessful)
+pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
+    let res = sh_cosmovisor_no_dbg(&format!("tx {cmd_with_args}"), args)
+        .await
+        .map_add_err(|| "sh_cosmovisor_tx() initial command failed")?;
+
+    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
+    if res["code"].as_u64().map_add_err(|| ())? == 0 {
+        Ok(res)
+    } else {
+        Err(Error::from(format!(
+            "raw_log: {}",
+            res["raw_log"]
+        )))
+        .map_add_err(|| format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})"))
+    }
+}
+
 /// Cosmos-SDK configuration gets messed up by different Git commit and tag
 /// states, this overwrites the in the given genesis and client.toml
 pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
@@ -188,7 +209,7 @@ pub async fn cosmovisor_submit_gov_file_proposal(
     FileOptions::write_str(&proposal_file_path, proposal_s)
         .await
         .map_add_err(|| ())?;
-    let res = sh_cosmovisor_no_dbg("tx gov submit-proposal", &[
+    sh_cosmovisor_tx("gov submit-proposal", &[
         proposal_type,
         &proposal_file_path,
         "--gas",
@@ -204,18 +225,13 @@ pub async fn cosmovisor_submit_gov_file_proposal(
         "validator",
     ])
     .await
-    .map_add_err(|| ())?;
-    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
-    if res["code"].as_u64().map_add_err(|| ())? == 0 {
-        Ok(())
-    } else {
-        Error::from(res["raw_log"].to_string()).map_add_err(|| {
-            format!(
-                "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
-                 {proposal_s})"
-            )
-        })
-    }
+    .map_add_err(|| {
+        format!(
+            "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
+             {proposal_s})"
+        )
+    })?;
+    Ok(())
 }
 
 pub async fn cosmovisor_gov_file_proposal(
@@ -229,13 +245,14 @@ pub async fn cosmovisor_gov_file_proposal(
         .map_add_err(|| ())?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
     // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor("tx gov vote", &[
+    sh_cosmovisor_tx("gov vote", &[
         &proposal_id,
         "yes",
         "--gas",
         "auto",
         "--gas-adjustment",
-        "1.3",
+        // market ICS needs this for some reason
+        "2.3",
         "--gas-prices",
         base_fee,
         "-y",
@@ -269,20 +286,10 @@ pub async fn cosmovisor_submit_gov_proposal(
         "--from",
         "validator",
     ]);
-    let res = sh_cosmovisor_no_dbg("tx gov submit-proposal", &args)
+    sh_cosmovisor_tx("gov submit-proposal", &args)
         .await
         .map_add_err(|| ())?;
-    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
-    if res["code"].as_u64().map_add_err(|| ())? == 0 {
-        Ok(())
-    } else {
-        Error::from(res["raw_log"].to_string()).map_add_err(|| {
-            format!(
-                "cosmovisor_submit_gov_proposal(proposal_type: {proposal_type}, proposal_args: \
-                 {proposal_args:?})"
-            )
-        })
-    }
+    Ok(())
 }
 
 pub async fn cosmovisor_gov_proposal(
@@ -295,7 +302,7 @@ pub async fn cosmovisor_gov_proposal(
         .await
         .map_add_err(|| ())?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
-    sh_cosmovisor("tx gov deposit", &[
+    sh_cosmovisor_tx("gov deposit", &[
         &proposal_id,
         deposit,
         "--gas",
@@ -312,7 +319,7 @@ pub async fn cosmovisor_gov_proposal(
     ])
     .await?;
     // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor("tx gov vote", &[
+    sh_cosmovisor_tx("gov vote", &[
         &proposal_id,
         "yes",
         "--gas",
@@ -432,11 +439,17 @@ pub async fn cosmovisor_start(
             .await
             .map_add_err(|| {
                 format!(
-                    "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                    "daemon {} could not reach height {}, probably a genesis issue, check runner \
+                     logs",
+                    log_file_name,
                     current_height + 1
                 )
             })?;
-        info!("daemon has reached height {}", current_height + 1);
+        info!(
+            "daemon {} has reached height {}",
+            log_file_name,
+            current_height + 1
+        );
         // we also wait for height 2, because there are consensus failures and reward
         // propogations that only start on height 2
         wait_for_height(25, Duration::from_millis(300), current_height + 2)
@@ -448,7 +461,11 @@ pub async fn cosmovisor_start(
                     current_height + 2
                 )
             })?;
-        info!("daemon has reached height {}", current_height + 2);
+        info!(
+            "daemon {} has reached height {}",
+            log_file_name,
+            current_height + 2
+        );
     }
     Ok(CosmovisorRunner {
         runner: cosmovisor_runner,
@@ -489,14 +506,15 @@ pub async fn cosmovisor_bank_send(
     amount: &str,
     denom: &str,
 ) -> Result<()> {
-    sh_cosmovisor_no_dbg(
+    sh_cosmovisor_tx(
         &format!(
-            "tx bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
+            "bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
              --gas-adjustment 1.3 --gas-prices 1{denom}"
         ),
         &[],
     )
-    .await?;
+    .await
+    .map_add_err(|| "cosmovisor_bank_send")?;
     Ok(())
 }
 
