@@ -181,7 +181,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sleep(Duration::ZERO).await;
 
     // FIXME
-    set_minimum_gas_price(daemon_home, "1anom").await?;
+    //set_minimum_gas_price(daemon_home, "1anom").await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
