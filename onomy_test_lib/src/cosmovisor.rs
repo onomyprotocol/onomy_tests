@@ -372,6 +372,8 @@ impl CosmovisorRunner {
 
 /// This starts cosmovisor and waits for height 1
 ///
+/// `--rpc.laddr` with 0.0.0.0:26657 instead of 127.0.0.1 is used
+///
 /// If `listen`, then `--p2p.laddr` is used on the standard"tcp://0.0.0.0:26656"
 ///
 /// `peer` should be the `tendermint_id@host_ip:port` of the peer
@@ -382,11 +384,17 @@ pub async fn cosmovisor_start(
     let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
-    // TODO this is actually the default?
-    //args.push("--p2p.laddr");
-    //args.push("tcp://0.0.0.0:26656");
+
+    // this is required because thed 
     args.push("--rpc.laddr");
     args.push("tcp://0.0.0.0:26657");
+
+    //args.push("--p2p.laddr");
+    //args.push("tcp://0.0.0.0:26656");
+    //args.push("--grpc.address");
+    //args.push("0.0.0.0:9090");
+    //args.push("--grpc.enable");
+    //args.push("true");
     /*if let Some(ref peer) = peer {
         args.push("--p2p.persistent_peers");
         args.push(peer);

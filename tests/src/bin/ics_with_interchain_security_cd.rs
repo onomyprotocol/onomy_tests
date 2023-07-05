@@ -145,7 +145,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     nm_onomyd.recv::<()>().await?;
 
     let ibc_pair = IbcPair::hermes_setup_pair("interchain-security-c", "onomy").await?;
-    let mut hermes_runner = hermes_start().await?;
+    let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
     ibc_pair.hermes_check_acks().await?;
 
     // tell that chains have been connected
@@ -157,7 +157,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     hermes_set_gas_price_denom(hermes_home, "interchain-security-c", &ibc_nom).await?;
 
     // restart
-    let mut hermes_runner = hermes_start().await?;
+    let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await?;
     nm_onomyd.send::<()>(&()).await?;
 
     // termination signal
@@ -184,6 +184,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // keep these here for local testing purposes
     let addr = cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
+
+    // FIXME
+    //set_minimum_gas_price(daemon_home, "1anom").await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
@@ -278,8 +281,17 @@ async fn interchain_security_cd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner =
         cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
+    let addr = cosmovisor_get_addr("validator").await?;
+
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
+
+    sleep(TIMEOUT).await;
+    // hermes health-check
+    // hermes tx ft-transfer --dst-chain interchain-security-c --src-chain onomy --src-port transfer --src-channel channel-0 --amount 123456789 --denom anom
+
+    // hermes tx ft-transfer --dst-chain market --src-chain onomy --src-port transfer --src-channel channel-0 --amount 123456789 --denom anom
+
 
     // wait for producer to send us stuff
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
@@ -290,7 +302,6 @@ async fn interchain_security_cd_runner(args: &Args) -> Result<()> {
         ibc_nom,
         "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B"
     );
-    let addr = cosmovisor_get_addr("validator").await?;
     let balances = cosmovisor_get_balances(&addr).await?;
     assert!(balances.contains_key(&ibc_nom));
 
@@ -301,6 +312,7 @@ async fn interchain_security_cd_runner(args: &Args) -> Result<()> {
     // tell hermes to restart with updated gas denom on its side
     nm_onomyd.send::<String>(&ibc_nom).await?;
     nm_onomyd.recv::<()>().await?;
+    info!("restarted with new gas denom");
 
     // test normal transfer
     let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";

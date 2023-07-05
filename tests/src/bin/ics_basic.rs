@@ -141,7 +141,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     nm_onomyd.recv::<()>().await?;
 
     let ibc_pair = IbcPair::hermes_setup_pair("market", "onomy").await?;
-    let mut hermes_runner = hermes_start().await?;
+    let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
     ibc_pair.hermes_check_acks().await?;
 
     // tell that chains have been connected
@@ -153,7 +153,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     hermes_set_gas_price_denom(hermes_home, "market", &ibc_nom).await?;
 
     // restart
-    let mut hermes_runner = hermes_start().await?;
+    let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await?;
     nm_onomyd.send::<()>(&()).await?;
 
     // termination signal
