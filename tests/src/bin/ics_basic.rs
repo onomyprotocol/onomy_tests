@@ -18,7 +18,7 @@ use onomy_test_lib::{
         stacked_errors::{MapAddError, Result},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    Args, TIMEOUT,
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -286,10 +286,7 @@ async fn marketd_runner(args: &Args) -> Result<()> {
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the market side
     let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
-    assert_eq!(
-        ibc_nom,
-        "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B"
-    );
+    assert_eq!(ibc_nom, ONOMY_IBC_NOM,);
     let balances = cosmovisor_get_balances(&addr).await?;
     assert!(balances.contains_key(&ibc_nom));
 

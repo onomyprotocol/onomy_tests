@@ -10,7 +10,7 @@ use onomy_test_lib::{
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
     onomy_std_init,
-    setups::{arc_ethd_setup, cosmovisor_add_consumer, onomyd_setup},
+    setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -18,7 +18,7 @@ use onomy_test_lib::{
         stacked_errors::{MapAddError, Result},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    Args, TIMEOUT,
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -254,7 +254,7 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
 
-    arc_ethd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
+    arc_consumer_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
     // make sure switching is possible
     set_minimum_gas_price(daemon_home, "1anative").await?;
 
@@ -282,10 +282,7 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
     let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
-    assert_eq!(
-        ibc_nom,
-        "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B"
-    );
+    assert_eq!(ibc_nom, ONOMY_IBC_NOM,);
     let addr = cosmovisor_get_addr("validator").await?;
     let balances = cosmovisor_get_balances(&addr).await?;
     assert!(balances.contains_key(&ibc_nom));

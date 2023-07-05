@@ -11,7 +11,7 @@ use crate::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    json_inner, native_denom, nom, nom_denom, token18, TIMEOUT,
+    json_inner, native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TIMEOUT,
 };
 
 // make sure some things are imported so we don't have to wrangle with this for
@@ -335,7 +335,6 @@ pub async fn marketd_setup(
     // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
-    // I will name the token "native" because it won't be staked in the normal sense
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 
@@ -343,6 +342,23 @@ pub async fn marketd_setup(
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+
+    // Set governance token (for param changes and upgrades) to IBC NOM
+    genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"] =
+        token18(2000.0, "").into();
+    genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"] = ONOMY_IBC_NOM.into();
+    genesis["app_state"]["staking"]["params"]["bond_denom"] = ONOMY_IBC_NOM.into();
+
+    // Set market burn token to IBC NOM
+    genesis["app_state"]["market"]["params"]["burn_coin"] = ONOMY_IBC_NOM.into();
+
+    // NOTE: do not under any circumstance make a mint denom an IBC token.
+    // We will zero and reset inflation to anative just to make sure.
+    genesis["app_state"]["mint"]["minter"]["inflation"] = "0.0".into();
+    genesis["app_state"]["mint"]["params"]["mint_denom"] = "anative".into();
+    genesis["app_state"]["mint"]["params"]["inflation_min"] = "0.0".into();
+    genesis["app_state"]["mint"]["params"]["inflation_max"] = "0.0".into();
+    genesis["app_state"]["mint"]["params"]["inflation_rate_change"] = "0.0".into();
 
     let genesis_s = genesis.to_string();
 
@@ -366,7 +382,7 @@ pub async fn marketd_setup(
     Ok(())
 }
 
-pub async fn arc_ethd_setup(
+pub async fn arc_consumer_setup(
     daemon_home: &str,
     chain_id: &str,
     ccvconsumer_state_s: &str,
@@ -379,7 +395,6 @@ pub async fn arc_ethd_setup(
     // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
-    // I will name the token "native" because it won't be staked in the normal sense
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s)?;
 

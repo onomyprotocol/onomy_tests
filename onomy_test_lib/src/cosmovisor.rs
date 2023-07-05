@@ -385,7 +385,7 @@ pub async fn cosmovisor_start(
 
     let mut args = vec![];
 
-    // this is required because thed 
+    // this is required for our Hermes setups
     args.push("--rpc.laddr");
     args.push("tcp://0.0.0.0:26657");
 
