@@ -7,10 +7,11 @@ use onomy_test_lib::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
         set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
-    hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
+    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
+    hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes},
+    ibc::IbcPair,
     onomy_std_init,
-    setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup},
+    setups::{cosmovisor_add_consumer, marketd_setup, onomyd_setup},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -22,29 +23,31 @@ use onomy_test_lib::{
 };
 use tokio::time::sleep;
 
+#[rustfmt::skip]
+const INTERCHAIN_SECURTY_CD: &str = r#"ENV ICS_VERSION=1.2.0-multiden
+ADD https://github.com/cosmos/interchain-security/archive/refs/tags/v$ICS_VERSION.tar.gz /root/v$ICS_VERSION.tar.gz
+RUN cd /root && tar -xvf ./v$ICS_VERSION.tar.gz
+RUN cd /root/interchain-security-$ICS_VERSION && go build ./cmd/interchain-security-cd
+RUN mkdir -p $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/
+RUN mv /root/interchain-security-$ICS_VERSION/interchain-security-cd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/$DAEMON_NAME
+"#;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = onomy_std_init()?;
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "hermes" => hermes_runner(&args).await,
             "onomyd" => onomyd_runner(&args).await,
-            "arc_ethd" => arc_ethd_runner(&args).await,
+            "interchain-security-cd" => interchain_security_cd_runner(&args).await,
+            "hermes" => hermes_runner(&args).await,
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
         sh("make --directory ./../onomy/ build", &[]).await?;
-        sh("make --directory ./../arc/module build-consumer", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
-            &[],
-        )
-        .await?;
-        sh(
-            "cp ./../arc/module/build_consumer/consumer \
-             ./tests/dockerfiles/dockerfile_resources/arc_ethd",
             &[],
         )
         .await?;
@@ -94,19 +97,19 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "/root/.onomy/keyring-test",
             )]),
             Container::new(
-                "arc_ethd",
-                Dockerfile::Contents(onomy_std_cosmos_daemon(
-                    "arc_ethd",
-                    ".onomy_arc_eth",
-                    "v0.1.0",
-                    "arc_ethd",
+                "interchain-security-cd",
+                Dockerfile::Contents(onomy_std_cosmos_daemon_with_arbitrary(
+                    "interchain-security-cd",
+                    ".interchain-security-c",
+                    "v07-Theta",
+                    INTERCHAIN_SECURTY_CD,
                 )),
                 entrypoint,
-                &["--entry-name", "arc_ethd"],
+                &["--entry-name", "interchain-security-cd"],
             )
             .volumes(&[(
                 "./tests/resources/keyring-test",
-                "/root/.onomy_arc_eth/keyring-test",
+                "/root/.interchain-security-c/keyring-test",
             )]),
         ],
         Some(dockerfiles_dir),
@@ -133,7 +136,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     )
     .await?;
     sh_hermes(
-        "keys add --chain arc_eth --mnemonic-file /root/.hermes/mnemonic.txt",
+        "keys add --chain interchain-security-c --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
     .await?;
@@ -141,7 +144,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    let ibc_pair = IbcPair::hermes_setup_pair("arc_eth", "onomy").await?;
+    let ibc_pair = IbcPair::hermes_setup_pair("interchain-security-c", "onomy").await?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
     ibc_pair.hermes_check_acks().await?;
 
@@ -151,7 +154,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // signal to update gas denom
     let ibc_nom = nm_onomyd.recv::<String>().await?;
     hermes_runner.terminate(TIMEOUT).await?;
-    hermes_set_gas_price_denom(hermes_home, "arc_eth", &ibc_nom).await?;
+    hermes_set_gas_price_denom(hermes_home, "interchain-security-c", &ibc_nom).await?;
 
     // restart
     let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await?;
@@ -164,14 +167,15 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
-    let consumer_id = "arc_eth";
+    let consumer_id = "interchain-security-c";
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .map_add_err(|| ())?;
-    let mut nm_consumer = NetMessenger::connect(STD_TRIES, STD_DELAY, "arc_ethd:26001")
-        .await
-        .map_add_err(|| ())?;
+    let mut nm_consumer =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, "interchain-security-cd:26001")
+            .await
+            .map_add_err(|| ())?;
 
     let mnemonic = onomyd_setup(daemon_home).await?;
     // send mnemonic to hermes
@@ -180,6 +184,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // keep these here for local testing purposes
     let addr = cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
+
+    // FIXME
+    //set_minimum_gas_price(daemon_home, "1anom").await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
@@ -215,7 +222,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer("validator", &addr, "1337000000", "anom")
         .await?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(2).await?;
+    wait_for_num_blocks(8).await?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await?;
 
@@ -247,14 +254,14 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn arc_ethd_runner(args: &Args) -> Result<()> {
+async fn interchain_security_cd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    let chain_id = "arc_eth";
+    let chain_id = "interchain-security-c";
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
 
-    arc_consumer_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
+    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
     // make sure switching is possible
     set_minimum_gas_price(daemon_home, "1anative").await?;
 
@@ -274,8 +281,18 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner =
         cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
+    let addr = cosmovisor_get_addr("validator").await?;
+
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
+
+    sleep(TIMEOUT).await;
+    // hermes health-check
+    // hermes tx ft-transfer --dst-chain interchain-security-c --src-chain onomy
+    // --src-port transfer --src-channel channel-0 --amount 123456789 --denom anom
+
+    // hermes tx ft-transfer --dst-chain market --src-chain onomy --src-port
+    // transfer --src-channel channel-0 --amount 123456789 --denom anom
 
     // wait for producer to send us stuff
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
@@ -283,7 +300,6 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     // it has to be with respect to the consumer side
     let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
     assert_eq!(ibc_nom, ONOMY_IBC_NOM,);
-    let addr = cosmovisor_get_addr("validator").await?;
     let balances = cosmovisor_get_balances(&addr).await?;
     assert!(balances.contains_key(&ibc_nom));
 
@@ -294,6 +310,7 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     // tell hermes to restart with updated gas denom on its side
     nm_onomyd.send::<String>(&ibc_nom).await?;
     nm_onomyd.recv::<()>().await?;
+    info!("restarted with new gas denom");
 
     // test normal transfer
     let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";
@@ -315,7 +332,7 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     cosmovisor_runner.terminate(TIMEOUT).await?;
 
     FileOptions::write_str(
-        "/logs/arc_eth_export.json",
+        &format!("/logs/{chain_id}_export.json"),
         &sh_cosmovisor_no_dbg("export", &[]).await?,
     )
     .await?;

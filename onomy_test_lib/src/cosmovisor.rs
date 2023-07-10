@@ -1,17 +1,15 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use log::info;
-use serde_json::{json, Value};
+use serde_json::Value;
 use super_orchestrator::{
     get_separated_val, sh, sh_no_dbg,
-    stacked_errors::{MapAddError, Result},
+    stacked_errors::{Error, MapAddError, Result},
     wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
 
-use crate::{
-    anom_to_nom, json_inner, native_denom, nom, nom_denom, token18, yaml_str_to_json_value,
-};
+use crate::{anom_to_nom, json_inner, yaml_str_to_json_value};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -34,11 +32,31 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
         .to_owned())
 }
 
+/// This adds on a "tx" command arg and adds extra handling to propogate if the
+/// chain level transaction failed (cosmovisor will not return a successful
+/// status if the transaction was at least successfully transmitted, ignoring if
+/// the transaction result was unsuccessful)
+pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
+    let res = sh_cosmovisor_no_dbg(&format!("tx {cmd_with_args}"), args)
+        .await
+        .map_add_err(|| "sh_cosmovisor_tx() initial command failed")?;
+
+    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
+    if res["code"].as_u64().map_add_err(|| ())? == 0 {
+        Ok(res)
+    } else {
+        Err(Error::from(format!("raw_log: {}", res["raw_log"]))).map_add_err(|| {
+            format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})")
+        })
+    }
+}
+
 /// Cosmos-SDK configuration gets messed up by different Git commit and tag
-/// states, this overwrites the "chain-id" in client.toml and in the given
-/// genesis.
+/// states, this overwrites the in the given genesis and client.toml
 pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
+    // genesis
     genesis["chain_id"] = chain_id.into();
+    // client.toml
     let client_file_path = format!("{daemon_home}/config/client.toml");
     let client_s = FileOptions::read_to_string(&client_file_path).await?;
     let mut client: toml::Value = toml::from_str(&client_s).map_add_err(|| ())?;
@@ -92,226 +110,6 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
     let app_toml_s = toml::to_string_pretty(&app_toml)?;
     FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
     Ok(())
-}
-
-/// NOTE: this is stuff you would not want to run in production.
-/// NOTE: this is intended to be run inside containers only
-///
-/// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
-    let chain_id = "onomy";
-    let global_min_self_delegation = &token18(225.0e3, "");
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
-
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-
-    // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
-
-    // put in the test `footoken` and the staking `anom`
-    let denom_metadata = nom_denom();
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
-
-    // init DAO balance
-    let amount = token18(100.0e6, "");
-    let treasury_balance = json!([{"denom": "anom", "amount": amount}]);
-    genesis["app_state"]["dao"]["treasury_balance"] = treasury_balance;
-
-    // disable community_tax
-    genesis["app_state"]["distribution"]["params"]["community_tax"] = json!("0");
-
-    // min_global_self_delegation
-    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
-        global_min_self_delegation.to_owned().into();
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
-
-    fast_block_times(daemon_home).await?;
-
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
-        .run_to_completion()
-        .await?;
-    comres.assert_success()?;
-    let mnemonic = comres
-        .stderr
-        .trim()
-        .lines()
-        .last()
-        .map_add_err(|| "no last line")?
-        .trim()
-        .to_owned();
-    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
-
-    // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)]).await?;
-
-    sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        global_min_self_delegation,
-    ])
-    .await?;
-
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
-
-    Ok(mnemonic)
-}
-
-pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
-    let chain_id = "market_standalone";
-    let global_min_self_delegation = "225000000000000000000000";
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
-
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-
-    // rename all "stake" to "native"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
-
-    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
-
-    fast_block_times(daemon_home).await?;
-
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
-        .run_to_completion()
-        .await?;
-    comres.assert_success()?;
-    let mnemonic = comres
-        .stderr
-        .trim()
-        .lines()
-        .last()
-        .map_add_err(|| "no last line")?
-        .trim()
-        .to_owned();
-
-    let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6, "afootoken");
-    let stake_coin = token18(1.0e6, "anative");
-    sh_cosmovisor("add-genesis-account validator", &[&gen_coins]).await?;
-    sh_cosmovisor("gentx validator", &[
-        &stake_coin,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        global_min_self_delegation,
-    ])
-    .await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
-
-    Ok(mnemonic)
-}
-
-pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
-    let chain_id = "gravity";
-    let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
-
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-
-    // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
-
-    // put in the test `footoken` and the staking `anom`
-    let denom_metadata = nom_denom();
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-
-    fast_block_times(daemon_home).await?;
-
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
-        .run_to_completion()
-        .await?;
-    comres.assert_success()?;
-    let mnemonic = comres
-        .stderr
-        .trim()
-        .lines()
-        .last()
-        .map_add_err(|| "no last line")?
-        .trim()
-        .to_owned();
-    // TODO for unknown reasons, add-genesis-account cannot find the keys
-    let addr = cosmovisor_get_addr("validator").await?;
-    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)]).await?;
-
-    // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    let orch_addr = cosmovisor_get_addr("orchestrator").await?;
-    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)]).await?;
-
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
-    sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
-        eth_addr,
-        &orch_addr,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        min_self_delegation,
-    ])
-    .await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
-
-    FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
-    )
-    .await?;
-
-    Ok(mnemonic)
 }
 
 /// Note that this interprets "null" height as 0
@@ -378,6 +176,166 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
     total.parse::<u64>().map_add_err(|| ())
 }
 
+/*
+{
+  "title": "Parameter Change",
+  "description": "Making a parameter change",
+  "changes": [
+    {
+      "subspace": "staking",
+      "key": "BondDenom",
+      "value": "ibc/hello"
+    }
+  ],
+  "deposit": "2000000000000000000000anom"
+}
+ */
+
+/// Writes the proposal at `{daemon_home}/config/proposal.json` and runs `tx gov
+/// submit-proposal [proposal_type]`.
+///
+/// Gov proposals have the annoying property that error statuses (e.x. bad fees
+/// will not result in an error at the `Command` level) are not propogated, this
+/// will detect if an error happens.
+pub async fn cosmovisor_submit_gov_file_proposal(
+    daemon_home: &str,
+    proposal_type: &str,
+    proposal_s: &str,
+    base_fee: &str,
+) -> Result<()> {
+    let proposal_file_path = format!("{daemon_home}/config/proposal.json");
+    FileOptions::write_str(&proposal_file_path, proposal_s)
+        .await
+        .map_add_err(|| ())?;
+    sh_cosmovisor_tx("gov submit-proposal", &[
+        proposal_type,
+        &proposal_file_path,
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await
+    .map_add_err(|| {
+        format!(
+            "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
+             {proposal_s})"
+        )
+    })?;
+    Ok(())
+}
+
+pub async fn cosmovisor_gov_file_proposal(
+    daemon_home: &str,
+    proposal_type: &str,
+    proposal_s: &str,
+    base_fee: &str,
+) -> Result<()> {
+    cosmovisor_submit_gov_file_proposal(daemon_home, proposal_type, proposal_s, base_fee)
+        .await
+        .map_add_err(|| ())?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    // the deposit is done as part of the chain addition proposal
+    sh_cosmovisor_tx("gov vote", &[
+        &proposal_id,
+        "yes",
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        // market ICS needs this for some reason
+        "2.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
+    Ok(())
+}
+
+pub async fn cosmovisor_submit_gov_proposal(
+    proposal_type: &str,
+    proposal_args: &[&str],
+    base_fee: &str,
+) -> Result<()> {
+    let mut args = vec![];
+    args.push(proposal_type);
+    args.extend(proposal_args);
+    args.extend([
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ]);
+    sh_cosmovisor_tx("gov submit-proposal", &args)
+        .await
+        .map_add_err(|| ())?;
+    Ok(())
+}
+
+pub async fn cosmovisor_gov_proposal(
+    proposal_type: &str,
+    proposal_args: &[&str],
+    deposit: &str,
+    base_fee: &str,
+) -> Result<()> {
+    cosmovisor_submit_gov_proposal(proposal_type, proposal_args, base_fee)
+        .await
+        .map_add_err(|| ())?;
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    sh_cosmovisor_tx("gov deposit", &[
+        &proposal_id,
+        deposit,
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
+    // the deposit is done as part of the chain addition proposal
+    sh_cosmovisor_tx("gov vote", &[
+        &proposal_id,
+        "yes",
+        "--gas",
+        "auto",
+        "--gas-adjustment",
+        "1.3",
+        "--gas-prices",
+        base_fee,
+        "-y",
+        "-b",
+        "block",
+        "--from",
+        "validator",
+    ])
+    .await?;
+    Ok(())
+}
+
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
     let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;
     let tendermint_id = s.trim();
@@ -419,6 +377,8 @@ impl CosmovisorRunner {
 
 /// This starts cosmovisor and waits for height 1
 ///
+/// `--rpc.laddr` with 0.0.0.0:26657 instead of 127.0.0.1 is used
+///
 /// If `listen`, then `--p2p.laddr` is used on the standard"tcp://0.0.0.0:26656"
 ///
 /// `peer` should be the `tendermint_id@host_ip:port` of the peer
@@ -429,11 +389,17 @@ pub async fn cosmovisor_start(
     let cosmovisor_log = FileOptions::write2("/logs", log_file_name);
 
     let mut args = vec![];
-    // TODO this is actually the default?
-    //args.push("--p2p.laddr");
-    //args.push("tcp://0.0.0.0:26656");
+
+    // this is required for our Hermes setups
     args.push("--rpc.laddr");
     args.push("tcp://0.0.0.0:26657");
+
+    //args.push("--p2p.laddr");
+    //args.push("tcp://0.0.0.0:26656");
+    //args.push("--grpc.address");
+    //args.push("0.0.0.0:9090");
+    //args.push("--grpc.enable");
+    //args.push("true");
     /*if let Some(ref peer) = peer {
         args.push("--p2p.persistent_peers");
         args.push(peer);
@@ -471,11 +437,17 @@ pub async fn cosmovisor_start(
             .await
             .map_add_err(|| {
                 format!(
-                    "daemon could not reach height {}, probably a genesis issue, check runner logs",
+                    "daemon {} could not reach height {}, probably a genesis issue, check runner \
+                     logs",
+                    log_file_name,
                     current_height + 1
                 )
             })?;
-        info!("daemon has reached height {}", current_height + 1);
+        info!(
+            "daemon {} has reached height {}",
+            log_file_name,
+            current_height + 1
+        );
         // we also wait for height 2, because there are consensus failures and reward
         // propogations that only start on height 2
         wait_for_height(25, Duration::from_millis(300), current_height + 2)
@@ -487,7 +459,11 @@ pub async fn cosmovisor_start(
                     current_height + 2
                 )
             })?;
-        info!("daemon has reached height {}", current_height + 2);
+        info!(
+            "daemon {} has reached height {}",
+            log_file_name,
+            current_height + 2
+        );
     }
     Ok(CosmovisorRunner {
         runner: cosmovisor_runner,
@@ -528,14 +504,15 @@ pub async fn cosmovisor_bank_send(
     amount: &str,
     denom: &str,
 ) -> Result<()> {
-    sh_cosmovisor_no_dbg(
+    sh_cosmovisor_tx(
         &format!(
-            "tx bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
+            "bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
              --gas-adjustment 1.3 --gas-prices 1{denom}"
         ),
         &[],
     )
-    .await?;
+    .await
+    .map_add_err(|| "cosmovisor_bank_send")?;
     Ok(())
 }
 

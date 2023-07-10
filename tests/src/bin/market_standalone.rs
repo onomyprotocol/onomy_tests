@@ -1,15 +1,15 @@
 use common::container_runner;
 use onomy_test_lib::{
-    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, market_standaloned_setup, sh_cosmovisor},
+    cosmovisor::{cosmovisor_get_addr, cosmovisor_start, sh_cosmovisor, sh_cosmovisor_tx},
     dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
+    setups::market_standaloned_setup,
     super_orchestrator::{
         sh,
         stacked_errors::{MapAddError, Result},
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,22 +21,17 @@ async fn main() -> Result<()> {
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
-        sh("make --directory ./../market/ build_standalone", &[]).await?;
+        sh("make --directory ./../market/ build-standalone", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
-            "cp ./../market/market_standaloned \
-             ./tests/dockerfiles/dockerfile_resources/market_standaloned",
+            "cp ./../market/market-standaloned \
+             ./tests/dockerfiles/dockerfile_resources/market-standaloned",
             &[],
         )
         .await?;
         container_runner(&args, &[(
             "market_standaloned",
-            &onomy_std_cosmos_daemon(
-                "market_standaloned",
-                ".onomy_market_standalone",
-                "v0.1.0",
-                "market_standaloned",
-            ),
+            &onomy_std_cosmos_daemon("market", ".onomy_market", "v0.1.0", "market-standaloned"),
         )])
         .await
     }
@@ -68,24 +63,55 @@ async fn market_standaloned_runner(args: &Args) -> Result<()> {
 
     sh_cosmovisor("query market params", &[]).await?;
 
+    pub async fn market_create_pool(
+        from_key: &str,
+        gas_base: &str,
+        coin_a: &str,
+        coin_b: &str,
+    ) -> Result<()> {
+        sh_cosmovisor_tx("market create-pool", &[
+            coin_a,
+            coin_b,
+            "-y",
+            "-b",
+            "block",
+            "--gas",
+            "auto",
+            "--gas-adjustment",
+            "1.3",
+            "--gas-prices",
+            gas_base,
+            "--from",
+            from_key,
+        ])
+        .await?;
+
+        Ok(())
+    }
+
+    let gas_base = "1anative";
+    let coin_a = "5000000afootoken";
+    let coin_b = "1000000anative";
+
+    market_create_pool(addr, gas_base, coin_a, coin_b).await?;
+
     //sh_cosmovisor("query market book [denom-a] [denom-b] [order-type]",
     // &[]).await?;
     //sh_cosmovisor("query market bookends [coin-a] [coin-b] [order-type] [rate]
     // [flags]", &[]).await?;
 
-    //sh_cosmovisor("tx market create-pool [coin-a] [coin-b]").await?;
+    //sh_cosmovisor_tx("market create-pool [coin-a] [coin-b]").await?;
 
-    //sh_cosmovisor("tx market create-drop [pair] [drops]").await?;
-    //sh_cosmovisor("tx market redeem-drop [uid]").await?;
+    //sh_cosmovisor_tx("market create-drop [pair] [drops]").await?;
+    //sh_cosmovisor_tx("market redeem-drop [uid]").await?;
 
-    //sh_cosmovisor("tx market market-order [denom-ask] [denom-bid] [amount-bid]
+    //sh_cosmovisor_tx("market market-order [denom-ask] [denom-bid] [amount-bid]
     // [quote-ask] [slippage]").await?;
 
-    //sh_cosmovisor("tx market create-order [denom-ask] [denom-bid] [order-type]
+    //sh_cosmovisor_tx("market create-order [denom-ask] [denom-bid] [order-type]
     // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
     // cancel-order [uid]").await?;
 
-    sleep(TIMEOUT).await;
     cosmovisor_runner.terminate(TIMEOUT).await?;
     Ok(())
 }

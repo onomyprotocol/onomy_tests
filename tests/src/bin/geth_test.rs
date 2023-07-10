@@ -7,13 +7,13 @@ use onomy_test_lib::{
     onomy_std_init,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
+        net_message::NetMessenger,
         sh,
         stacked_errors::{Error, MapAddError, Result},
         wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 use web30::client::Web3;
 
 #[tokio::main]
@@ -74,13 +74,13 @@ async fn container_runner(args: &Args) -> Result<()> {
                 entrypoint,
                 &["--entry-name", "test"],
             ),
-            Container::new(
+            /*Container::new(
                 "prometheus",
                 Dockerfile::NameTag("prom/prometheus:v2.44.0".to_owned()),
                 None,
                 &[],
             )
-            .create_args(&["-p", "9090:9090"]),
+            .create_args(&["-p", "9090:9090"]),*/
         ],
         Some(dockerfiles_dir),
         true,
@@ -89,6 +89,60 @@ async fn container_runner(args: &Args) -> Result<()> {
     .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
     cn.wait_with_timeout_all(true, TIMEOUT).await?;
+    Ok(())
+}
+
+async fn test_runner() -> Result<()> {
+    let mut nm_geth = NetMessenger::connect(STD_TRIES, STD_DELAY, "geth:26000").await?;
+
+    // manual HTTP request
+    /*
+    curl --header "content-type: application/json" --data
+    '{"id":1,"jsonrpc":"2.0","method":"eth_syncing","params":[]}' http://geth:8545
+    */
+
+    // programmatic HTTP request
+    /*
+    sleep(Duration::from_secs(5)).await;
+    let geth_client = reqwest::Client::new();
+    let res = geth_client
+        .post("http://geth:8545")
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            "application/json",
+        )
+        .body(r#"{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}"#)
+        .send()
+        .await?
+        .text()
+        .await?;
+    info!(res);
+    */
+
+    // requests using the `web30` crate
+    let web3 = Web3::new("http://geth:8545", Duration::from_secs(30));
+    // `Web3::new` only waits for initial handshakes, we need to wait for Tcp and
+    // syncing
+    async fn is_eth_up(web3: &Web3) -> Result<()> {
+        web3.eth_syncing()
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::boxed(Box::new(e)))
+    }
+    wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3)).await?;
+    info!("geth is running");
+
+    dbg!(web3
+        .eth_get_balance(Address::from_str("0xBf660843528035a5A4921534E156a27e64B231fE").unwrap())
+        .await
+        .unwrap());
+
+    // note: check out https://crates.io/crates/prometheus
+    // for running your own Prometheus metrics client
+
+    // terminate
+    nm_geth.send::<()>(&()).await?;
+
     Ok(())
 }
 
@@ -121,6 +175,8 @@ const ETH_GENESIS: &str = r#"
 "#;
 
 async fn geth_runner() -> Result<()> {
+    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
+
     let genesis_file = "/resources/eth_genesis.json";
     FileOptions::write_str(genesis_file, ETH_GENESIS).await?;
 
@@ -171,56 +227,9 @@ async fn geth_runner() -> Result<()> {
     .run()
     .await?;
 
-    sleep(TIMEOUT).await;
+    // terminate
+    nm_test.recv::<()>().await?;
+
     geth_runner.terminate().await?;
-    Ok(())
-}
-
-async fn test_runner() -> Result<()> {
-    // manual HTTP request
-    /*
-    curl --header "content-type: application/json" --data
-    '{"id":1,"jsonrpc":"2.0","method":"eth_syncing","params":[]}' http://geth:8545
-    */
-
-    // programmatic HTTP request
-    /*
-    sleep(Duration::from_secs(5)).await;
-    let geth_client = reqwest::Client::new();
-    let res = geth_client
-        .post("http://geth:8545")
-        .header(
-            reqwest::header::CONTENT_TYPE,
-            "application/json",
-        )
-        .body(r#"{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}"#)
-        .send()
-        .await?
-        .text()
-        .await?;
-    info!(res);
-    */
-
-    // requests using the `web30` crate
-    let web3 = Web3::new("http://geth:8545", Duration::from_secs(30));
-    // `Web3::new` only waits for initial handshakes, we need to wait for Tcp and
-    // syncing
-    async fn is_eth_up(web3: &Web3) -> Result<()> {
-        web3.eth_syncing()
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::boxed(Box::new(e) as Box<dyn std::error::Error>))
-    }
-    wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3)).await?;
-    info!("geth is running");
-
-    dbg!(web3
-        .eth_get_balance(Address::from_str("0xBf660843528035a5A4921534E156a27e64B231fE").unwrap())
-        .await
-        .unwrap());
-
-    // note: check out https://crates.io/crates/prometheus
-    // for running your own Prometheus metrics client
-
     Ok(())
 }
