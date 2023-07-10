@@ -1,4 +1,3 @@
 *
 !.gitignore
 !keyring-test/
-!failing_genesis.json

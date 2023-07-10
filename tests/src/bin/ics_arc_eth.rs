@@ -8,7 +8,10 @@ use onomy_test_lib::{
         set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
-    hermes::{hermes_set_gas_price_denom, hermes_start, sh_hermes, IbcPair},
+    hermes::{
+        hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
+        HermesChainConfig, IbcPair,
+    },
     onomy_std_init,
     setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup},
     super_orchestrator::{
@@ -69,6 +72,16 @@ async fn container_runner(args: &Args) -> Result<()> {
     // prepare volumed resources
     remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"]).await?;
 
+    // prepare hermes config
+    write_hermes_config(
+        &[
+            HermesChainConfig::new("onomy", "onomy", false, "anom", true),
+            HermesChainConfig::new("arc_eth", "onomy", true, "anative", true),
+        ],
+        &format!("{dockerfiles_dir}/dockerfile_resources"),
+    )
+    .await?;
+
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
@@ -79,7 +92,7 @@ async fn container_runner(args: &Args) -> Result<()> {
         vec![
             Container::new(
                 "hermes",
-                Dockerfile::Contents(dockerfile_hermes("hermes_config.toml")),
+                Dockerfile::Contents(dockerfile_hermes("__tmp_hermes_config.toml")),
                 entrypoint,
                 &["--entry-name", "hermes"],
             ),

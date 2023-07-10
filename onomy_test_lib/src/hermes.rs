@@ -8,8 +8,8 @@ use super_orchestrator::{
     Command, CommandRunner, FileOptions,
 };
 
-pub use crate::ibc::IbcPair;
 use crate::json_inner;
+pub use crate::{hermes_config::*, ibc::IbcPair};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
 /// last line is parsed as a `Value` and the inner "result" is returned.
