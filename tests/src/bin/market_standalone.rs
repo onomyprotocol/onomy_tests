@@ -21,22 +21,17 @@ async fn main() -> Result<()> {
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
-        sh("make --directory ./../market/ build_standalone", &[]).await?;
+        sh("make --directory ./../market/ build-standalone", &[]).await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
-            "cp ./../market/market_standaloned \
-             ./tests/dockerfiles/dockerfile_resources/market_standaloned",
+            "cp ./../market/market-standaloned \
+             ./tests/dockerfiles/dockerfile_resources/market-standaloned",
             &[],
         )
         .await?;
         container_runner(&args, &[(
             "market_standaloned",
-            &onomy_std_cosmos_daemon(
-                "market_standaloned",
-                ".onomy_market_standalone",
-                "v0.1.0",
-                "market_standaloned",
-            ),
+            &onomy_std_cosmos_daemon("market", ".onomy_market", "v0.1.0", "market-standaloned"),
         )])
         .await
     }

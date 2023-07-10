@@ -127,7 +127,7 @@ async fn test_runner() -> Result<()> {
         web3.eth_syncing()
             .await
             .map(|_| ())
-            .map_err(|e| Error::boxed(Box::new(e) as Box<dyn std::error::Error>))
+            .map_err(|e| Error::boxed(Box::new(e)))
     }
     wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3)).await?;
     info!("geth is running");

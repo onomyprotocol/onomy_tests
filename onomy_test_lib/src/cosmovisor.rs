@@ -45,11 +45,9 @@ pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serd
     if res["code"].as_u64().map_add_err(|| ())? == 0 {
         Ok(res)
     } else {
-        Err(Error::from(format!(
-            "raw_log: {}",
-            res["raw_log"]
-        )))
-        .map_add_err(|| format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})"))
+        Err(Error::from(format!("raw_log: {}", res["raw_log"]))).map_add_err(|| {
+            format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})")
+        })
     }
 }
 

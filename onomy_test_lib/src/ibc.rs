@@ -1,6 +1,9 @@
+use std::time::Duration;
+
 use log::info;
 pub use super_orchestrator::stacked_errors::Result;
 use super_orchestrator::{get_separated_val, stacked_errors::MapAddError};
+use tokio::time::sleep;
 
 pub use crate::types::{IbcPair, IbcSide};
 use crate::{
@@ -93,14 +96,30 @@ impl IbcPair {
         // ICS communication
         let connection_pair = create_connection_pair(&a_chain, &b_chain).await?;
 
-        // a_chain<->b_chain transfer<->transfer
-        let transfer_channel_pair =
-            create_channel_pair(&a_chain, &connection_pair.0, "transfer", "transfer", false)
-                .await?;
+        let tmp = (a_chain.clone(), connection_pair.clone());
+        let transfer_task = tokio::task::spawn(async move {
+            let (a_chain, connection_pair) = tmp;
+            // a_chain<->b_chain transfer<->transfer
+            create_channel_pair(
+                &a_chain.clone(),
+                &connection_pair.0.clone(),
+                "transfer",
+                "transfer",
+                false,
+            )
+            .await
+            .unwrap()
+        });
+
+        // make sure the transfer task gets the first connection TODO make this more
+        // rigorous
+        sleep(Duration::from_secs(1)).await;
 
         // a_chain<->b_chain consumer<->provider
         let ics_channel_pair =
             create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true).await?;
+
+        let transfer_channel_pair = transfer_task.await?;
 
         info!("{consumer} <-> {provider} transfer and consumer-provider channels have been set up");
 
