@@ -96,6 +96,7 @@ impl IbcPair {
         // ICS communication
         let connection_pair = create_connection_pair(&a_chain, &b_chain).await?;
 
+        // this results in some mismatch errors but we use it for now for speeding up things
         let tmp = (a_chain.clone(), connection_pair.clone());
         let transfer_task = tokio::task::spawn(async move {
             let (a_chain, connection_pair) = tmp;
