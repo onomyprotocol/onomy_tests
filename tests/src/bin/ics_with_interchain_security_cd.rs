@@ -201,9 +201,6 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let addr = &cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
 
-    // FIXME
-    //set_minimum_gas_price(daemon_home, "1anom").await?;
-
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
     let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id).await?;
