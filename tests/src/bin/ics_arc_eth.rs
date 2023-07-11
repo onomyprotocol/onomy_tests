@@ -12,7 +12,7 @@ use onomy_test_lib::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,
     },
-    onomy_std_init,
+    onomy_std_init, reprefix_bech32,
     setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
@@ -21,9 +21,13 @@ use onomy_test_lib::{
         stacked_errors::{MapAddError, Result},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    Args, ONOMY_IBC_NOM, TIMEOUT,
+    token18, Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
+
+const CONSUMER_ID: &str = "arc_eth";
+const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
+const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,9 +35,9 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "hermes" => hermes_runner(&args).await,
             "onomyd" => onomyd_runner(&args).await,
-            "arc_ethd" => arc_ethd_runner(&args).await,
+            "consumer" => consumer(&args).await,
+            "hermes" => hermes_runner(&args).await,
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
@@ -76,7 +80,7 @@ async fn container_runner(args: &Args) -> Result<()> {
     write_hermes_config(
         &[
             HermesChainConfig::new("onomy", "onomy", false, "anom", true),
-            HermesChainConfig::new("arc_eth", "onomy", true, "anative", true),
+            HermesChainConfig::new(CONSUMER_ID, CONSUMER_ACCOUNT_PREFIX, true, "anative", true),
         ],
         &format!("{dockerfiles_dir}/dockerfile_resources"),
     )
@@ -115,7 +119,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                     "arc_ethd",
                 )),
                 entrypoint,
-                &["--entry-name", "arc_ethd"],
+                &["--entry-name", "consumer"],
             )
             .volumes(&[(
                 "./tests/resources/keyring-test",
@@ -146,7 +150,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     )
     .await?;
     sh_hermes(
-        "keys add --chain arc_eth --mnemonic-file /root/.hermes/mnemonic.txt",
+        &format!("keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"),
         &[],
     )
     .await?;
@@ -154,7 +158,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    let ibc_pair = IbcPair::hermes_setup_pair("arc_eth", "onomy").await?;
+    let ibc_pair = IbcPair::hermes_setup_pair(CONSUMER_ID, "onomy").await?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
     ibc_pair.hermes_check_acks().await?;
 
@@ -164,7 +168,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // signal to update gas denom
     let ibc_nom = nm_onomyd.recv::<String>().await?;
     hermes_runner.terminate(TIMEOUT).await?;
-    hermes_set_gas_price_denom(hermes_home, "arc_eth", &ibc_nom).await?;
+    hermes_set_gas_price_denom(hermes_home, CONSUMER_ID, &ibc_nom).await?;
 
     // restart
     let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await?;
@@ -177,22 +181,26 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
-    let consumer_id = "arc_eth";
+    let consumer_id = CONSUMER_ID;
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .map_add_err(|| ())?;
-    let mut nm_consumer = NetMessenger::connect(STD_TRIES, STD_DELAY, "arc_ethd:26001")
-        .await
-        .map_add_err(|| ())?;
+    let mut nm_consumer =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("{consumer_id}d:26001"))
+            .await
+            .map_add_err(|| ())?;
 
     let mnemonic = onomyd_setup(daemon_home).await?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await?;
 
     // keep these here for local testing purposes
-    let addr = cosmovisor_get_addr("validator").await?;
+    let addr = &cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
+
+    // FIXME
+    //set_minimum_gas_price(daemon_home, "1anom").await?;
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
@@ -225,10 +233,15 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // send anom to consumer
     ibc_pair
         .b
-        .cosmovisor_ibc_transfer("validator", &addr, "1337000000", "anom")
+        .cosmovisor_ibc_transfer(
+            "validator",
+            &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX)?,
+            &token18(100.0e3, ""),
+            "anom",
+        )
         .await?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(2).await?;
+    wait_for_num_blocks(4).await?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await?;
 
@@ -260,9 +273,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn arc_ethd_runner(args: &Args) -> Result<()> {
+async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    let chain_id = "arc_eth";
+    let chain_id = CONSUMER_ID;
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
@@ -287,6 +300,8 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner =
         cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
+    let addr = &cosmovisor_get_addr("validator").await?;
+
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
 
@@ -294,44 +309,91 @@ async fn arc_ethd_runner(args: &Args) -> Result<()> {
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
-    let ibc_nom = ibc_pair.a.get_ibc_denom("anom").await?;
-    assert_eq!(ibc_nom, ONOMY_IBC_NOM,);
-    let addr = cosmovisor_get_addr("validator").await?;
-    let balances = cosmovisor_get_balances(&addr).await?;
-    assert!(balances.contains_key(&ibc_nom));
+    let ibc_nom = &ibc_pair.a.get_ibc_denom("anom").await?;
+    assert_eq!(ibc_nom, ONOMY_IBC_NOM);
+    let balances = cosmovisor_get_balances(addr).await?;
+    assert!(balances.contains_key(ibc_nom));
 
     // we have IBC NOM, shut down, change gas in app.toml, restart
     cosmovisor_runner.terminate(TIMEOUT).await?;
     set_minimum_gas_price(daemon_home, &format!("1{ibc_nom}")).await?;
     let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None).await?;
     // tell hermes to restart with updated gas denom on its side
-    nm_onomyd.send::<String>(&ibc_nom).await?;
+    nm_onomyd.send::<String>(ibc_nom).await?;
     nm_onomyd.recv::<()>().await?;
+    info!("restarted with new gas denom");
 
     // test normal transfer
-    let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";
-    cosmovisor_bank_send(&addr, dst_addr, "5000", &ibc_nom).await?;
-    assert_eq!(cosmovisor_get_balances(dst_addr).await?[&ibc_nom], "5000");
+    let dst_addr = &reprefix_bech32(
+        "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
+        CONSUMER_ACCOUNT_PREFIX,
+    )?;
+    cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom).await?;
+    assert_eq!(cosmovisor_get_balances(dst_addr).await?[ibc_nom], "5000");
+
+    let test_addr = &reprefix_bech32(
+        "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
+        PROVIDER_ACCOUNT_PREFIX,
+    )?;
+    info!("sending back to {}", test_addr);
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
         .a
-        .cosmovisor_ibc_transfer("validator", dst_addr, "5000", &ibc_nom)
+        .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await?;
-    wait_for_num_blocks(2).await?;
+    wait_for_num_blocks(4).await?;
 
     // round trip signal
     nm_onomyd.send::<()>(&()).await?;
 
     // termination signal
     nm_onomyd.recv::<()>().await?;
-    cosmovisor_runner.terminate(TIMEOUT).await?;
 
-    FileOptions::write_str(
-        "/logs/arc_eth_export.json",
-        &sh_cosmovisor_no_dbg("export", &[]).await?,
+    // but first, test governance with IBC NOM as the token
+    /*let test_crisis_denom = ONOMY_IBC_NOM;
+    let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
+    wait_for_num_blocks(1).await?;
+    cosmovisor_gov_file_proposal(
+        daemon_home,
+        "param-change",
+        &format!(
+            r#"
+    {{
+        "title": "Parameter Change",
+        "description": "Making a parameter change",
+        "changes": [
+          {{
+            "subspace": "crisis",
+            "key": "ConstantFee",
+            "value": {{"denom":"{test_crisis_denom}","amount":"1337"}}
+          }}
+        ],
+        "deposit": "{test_deposit}"
+    }}
+    "#
+        ),
+        &format!("1{ibc_nom}"),
     )
     .await?;
+    wait_for_num_blocks(5).await?;
+    // just running this for debug, param querying is weird because it is json
+    // inside of yaml, so we will instead test the exported genesis
+    sh_cosmovisor("query params subspace crisis ConstantFee", &[]).await?;*/
+
+    cosmovisor_runner.terminate(TIMEOUT).await?;
+
+    let exported = sh_cosmovisor_no_dbg("export", &[]).await?;
+    FileOptions::write_str("/logs/{chain_id}_export.json", &exported).await?;
+    /*let exported = yaml_str_to_json_value(&exported)?;
+    assert_eq!(
+        exported["app_state"]["crisis"]["constant_fee"]["denom"],
+        test_crisis_denom
+    );
+    assert_eq!(
+        exported["app_state"]["crisis"]["constant_fee"]["amount"],
+        "1337"
+    );*/
 
     Ok(())
 }
