@@ -264,7 +264,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "genesis_hash": "Z2VuX2hhc2g=",
         "binary_hash": "YmluX2hhc2g=",
         "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
-        "consumer_redistribution_fraction": "0.0",
+        "consumer_redistribution_fraction": "1.0",
         "blocks_per_distribution_transmission": 1000,
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,
