@@ -36,6 +36,9 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
 /// chain level transaction failed (cosmovisor will not return a successful
 /// status if the transaction was at least successfully transmitted, ignoring if
 /// the transaction result was unsuccessful)
+///
+/// NOTE: You need to pass the argument `-y` to confirm without needing piped
+/// input, and the arguments `-b block` for the error handling to work properly
 pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
     let res = sh_cosmovisor_no_dbg(&format!("tx {cmd_with_args}"), args)
         .await

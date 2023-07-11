@@ -381,7 +381,7 @@ async fn consumer(args: &Args) -> Result<()> {
     cosmovisor_runner.terminate(TIMEOUT).await?;
 
     let exported = sh_cosmovisor_no_dbg("export", &[]).await?;
-    FileOptions::write_str("/logs/{chain_id}_export.json", &exported).await?;
+    FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported).await?;
     /*let exported = yaml_str_to_json_value(&exported)?;
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
