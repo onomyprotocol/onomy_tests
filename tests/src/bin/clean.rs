@@ -11,7 +11,7 @@ async fn main() -> Result<()> {
         "__tmp_hermes_config.toml",
         "onomyd",
         "marketd",
-        "market_standaloned",
+        "market-standaloned",
         "gravity",
         "arc_ethd",
         "interchain-security-cd",
