@@ -12,7 +12,7 @@ use onomy_test_lib::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,
     },
-    onomy_std_init,
+    onomy_std_init, reprefix_bech32,
     setups::{cosmovisor_add_consumer, marketd_setup, onomyd_setup},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
@@ -26,6 +26,7 @@ use onomy_test_lib::{
 use tokio::time::sleep;
 
 const CONSUMER_ID: &str = "interchain-security-cd";
+const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "cosmos";
 
 #[rustfmt::skip]
@@ -197,7 +198,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     nm_hermes.send::<String>(&mnemonic).await?;
 
     // keep these here for local testing purposes
-    let addr = cosmovisor_get_addr("validator").await?;
+    let addr = &cosmovisor_get_addr("validator").await?;
     sleep(Duration::ZERO).await;
 
     // FIXME
@@ -234,10 +235,15 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // send anom to consumer
     ibc_pair
         .b
-        .cosmovisor_ibc_transfer("validator", &addr, &token18(100.0e3, ""), "anom")
+        .cosmovisor_ibc_transfer(
+            "validator",
+            &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX)?,
+            &token18(100.0e3, ""),
+            "anom",
+        )
         .await?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(8).await?;
+    wait_for_num_blocks(4).await?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await?;
 
@@ -306,7 +312,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
     let ibc_nom = &ibc_pair.a.get_ibc_denom("anom").await?;
-    assert_eq!(ibc_nom, ONOMY_IBC_NOM,);
+    assert_eq!(ibc_nom, ONOMY_IBC_NOM);
     let balances = cosmovisor_get_balances(addr).await?;
     assert!(balances.contains_key(ibc_nom));
 
@@ -320,16 +326,25 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("restarted with new gas denom");
 
     // test normal transfer
-    let dst_addr = "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3";
+    let dst_addr = &reprefix_bech32(
+        "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
+        CONSUMER_ACCOUNT_PREFIX,
+    )?;
     cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom).await?;
     assert_eq!(cosmovisor_get_balances(dst_addr).await?[ibc_nom], "5000");
+
+    let test_addr = &reprefix_bech32(
+        "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
+        PROVIDER_ACCOUNT_PREFIX,
+    )?;
+    info!("sending back to {}", test_addr);
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
         .a
-        .cosmovisor_ibc_transfer("validator", dst_addr, "5000", ibc_nom)
+        .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await?;
-    wait_for_num_blocks(2).await?;
+    wait_for_num_blocks(4).await?;
 
     // round trip signal
     nm_onomyd.send::<()>(&()).await?;
