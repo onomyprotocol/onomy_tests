@@ -70,8 +70,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
 
     fast_block_times(daemon_home).await?;
 
-    // FIXME why does this cause Hermes to fail to relay
-    //set_minimum_gas_price(daemon_home, "1anom").await?;
+    set_minimum_gas_price(daemon_home, "1anom").await?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -265,7 +264,7 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "genesis_hash": "Z2VuX2hhc2g=",
         "binary_hash": "YmluX2hhc2g=",
         "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
-        "consumer_redistribution_fraction": "0.0",
+        "consumer_redistribution_fraction": "1.0",
         "blocks_per_distribution_transmission": 1000,
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,
@@ -292,10 +291,13 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
     sh_cosmovisor_tx("provider assign-consensus-key", &[
         consumer_id,
         &tendermint_key,
-        "--gas",
-        "auto",
-        "--gas-adjustment",
-        "1.3",
+        // TODO for unknown reasons, `onomyd` with nonzero gas fee breaks non `--fees` usage
+        //"--gas",
+        //"auto",
+        //"--gas-adjustment",
+        //"1.3",
+        "--fees",
+        "1000000anom",
         "-y",
         "-b",
         "block",

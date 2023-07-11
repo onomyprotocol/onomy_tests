@@ -8,9 +8,10 @@ async fn main() -> Result<()> {
 
     remove_files_in_dir("./tests/dockerfiles", &["__tmp.dockerfile"]).await?;
     remove_files_in_dir("./tests/dockerfiles/dockerfile_resources", &[
+        "__tmp_hermes_config.toml",
         "onomyd",
         "marketd",
-        "market_standaloned",
+        "market-standaloned",
         "gravity",
         "arc_ethd",
         "interchain-security-cd",

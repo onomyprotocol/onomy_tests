@@ -1,4 +1,7 @@
-# The global section has parameters that apply globally to the relayer operation.
+use super_orchestrator::{stacked_errors::Result, FileOptions};
+
+#[rustfmt::skip]
+const HEADER: &str = r##"# The global section has parameters that apply globally to the relayer operation.
 [global]
 log_level = 'info'
 
@@ -100,11 +103,10 @@ host = '127.0.0.1'
 # by the telemetry service. Default: 3001
 port = 3001
 
+"##;
 
-# A chains section includes parameters related to a chain and the full node to which
-# the relayer can send transactions and queries.
+/*
 [[chains]]
-
 # Specify the chain ID. Required
 id = 'onomy'
 
@@ -148,7 +150,8 @@ key_name = 'validator'
 #
 # Example configuration for chains based on Ethermint library:
 #
-# address_type = { derivation = 'ethermint', proto_type = { pk_type = '/ethermint.crypto.v1.ethsecp256k1.PubKey' } }
+# address_type = { derivation = 'ethermint', proto_type
+# = { pk_type = '/ethermint.crypto.v1.ethsecp256k1.PubKey' } }
 #
 # Default: { derivation = 'cosmos' }, i.e. address derivation as in Cosmos SDK.
 # Warning: This is an advanced feature! Modify with caution.
@@ -161,20 +164,20 @@ store_prefix = 'ibc'
 # Gas Parameters
 #
 # The term 'gas' is used to denote the amount of computation needed to execute
-# and validate a transaction on-chain. It can be thought of as fuel that gets 
+# and validate a transaction on-chain. It can be thought of as fuel that gets
 # spent in order to power the on-chain execution of a transaction.
 #
-# Hermes attempts to simulate how much gas a transaction will expend on its 
+# Hermes attempts to simulate how much gas a transaction will expend on its
 # target chain. From that, it calculates the cost of that gas by multiplying the
 # amount of estimated gas by the `gas_multiplier` and the `gas_price`
-# (estimated gas * `gas_multiplier` * `gas_price`) in order to compute the 
+# (estimated gas * `gas_multiplier` * `gas_price`) in order to compute the
 # total fee to be deducted from the relayer's wallet.
 #
 # The `simulate_tx` operation does not always correctly estimate the appropriate
-# amount of gas that a transaction requires. In those cases when the operation 
-# fails, Hermes will attempt to submit the transaction using the specified 
-# `default_gas` and `max_gas` parameters. In the case that a transaction would 
-# require more than `max_gas`, it doesn't get submitted and a 
+# amount of gas that a transaction requires. In those cases when the operation
+# fails, Hermes will attempt to submit the transaction using the specified
+# `default_gas` and `max_gas` parameters. In the case that a transaction would
+# require more than `max_gas`, it doesn't get submitted and a
 # `TxSimulateGasEstimateExceeded` error is returned.
 
 # Specify the default amount of gas to be used in case the tx simulation fails,
@@ -188,10 +191,10 @@ default_gas = 100000
 max_gas = 400000
 
 # Specify the price per gas used of the fee to submit a transaction and
-# the denomination of the fee. 
+# the denomination of the fee.
 #
 # The specified gas price should always be greater or equal to the `min-gas-price`
-# configured on the chain. This is to ensure that at least some minimal price is 
+# configured on the chain. This is to ensure that at least some minimal price is
 # paid for each unit of gas per transaction.
 #
 # Required
@@ -202,8 +205,8 @@ gas_price = { price = 1, denom = 'anom' }
 #
 # The purpose of multiplying by `gas_multiplier` is to provide a bit of a buffer
 # to catch some of the cases when the gas estimation calculation is on the low
-# end. 
-# 
+# end.
+#
 # Example: With this setting set to 1.1, then if the estimated gas
 # is 80_000, then gas used to compute the fee will be adjusted to
 # 80_000 * 1.1 = 88_000.
@@ -229,7 +232,8 @@ clock_drift = '5s'
 # The block time together with the clock drift are added to the source drift to estimate
 # the maximum clock drift when creating a client on this chain. Default: 30s
 # For cosmos-SDK chains a good approximation is `timeout_propose` + `timeout_commit`
-# Note: This MUST be the same as the `max_expected_time_per_block` genesis parameter for Tendermint chains.
+# Note: This MUST be the same as the `max_expected_time_per_block`
+# genesis parameter for Tendermint chains.
 max_block_time = '2s'
 
 # Specify the amount of time to be used as the light client trusting period.
@@ -300,72 +304,76 @@ memo_prefix = ''
 # the account specified in `key_name` will pay the tx fees for all transactions
 # submitted to this chain.
 # fee_granter = ''
+*/
 
-[[chains]]
-id = 'interchain-security-c'
-ccv_consumer_chain = true
-rpc_addr = 'http://interchain-security-cd:26657'
-grpc_addr = 'http://interchain-security-cd:9090'
-websocket_addr = 'ws://interchain-security-cd:26657/websocket'
+pub struct HermesChainConfig {
+    chain_id: String,
+    account_prefix: String,
+    ccv_consumer_chain: bool,
+    gas_denom: String,
+    fast_block_times: bool,
+}
+
+impl HermesChainConfig {
+    pub fn new(
+        chain_id: &str,
+        account_prefix: &str,
+        ccv_consumer_chain: bool,
+        gas_denom: &str,
+        fast_block_times: bool,
+    ) -> Self {
+        Self {
+            chain_id: chain_id.to_owned(),
+            account_prefix: account_prefix.to_owned(),
+            ccv_consumer_chain,
+            gas_denom: gas_denom.to_owned(),
+            fast_block_times,
+        }
+    }
+}
+
+impl ToString for HermesChainConfig {
+    fn to_string(&self) -> String {
+        let chain_id = &self.chain_id;
+        let account_prefix = &self.account_prefix;
+        let ccv_consumer_chain = self.ccv_consumer_chain;
+        let gas_denom = &self.gas_denom;
+        let max_block_time = if self.fast_block_times { "2s" } else { "30s" };
+        format!(
+            r##"[[chains]]
+id = '{chain_id}'
+ccv_consumer_chain = {ccv_consumer_chain}
+rpc_addr = 'http://{chain_id}d:26657'
+grpc_addr = 'http://{chain_id}d:9090'
+websocket_addr = 'ws://{chain_id}d:26657/websocket'
 rpc_timeout = '10s'
-account_prefix = 'cosmos'
+account_prefix = '{account_prefix}'
 key_name = 'validator'
 store_prefix = 'ibc'
 default_gas = 100000
 max_gas = 400000
 # note: this is changed to IBC NOM during bootstrap
-gas_price = { price = 1, denom = 'anative' }
+gas_price = {{ price = 1, denom = '{gas_denom}' }}
 gas_multiplier = 1.1
 max_msg_num = 30
 max_tx_size = 2097152
 clock_drift = '5s'
-max_block_time = '2s'
+max_block_time = '{max_block_time}'
 trusting_period = '14days'
-trust_threshold = { numerator = '1', denominator = '3' }
-address_type = { derivation = 'cosmos' }
+trust_threshold = {{ numerator = '1', denominator = '3' }}
+address_type = {{ derivation = 'cosmos' }}
+"##
+        )
+    }
+}
 
-[[chains]]
-id = 'market'
-ccv_consumer_chain = true
-rpc_addr = 'http://marketd:26657'
-grpc_addr = 'http://marketd:9090'
-websocket_addr = 'ws://marketd:26657/websocket'
-rpc_timeout = '10s'
-account_prefix = 'onomy'
-key_name = 'validator'
-store_prefix = 'ibc'
-default_gas = 100000
-max_gas = 400000
-# note: this is changed to IBC NOM during bootstrap
-gas_price = { price = 1, denom = 'anative' }
-gas_multiplier = 1.1
-max_msg_num = 30
-max_tx_size = 2097152
-clock_drift = '5s'
-max_block_time = '2s'
-trusting_period = '14days'
-trust_threshold = { numerator = '1', denominator = '3' }
-address_type = { derivation = 'cosmos' }
-
-[[chains]]
-id = 'arc_eth'
-ccv_consumer_chain = true
-rpc_addr = 'http://arc_ethd:26657'
-grpc_addr = 'http://arc_ethd:9090'
-websocket_addr = 'ws://arc_ethd:26657/websocket'
-rpc_timeout = '10s'
-account_prefix = 'onomy'
-key_name = 'validator'
-store_prefix = 'ibc'
-default_gas = 100000
-max_gas = 400000
-# note: this is changed to IBC NOM during bootstrap
-gas_price = { price = 1, denom = 'anative' }
-gas_multiplier = 1.1
-max_msg_num = 30
-max_tx_size = 2097152
-clock_drift = '5s'
-max_block_time = '2s'
-trusting_period = '14days'
-trust_threshold = { numerator = '1', denominator = '3' }
-address_type = { derivation = 'cosmos' }
+pub async fn write_hermes_config(
+    chain_configs: &[HermesChainConfig],
+    write_dir: &str,
+) -> Result<()> {
+    let mut s = HEADER.to_owned();
+    for config in chain_configs {
+        s += &config.to_string();
+    }
+    FileOptions::write_str(&format!("{write_dir}/__tmp_hermes_config.toml"), &s).await
+}
