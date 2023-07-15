@@ -12,7 +12,7 @@ use crate::{
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
-    json_inner, native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TIMEOUT,
+    native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TIMEOUT,
 };
 
 // make sure some things are imported so we don't have to wrangle with this for
@@ -264,28 +264,23 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "genesis_hash": "Z2VuX2hhc2g=",
         "binary_hash": "YmluX2hhc2g=",
         "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
+        "unbonding_period": 1728000000000000,
+        "provider_reward_denoms": [],
+        "reward_denoms": [],
         "consumer_redistribution_fraction": "1.0",
-        "blocks_per_distribution_transmission": 1000,
+        "blocks_per_distribution_transmission": 5,
+        "soft_opt_out_threshold": 0.0,
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,
         "transfer_timeout_period": 3600000000000,
-        "unbonding_period": 1728000000000000,
-        "deposit": "2000000000000000000000anom",
-        "soft_opt_out_threshold": 0.0,
-        "provider_reward_denoms": [],
-        "reward_denoms": []
+        "deposit": "500000000000000000000anom"
     }}"#
     );
     cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
     wait_for_num_blocks(1).await?;
 
-    let tendermint_key: Value = serde_json::from_str(
-        &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
-            .await?,
-    )?;
-    let tendermint_key = json_inner(&tendermint_key["pub_key"]["value"]);
-    let tendermint_key =
-        format!("{{\"@type\":\"/cosmos.crypto.ed25519.PubKey\",\"key\":\"{tendermint_key}\"}}");
+    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let tendermint_key = tendermint_key.trim();
 
     // do this before getting the consumer-genesis
     sh_cosmovisor_tx("provider assign-consensus-key", &[
@@ -354,7 +349,7 @@ pub async fn marketd_setup(
 
     // Set governance token (for param changes and upgrades) to IBC NOM
     genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"] =
-        token18(2000.0, "").into();
+        token18(500.0, "").into();
     genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"] = ONOMY_IBC_NOM.into();
     genesis["app_state"]["staking"]["params"]["bond_denom"] = ONOMY_IBC_NOM.into();
 
