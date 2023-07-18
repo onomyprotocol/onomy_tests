@@ -52,6 +52,8 @@ where the tendermint key could be from `cosmovisor run tendermint show-validator
 e.x.
 `cosmovisor run tx provider assign-consensus-key haven '{"@type":"/cosmos.crypto.ed25519.PubKey","key":"2YSpwSW4FhMxIOhBmGpyyLGIDKszRA1v+HSRPuMMcQk="}' --fees 1000000anom -y -b block --from validator`
 
+Someone also needs to run `cosmovisor run tx provider register-consumer-reward-denom [IBC-version-of-consumer-reward-denom]` for the producer-side IBC versions of the rewards in order for redistribution to start working.
+
 After a supermajority of validators do this, we run `cosmovisor run query provider consumer genesis [consumer chain id]` to get the real CCV state and insert it into the consumer genesis. Validators need to get their consumer nodes ready with this complete genesis and the same tendermint keys that they assigned earlier.
 
 Upon chain start, a team member will initialize the onomy-consumer IBC channel as the first channel and fix the automatically initialized transfer channel, which will be used for distribution packets and the standard IBC NOM. Bootstrap is complete and normal transactions can start once the first CCV packets start arriving (else you will receive "tx contains unsupported message types" errors).

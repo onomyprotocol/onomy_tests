@@ -246,7 +246,15 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
 }
 
 /// This should be run from the provider. Returns the ccv state.
-pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Result<String> {
+///
+/// Note: `sh_cosmovisor_tx("provider register-consumer-reward-denom
+/// [IBC-denom]` may need to be run afterwards if it is intended to receive
+/// consumer rewards
+pub async fn cosmovisor_add_consumer(
+    daemon_home: &str,
+    consumer_id: &str,
+    reward_denom: &str,
+) -> Result<String> {
     let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
     let tendermint_key = tendermint_key.trim();
 
@@ -269,9 +277,9 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
         "unbonding_period": 1728000000000000,
         "provider_reward_denoms": ["anom"],
-        "reward_denoms": ["anative"],
+        "reward_denoms": ["{reward_denom}"],
         "consumer_redistribution_fraction": "0.75",
-        "blocks_per_distribution_transmission": 10,
+        "blocks_per_distribution_transmission": 5,
         "soft_opt_out_threshold": 0.0,
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,

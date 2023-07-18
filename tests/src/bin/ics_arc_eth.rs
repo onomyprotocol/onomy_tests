@@ -201,7 +201,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
-    let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id).await?;
+    let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id, "anative").await?;
 
     // send to consumer
     nm_consumer.send::<String>(&ccvconsumer_state).await?;
