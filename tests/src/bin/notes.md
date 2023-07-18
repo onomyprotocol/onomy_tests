@@ -14,26 +14,26 @@ Someone runs a test chain until after the proposal is complete, and runs `cosmov
 Someone runs a "consumer-addition" proposal with the argument file
 ```
 {
-        "title": "Propose the addition of a new chain",
-        "description": "Add the [name] consumer chain",
-        "chain_id": "[chain-id]",
-        "initial_height": {
-            "revision_number": 0,
-            "revision_height": 1
-        },
-        "genesis_hash": "Z2VuX2hhc2g=",
-        "binary_hash": "YmluX2hhc2g=",
-        "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
-        "unbonding_period": 1728000000000000,
-        "consumer_redistribution_fraction": "0.5",
-        "provider_reward_denoms": ["anom"],
-        "reward_denoms": ["anative"]
-        "blocks_per_distribution_transmission": 1000,
-        "soft_opt_out_threshold": 0.0,
-        "historical_entries": 10000,
-        "ccv_timeout_period": 2419200000000000,
-        "transfer_timeout_period": 3600000000000,
-        "deposit": "500000000000000000000anom",
+  "title": "Propose the addition of a new chain",
+  "description": "Add the [name] consumer chain",
+  "chain_id": "[chain-id]",
+  "initial_height": {
+    "revision_number": 0,
+    "revision_height": 1
+  },
+  "genesis_hash": "Z2VuX2hhc2g=",
+  "binary_hash": "YmluX2hhc2g=",
+  "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
+  "unbonding_period": 1728000000000000,
+  "consumer_redistribution_fraction": "0.5",
+  "provider_reward_denoms": ["anom"],
+  "reward_denoms": ["anative"],
+  "blocks_per_distribution_transmission": 1000,
+  "soft_opt_out_threshold": 0.0,
+  "historical_entries": 10000,
+  "ccv_timeout_period": 2419200000000000,
+  "transfer_timeout_period": 3600000000000,
+  "deposit": "500000000000000000000anom"
 }
 ```
 - "genesis_hash" is used for off-chain confirmation of the genesis state without CCV module params (e.x. `cat genesis.json | openssl dgst -binary -sha256 | openssl base64 -A`)
@@ -54,7 +54,7 @@ e.x.
 
 Someone also needs to run `cosmovisor run tx provider register-consumer-reward-denom [IBC-version-of-consumer-reward-denom]` for the producer-side IBC versions of the rewards in order for redistribution to start working.
 
-After a supermajority of validators do this, we run `cosmovisor run query provider consumer genesis [consumer chain id]` to get the real CCV state and insert it into the consumer genesis. Validators need to get their consumer nodes ready with this complete genesis and the same tendermint keys that they assigned earlier.
+After a supermajority of validators assign their keys, we run `cosmovisor run query provider consumer genesis [consumer chain id]` to get the real CCV state and insert it into the consumer genesis. Validators need to get their consumer nodes ready with this complete genesis and the same tendermint keys that they assigned earlier.
 
 Upon chain start, a team member will initialize the onomy-consumer IBC channel as the first channel and fix the automatically initialized transfer channel, which will be used for distribution packets and the standard IBC NOM. Bootstrap is complete and normal transactions can start once the first CCV packets start arriving (else you will receive "tx contains unsupported message types" errors).
 
