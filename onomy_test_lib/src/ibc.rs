@@ -111,23 +111,28 @@ impl IbcPair {
         // FIXME this is hard coded
         let transfer_channel_pair = ("channel-1".to_string(), "channel-1".to_string());
         sh_hermes(
-            "tx chan-open-try --dst-chain onomy --src-chain interchain-security-cd \
-             --dst-connection connection-0 --dst-port transfer --src-port transfer --src-channel \
-             channel-1",
+            &format!(
+                "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection \
+                 connection-0 --dst-port transfer --src-port transfer --src-channel channel-1"
+            ),
             &[],
         )
         .await?;
         sh_hermes(
-            "tx chan-open-ack --dst-chain interchain-security-cd --src-chain onomy \
-             --dst-connection connection-0 --dst-port transfer --src-port transfer --dst-channel \
-             channel-1 --src-channel channel-1",
+            &format!(
+                "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
+                 connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
+                 --src-channel channel-1"
+            ),
             &[],
         )
         .await?;
         sh_hermes(
-            "tx chan-open-confirm --dst-chain onomy --src-chain interchain-security-cd \
-             --dst-connection connection-0 --dst-port transfer --src-port transfer --dst-channel \
-             channel-1 --src-channel channel-1",
+            &format!(
+                "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} \
+                 --dst-connection connection-0 --dst-port transfer --src-port transfer \
+                 --dst-channel channel-1 --src-channel channel-1"
+            ),
             &[],
         )
         .await?;

@@ -320,55 +320,6 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
     Ok(ccvconsumer_state)
 }
 
-pub async fn havend_setup(
-    daemon_home: &str,
-    chain_id: &str,
-    ccvconsumer_state_s: &str,
-) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-
-    // add `ccvconsumer_state` to genesis
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
-
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
-
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
-
-    let genesis_s = genesis.to_string();
-
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s).await?;
-
-    let addr: &String = &cosmovisor_get_addr("validator").await?;
-
-    // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
-
-    fast_block_times(daemon_home).await?;
-    set_minimum_gas_price(daemon_home, "1anative").await?;
-
-    FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
-    )
-    .await?;
-
-    Ok(())
-}
-
 pub async fn marketd_setup(
     daemon_home: &str,
     chain_id: &str,

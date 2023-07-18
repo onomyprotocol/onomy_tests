@@ -278,8 +278,6 @@ async fn consumer(args: &Args) -> Result<()> {
     let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
 
     arc_consumer_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
-    // make sure switching is possible
-    set_minimum_gas_price(daemon_home, "1anative").await?;
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await?;
