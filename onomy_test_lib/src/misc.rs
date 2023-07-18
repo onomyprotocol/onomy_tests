@@ -36,7 +36,7 @@ pub fn native_denom() -> Value {
 
 /// IBC NOM denom for our Consumers
 pub const ONOMY_IBC_NOM: &str =
-    "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B";
+    "ibc/5872224386C093865E42B18BDDA56BCB8CDE1E36B82B391E97697520053B0513";
 
 /// Runs the given entrypoint
 #[derive(Parser, Debug, Clone)]

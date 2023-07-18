@@ -247,6 +247,9 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
 
 /// This should be run from the provider. Returns the ccv state.
 pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Result<String> {
+    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let tendermint_key = tendermint_key.trim();
+
     // `json!` doesn't like large literals beyond i32.
     // note: when changing this, check market_genesis.json
     // to see if changes are going all the way through.
@@ -265,10 +268,10 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
         "binary_hash": "YmluX2hhc2g=",
         "spawn_time": "2023-05-18T01:15:49.83019476-05:00",
         "unbonding_period": 1728000000000000,
-        "provider_reward_denoms": [],
-        "reward_denoms": [],
-        "consumer_redistribution_fraction": "1.0",
-        "blocks_per_distribution_transmission": 5,
+        "provider_reward_denoms": ["anom"],
+        "reward_denoms": ["anative"],
+        "consumer_redistribution_fraction": "0.75",
+        "blocks_per_distribution_transmission": 10,
         "soft_opt_out_threshold": 0.0,
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,
@@ -279,13 +282,10 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
     cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
     wait_for_num_blocks(1).await?;
 
-    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
-    let tendermint_key = tendermint_key.trim();
-
     // do this before getting the consumer-genesis
     sh_cosmovisor_tx("provider assign-consensus-key", &[
         consumer_id,
-        &tendermint_key,
+        tendermint_key,
         // TODO for unknown reasons, `onomyd` with nonzero gas fee breaks non `--fees` usage
         //"--gas",
         //"auto",
@@ -318,6 +318,55 @@ pub async fn cosmovisor_add_consumer(daemon_home: &str, consumer_id: &str) -> Re
     let ccvconsumer_state = serde_json::to_string(&state)?;
 
     Ok(ccvconsumer_state)
+}
+
+pub async fn havend_setup(
+    daemon_home: &str,
+    chain_id: &str,
+    ccvconsumer_state_s: &str,
+) -> Result<()> {
+    sh_cosmovisor("config chain-id", &[chain_id]).await?;
+    sh_cosmovisor("config keyring-backend test", &[]).await?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
+
+    // add `ccvconsumer_state` to genesis
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+
+    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
+    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+
+    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+
+    // decrease the governing period for fast tests
+    let gov_period = "800ms";
+    let gov_period: Value = gov_period.into();
+    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
+    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+
+    let genesis_s = genesis.to_string();
+
+    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s).await?;
+
+    let addr: &String = &cosmovisor_get_addr("validator").await?;
+
+    // we need some native token in the bank, and don't need gentx
+    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
+
+    fast_block_times(daemon_home).await?;
+    set_minimum_gas_price(daemon_home, "1anative").await?;
+
+    FileOptions::write_str(
+        &format!("/logs/{chain_id}_genesis.json"),
+        &FileOptions::read_to_string(&genesis_file_path).await?,
+    )
+    .await?;
+
+    Ok(())
 }
 
 pub async fn marketd_setup(
@@ -367,7 +416,7 @@ pub async fn marketd_setup(
     let genesis_s = genesis.to_string();
 
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_genesis.json", &genesis_s).await?;
+    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
 

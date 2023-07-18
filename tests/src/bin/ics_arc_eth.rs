@@ -158,7 +158,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await?;
 
-    let ibc_pair = IbcPair::hermes_setup_pair(CONSUMER_ID, "onomy").await?;
+    let ibc_pair = IbcPair::hermes_setup_ics_pair(CONSUMER_ID, "onomy").await?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
     ibc_pair.hermes_check_acks().await?;
 

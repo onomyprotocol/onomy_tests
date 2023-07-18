@@ -58,34 +58,6 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
     })
 }
 
-/// Returns a single connection if it exists. Returns an error if two redundant
-/// connections were found.
-pub async fn get_connection(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = sh_hermes_no_dbg("query clients --host-chain", &[host_chain])
-        .await
-        .map_add_err(|| "failed to query for host chain")?;
-    let clients = clients.as_array().map_add_err(|| ())?;
-    let mut client_id = None;
-    for client in clients {
-        if json_inner(&client["chain_id"]) == reference_chain {
-            if client_id.is_some() {
-                // we have already seen this, we don't want to need to handle ambiguity
-                return Err(Error::from(format!(
-                    "found two clients associated with host_chain {host_chain} and \
-                     reference_chain {reference_chain}"
-                )))
-            }
-            client_id = Some(json_inner(&client["client_id"]));
-        }
-    }
-    client_id.map_add_err(|| {
-        format!(
-            "could not find client associated with host_chain {host_chain} and reference_chain \
-             {reference_chain}"
-        )
-    })
-}
-
 /// Returns the 07-tendermint-x of `a_chain` tracking the state of `b_chain` and
 /// vice versa.
 ///
