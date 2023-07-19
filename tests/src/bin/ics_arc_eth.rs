@@ -13,7 +13,7 @@ use onomy_test_lib::{
         HermesChainConfig, IbcPair,
     },
     onomy_std_init, reprefix_bech32,
-    setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup},
+    setups::{arc_consumer_setup, cosmovisor_add_consumer, onomyd_setup, test_proposal},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -201,7 +201,12 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
 
-    let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id, "anative").await?;
+    let ccvconsumer_state = cosmovisor_add_consumer(
+        daemon_home,
+        consumer_id,
+        &test_proposal(consumer_id, "anative"),
+    )
+    .await?;
 
     // send to consumer
     nm_consumer.send::<String>(&ccvconsumer_state).await?;

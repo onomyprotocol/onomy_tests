@@ -66,7 +66,6 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis)?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/genesis.json", &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
 
@@ -101,6 +100,12 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     .await?;
 
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+
+    FileOptions::write_str(
+        "/logs/genesis.json",
+        &FileOptions::read_to_string(&genesis_file_path).await?,
+    )
+    .await?;
 
     Ok(mnemonic)
 }
@@ -245,25 +250,8 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     Ok(mnemonic)
 }
 
-/// This should be run from the provider. Returns the ccv state.
-///
-/// Note: `sh_cosmovisor_tx("provider register-consumer-reward-denom
-/// [IBC-denom]` may need to be run afterwards if it is intended to receive
-/// consumer rewards
-pub async fn cosmovisor_add_consumer(
-    daemon_home: &str,
-    consumer_id: &str,
-    reward_denom: &str,
-) -> Result<String> {
-    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
-    let tendermint_key = tendermint_key.trim();
-
-    // `json!` doesn't like large literals beyond i32.
-    // note: when changing this, check market_genesis.json
-    // to see if changes are going all the way through.
-    // note: the deposit is for the submission on the producer side, so we want to
-    // use 2k NOM.
-    let proposal_s = &format!(
+pub fn test_proposal(consumer_id: &str, reward_denom: &str) -> String {
+    format!(
         r#"{{
         "title": "Propose the addition of a new chain",
         "description": "add consumer chain",
@@ -280,13 +268,30 @@ pub async fn cosmovisor_add_consumer(
         "reward_denoms": ["{reward_denom}"],
         "consumer_redistribution_fraction": "0.75",
         "blocks_per_distribution_transmission": 5,
-        "soft_opt_out_threshold": 0.0,
+        "soft_opt_out_threshold": "0.0",
         "historical_entries": 10000,
         "ccv_timeout_period": 2419200000000000,
         "transfer_timeout_period": 3600000000000,
         "deposit": "500000000000000000000anom"
     }}"#
-    );
+    )
+}
+
+/// This should be run from the provider. Returns the ccv state.
+///
+/// Note: `sh_cosmovisor_tx("provider register-consumer-reward-denom
+/// [IBC-denom]` may need to be run afterwards if it is intended to receive
+/// consumer rewards
+pub async fn cosmovisor_add_consumer(
+    daemon_home: &str,
+    consumer_id: &str,
+    proposal_s: &str,
+) -> Result<String> {
+    let proposal: Value = serde_json::from_str(proposal_s).map_add_err(|| ())?;
+
+    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let tendermint_key = tendermint_key.trim();
+
     cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
     wait_for_num_blocks(1).await?;
 
@@ -319,10 +324,13 @@ pub async fn cosmovisor_add_consumer(
     .await?;
 
     let mut state: Value = serde_json::from_str(&ccvconsumer_state)?;
-    // TODO because of the differing canonical producer and consumer versions, the
-    // `consumer-genesis` currently does not handle all keys, we have to set
-    // `soft_opt_out_threshold` here.
+
+    // fix missing fields TODO when we update canonical versions we should be able
+    // to remove this
     state["params"]["soft_opt_out_threshold"] = "0.0".into();
+    state["params"]["provider_reward_denoms"] = proposal["provider_reward_denoms"].clone();
+    state["params"]["reward_denoms"] = proposal["reward_denoms"].clone();
+
     let ccvconsumer_state = serde_json::to_string(&state)?;
 
     Ok(ccvconsumer_state)
