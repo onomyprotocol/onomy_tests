@@ -110,9 +110,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     Ok(mnemonic)
 }
 
-pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
-    let chain_id = "market_standalone";
-    let global_min_self_delegation = "225000000000000000000000";
+pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Result<String> {
     sh_cosmovisor("config chain-id", &[chain_id]).await?;
     sh_cosmovisor("config keyring-backend test", &[]).await?;
     sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
@@ -164,7 +162,7 @@ pub async fn market_standaloned_setup(daemon_home: &str) -> Result<String> {
         "--chain-id",
         chain_id,
         "--min-self-delegation",
-        global_min_self_delegation,
+        "1",
     ])
     .await?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;

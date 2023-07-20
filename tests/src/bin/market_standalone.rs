@@ -3,7 +3,7 @@ use onomy_test_lib::{
     cosmovisor::{cosmovisor_get_addr, cosmovisor_start, sh_cosmovisor, sh_cosmovisor_tx},
     dockerfiles::onomy_std_cosmos_daemon,
     onomy_std_init,
-    setups::market_standaloned_setup,
+    setups::market_standalone_setup,
     super_orchestrator::{
         sh,
         stacked_errors::{MapAddError, Result},
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "market_standaloned" => market_standaloned_runner(&args).await,
+            "standalone" => standalone_runner(&args).await,
             _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
         }
     } else {
@@ -30,17 +30,17 @@ async fn main() -> Result<()> {
         )
         .await?;
         container_runner(&args, &[(
-            "market_standaloned",
+            "standalone",
             &onomy_std_cosmos_daemon("market", ".onomy_market", "v0.1.0", "market-standaloned"),
         )])
         .await
     }
 }
 
-async fn market_standaloned_runner(args: &Args) -> Result<()> {
+async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
-    market_standaloned_setup(daemon_home).await?;
-    let mut cosmovisor_runner = cosmovisor_start("market_standaloned_runner.log", None).await?;
+    market_standalone_setup(daemon_home, "market").await?;
+    let mut cosmovisor_runner = cosmovisor_start("standalone_runner.log", None).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
     dbg!(addr);
