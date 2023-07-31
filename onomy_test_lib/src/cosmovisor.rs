@@ -100,7 +100,7 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     config["consensus"]["timeout_precommit"] = "200ms".into();
     config["consensus"]["timeout_precommit_delta"] = "100ms".into();
     config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config)?;
+    let config_s = toml::to_string_pretty(&config).map_add_err(|| ())?;
     FileOptions::write_str(&config_file_path, &config_s).await?;
     Ok(())
 }
@@ -110,7 +110,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await?;
     let mut app_toml: toml::Value = toml::from_str(&app_toml_s).map_add_err(|| ())?;
     app_toml["minimum-gas-prices"] = min_gas_price.into();
-    let app_toml_s = toml::to_string_pretty(&app_toml)?;
+    let app_toml_s = toml::to_string_pretty(&app_toml).map_add_err(|| ())?;
     FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
     Ok(())
 }
@@ -118,7 +118,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
     let block_s = sh_cosmovisor_no_dbg("query block", &[]).await?;
-    let block: Value = serde_json::from_str(&block_s)?;
+    let block: Value = serde_json::from_str(&block_s).map_add_err(|| ())?;
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
         .to_string()
@@ -484,7 +484,7 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
 }
 
 /// Returns a mapping of denoms to amounts
-pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, String>> {
+pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, u128>> {
     let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
         .await
         .map_add_err(|| ())?;
@@ -493,7 +493,7 @@ pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, Stri
     for balance in balances["balances"].as_array().map_add_err(|| ())? {
         res.insert(
             json_inner(&balance["denom"]),
-            json_inner(&balance["amount"]),
+            u128::from_str_radix(&json_inner(&balance["amount"]), 10)?,
         );
     }
     Ok(res)

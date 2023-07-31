@@ -250,7 +250,7 @@ pub async fn hermes_set_gas_price_denom(
             break
         }
     }
-    let config_s = toml::to_string_pretty(&config)?;
+    let config_s = toml::to_string_pretty(&config).map_add_err(|| ())?;
     FileOptions::write_str(&config_path, &config_s).await?;
     Ok(())
 }

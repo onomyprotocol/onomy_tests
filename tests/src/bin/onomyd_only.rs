@@ -47,12 +47,25 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let addr = &cosmovisor_get_addr("validator").await?;
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").unwrap();
+    let tmp = sh_cosmovisor("cosmovisor run tendermint show-address", &[]).await?;
+    let valcons_addr = tmp.trim();
+    info!("address: {addr}");
     info!("valoper address: {valoper_addr}");
+    info!("valcons address: {valcons_addr}");
+    sleep(TIMEOUT).await;
+
+    // get valcons bech32 and pub key
+    // cosmovisor run query tendermint-validator-set
+    let valcons_set = sh_cosmovisor("cosmovisor run query tendermint-validator-set", &[]).await?;
+    info!("{valcons_set}");
+
+    // get mapping of cons pub keys and valoper addr
+    // cosmovisor run query staking validators
 
     sh_cosmovisor_tx(
         &format!(
-            "staking delegate {valoper_addr} 1000000000000000000000anom --gas auto \
-             --gas-adjustment 1.3 -y -b block --from validator"
+            "staking delegate {valoper_addr} 1000000000000000000000anom --fees 1000000anom -y -b \
+             block --from validator"
         ),
         &[],
     )
@@ -73,7 +86,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sh(
         &format!(
             "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-             1337anom --gas auto --gas-adjustment 1.3 -y -b block"
+             1337anom --fees 1000000anom -y -b block"
         ),
         &[],
     )

@@ -5,7 +5,8 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{
@@ -42,7 +43,11 @@ async fn main() -> Result<()> {
         }
     } else {
         sh("make --directory ./../onomy/ build", &[]).await?;
-        sh("make --directory ./../arc/module build-consumer", &[]).await?;
+        sh(
+            "make --directory ./../arc/module build-consumer-democracy",
+            &[],
+        )
+        .await?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
@@ -50,7 +55,7 @@ async fn main() -> Result<()> {
         )
         .await?;
         sh(
-            "cp ./../arc/module/build_consumer/consumer \
+            "cp ./../arc/module/build_consumer/consumer-democracy \
              ./tests/dockerfiles/dockerfile_resources/arc_ethd",
             &[],
         )
@@ -258,7 +263,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // check that the IBC NOM converted back to regular NOM
     assert_eq!(
         cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3").await?["anom"],
-        "5000"
+        5000
     );
 
     // signal to collectively terminate
@@ -301,6 +306,9 @@ async fn consumer(args: &Args) -> Result<()> {
         cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
 
     let addr = &cosmovisor_get_addr("validator").await?;
+    let pubkey = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let pubkey = pubkey.trim();
+    info!("PUBKEY: {pubkey}");
 
     // signal that we have started
     nm_onomyd.send::<()>(&()).await?;
@@ -314,6 +322,38 @@ async fn consumer(args: &Args) -> Result<()> {
     let balances = cosmovisor_get_balances(addr).await?;
     assert!(balances.contains_key(ibc_nom));
 
+    let valcons_set =
+        onomy_test_lib::cosmovisor::sh_cosmovisor("query tendermint-validator-set", &[]).await?;
+    info!("{valcons_set}");
+
+    let pubkey = r#"{"@type":"/cosmos.crypto.ed25519.PubKey","key":"aFV+2+0YfVjwS6cDhuRPTfpBuDmH3J2btCtu+vyfg5w="}"#;
+    // {"@type":"/cosmos.crypto.ed25519.PubKey","key":"
+    // aFV+2+0YfVjwS6cDhuRPTfpBuDmH3J2btCtu+vyfg5w="}
+    sh_cosmovisor_tx("staking", &[
+        "create-validator",
+        "--commission-max-change-rate",
+        "0.01",
+        "--commission-max-rate",
+        "0.10",
+        "--commission-rate",
+        "0.05",
+        "--from",
+        "validator",
+        "--min-self-delegation",
+        "1",
+        "--amount",
+        "1anative",
+        "--fees",
+        "1000000anative",
+        "--pubkey",
+        pubkey,
+        "-y",
+        "-b",
+        "block",
+    ])
+    .await?;
+    sleep(TIMEOUT).await;
+    /*
     // we have IBC NOM, shut down, change gas in app.toml, restart
     cosmovisor_runner.terminate(TIMEOUT).await?;
     set_minimum_gas_price(daemon_home, &format!("1{ibc_nom}")).await?;
@@ -348,7 +388,7 @@ async fn consumer(args: &Args) -> Result<()> {
     nm_onomyd.send::<()>(&()).await?;
 
     // termination signal
-    nm_onomyd.recv::<()>().await?;
+    nm_onomyd.recv::<()>().await?;*/
 
     // but first, test governance with IBC NOM as the token
     /*let test_crisis_denom = ONOMY_IBC_NOM;

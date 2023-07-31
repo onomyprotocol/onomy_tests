@@ -12,7 +12,7 @@ use crate::{
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
-    native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TIMEOUT,
+    native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
 };
 
 // make sure some things are imported so we don't have to wrangle with this for
@@ -37,7 +37,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).map_add_err(|| ())?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
@@ -64,7 +64,7 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
+    let genesis_s = serde_json::to_string(&genesis).map_add_err(|| ())?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
@@ -120,7 +120,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
 
     // rename all "stake" to "native"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).map_add_err(|| ())?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
@@ -133,7 +133,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
+    let genesis_s = serde_json::to_string(&genesis).map_add_err(|| ())?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
     FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
 
@@ -154,7 +154,9 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         .trim()
         .to_owned();
 
-    let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6, "afootoken");
+    //let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6,
+    // "afootoken");
+    let gen_coins = format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}afootoken");
     let stake_coin = token18(1.0e6, "anative");
     sh_cosmovisor("add-genesis-account validator", &[&gen_coins]).await?;
     sh_cosmovisor("gentx validator", &[
@@ -182,7 +184,7 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).map_add_err(|| ())?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
@@ -197,7 +199,7 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
 
     // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
+    let genesis_s = serde_json::to_string(&genesis).map_add_err(|| ())?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     fast_block_times(daemon_home).await?;
@@ -321,7 +323,7 @@ pub async fn cosmovisor_add_consumer(
     ])
     .await?;
 
-    let mut state: Value = serde_json::from_str(&ccvconsumer_state)?;
+    let mut state: Value = serde_json::from_str(&ccvconsumer_state).map_add_err(|| ())?;
 
     // fix missing fields TODO when we update canonical versions we should be able
     // to remove this
@@ -329,7 +331,7 @@ pub async fn cosmovisor_add_consumer(
     state["params"]["provider_reward_denoms"] = proposal["provider_reward_denoms"].clone();
     state["params"]["reward_denoms"] = proposal["reward_denoms"].clone();
 
-    let ccvconsumer_state = serde_json::to_string(&state)?;
+    let ccvconsumer_state = serde_json::to_string(&state).map_add_err(|| ())?;
 
     Ok(ccvconsumer_state)
 }
@@ -348,11 +350,11 @@ pub async fn marketd_setup(
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).map_add_err(|| ())?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).map_add_err(|| ())?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
 
     // decrease the governing period for fast tests
@@ -414,15 +416,15 @@ pub async fn arc_consumer_setup(
     let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
 
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s)?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).map_add_err(|| ())?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id).await?;
 
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s)?;
+    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).map_add_err(|| ())?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
 
     // write back genesis
-    let genesis_s = serde_json::to_string(&genesis)?;
+    let genesis_s = serde_json::to_string(&genesis).map_add_err(|| ())?;
     FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await?;
