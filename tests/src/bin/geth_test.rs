@@ -124,10 +124,7 @@ async fn test_runner() -> Result<()> {
     // `Web3::new` only waits for initial handshakes, we need to wait for Tcp and
     // syncing
     async fn is_eth_up(web3: &Web3) -> Result<()> {
-        web3.eth_syncing()
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::boxed(Box::new(e)))
+        web3.eth_syncing().await.map(|_| ()).stack()
     }
     wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3)).await?;
     info!("geth is running");

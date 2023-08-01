@@ -21,7 +21,9 @@ use onomy_test_lib::{
         stacked_errors::{Error, Result, StackableErr},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    token18, Args, ONOMY_IBC_NOM, TIMEOUT,
+    token18, u64_array_bigints,
+    u64_array_bigints::u256,
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -257,7 +259,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // check that the IBC NOM converted back to regular NOM
     assert_eq!(
         cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3").await?["anom"],
-        5000
+        u256!(5000)
     );
 
     // signal to collectively terminate
@@ -328,7 +330,10 @@ async fn consumer(args: &Args) -> Result<()> {
         CONSUMER_ACCOUNT_PREFIX,
     )?;
     cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom).await?;
-    assert_eq!(cosmovisor_get_balances(dst_addr).await?[ibc_nom], 5000);
+    assert_eq!(
+        cosmovisor_get_balances(dst_addr).await?[ibc_nom],
+        u256!(5000)
+    );
 
     let test_addr = &reprefix_bech32(
         "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",

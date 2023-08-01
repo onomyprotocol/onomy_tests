@@ -90,10 +90,10 @@ pub fn nom(units_of_nom: f64) -> String {
 /// Converts `units_of_nom` to an integer with its units being 1e-18, and adds
 /// on `denom` as a suffix
 pub fn token18(units_of_nom: f64, denom: &str) -> String {
-    // we need 60 bits plus 54 bits for the full repr, round up to 128
-    let mut f = FP::new(false, inlawi!(0u128), 0).unwrap();
+    // there can be 255 bits, but add on 65 for precision and being a multiple of 64
+    let mut f = FP::new(false, inlawi!(0u320), 0).unwrap();
     FP::f64_(&mut f, units_of_nom);
-    // move fixed point to middle
+    // move fixed point to accommodate for 10^18
     f.lshr_(64).unwrap();
     f.set_fp(f.fp() - 64);
     f.digit_cin_mul_(0, 10usize.pow(18));

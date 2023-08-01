@@ -1,12 +1,26 @@
 use log::info;
+use serde_derive::{Deserialize, Serialize};
 pub use super_orchestrator::stacked_errors::Result;
 use super_orchestrator::{get_separated_val, stacked_errors::StackableErr};
 
-pub use crate::types::{IbcPair, IbcSide};
 use crate::{
     cosmovisor::{sh_cosmovisor_no_dbg, sh_cosmovisor_tx},
     hermes::{create_channel_pair, create_connection_pair, sh_hermes},
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IbcSide {
+    pub chain_id: String,
+    pub connection: String,
+    pub transfer_channel: String,
+    pub ics_channel: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IbcPair {
+    pub a: IbcSide,
+    pub b: IbcSide,
+}
 
 impl IbcSide {
     /// This call needs to be made on the source side

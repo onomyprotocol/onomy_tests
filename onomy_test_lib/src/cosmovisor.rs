@@ -8,6 +8,7 @@ use super_orchestrator::{
     wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
+use u64_array_bigints::U256;
 
 use crate::{anom_to_nom, json_inner, yaml_str_to_json_value};
 
@@ -480,7 +481,7 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
 }
 
 /// Returns a mapping of denoms to amounts
-pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, u128>> {
+pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, U256>> {
     let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
         .await
         .stack()?;
@@ -489,7 +490,7 @@ pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, u128
     for balance in balances["balances"].as_array().stack()? {
         res.insert(
             json_inner(&balance["denom"]),
-            u128::from_str_radix(&json_inner(&balance["amount"]), 10)?,
+            U256::from_dec_or_hex_str(&json_inner(&balance["amount"])).stack()?,
         );
     }
     Ok(res)

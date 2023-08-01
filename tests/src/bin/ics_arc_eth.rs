@@ -4,9 +4,8 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
-        wait_for_num_blocks,
+        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, sh_cosmovisor,
+        sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{
@@ -22,12 +21,14 @@ use onomy_test_lib::{
         stacked_errors::{Error, Result, StackableErr},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    token18, Args, ONOMY_IBC_NOM, TIMEOUT,
+    token18,
+    u64_array_bigints::{self, u256},
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
 const CONSUMER_ID: &str = "arc_eth";
-const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
+//const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 
 #[tokio::main]
@@ -263,7 +264,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // check that the IBC NOM converted back to regular NOM
     assert_eq!(
         cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3").await?["anom"],
-        5000
+        u256!(5000)
     );
 
     // signal to collectively terminate
@@ -326,7 +327,6 @@ async fn consumer(args: &Args) -> Result<()> {
         onomy_test_lib::cosmovisor::sh_cosmovisor("query tendermint-validator-set", &[]).await?;
     info!("{valcons_set}");
 
-    let pubkey = r#"{"@type":"/cosmos.crypto.ed25519.PubKey","key":"aFV+2+0YfVjwS6cDhuRPTfpBuDmH3J2btCtu+vyfg5w="}"#;
     // {"@type":"/cosmos.crypto.ed25519.PubKey","key":"
     // aFV+2+0YfVjwS6cDhuRPTfpBuDmH3J2btCtu+vyfg5w="}
     sh_cosmovisor_tx("staking", &[
