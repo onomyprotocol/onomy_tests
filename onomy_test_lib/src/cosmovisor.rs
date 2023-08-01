@@ -4,7 +4,7 @@ use log::info;
 use serde_json::Value;
 use super_orchestrator::{
     get_separated_val, sh, sh_no_dbg,
-    stacked_errors::{Error, MapAddError, Result},
+    stacked_errors::{Error, Result, StackableErr},
     wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
 };
 use tokio::time::sleep;
@@ -18,7 +18,7 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
     let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args).await?;
     Ok(stdout
         .split_once('\n')
-        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .stack_err(|| "cosmovisor run command did not have expected info line")?
         .1
         .to_owned())
 }
@@ -27,7 +27,7 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
     let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args).await?;
     Ok(stdout
         .split_once('\n')
-        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .stack_err(|| "cosmovisor run command did not have expected info line")?
         .1
         .to_owned())
 }
@@ -42,13 +42,13 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
 pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
     let res = sh_cosmovisor_no_dbg(&format!("tx {cmd_with_args}"), args)
         .await
-        .map_add_err(|| "sh_cosmovisor_tx() initial command failed")?;
+        .stack_err(|| "sh_cosmovisor_tx() initial command failed")?;
 
-    let res = yaml_str_to_json_value(&res).map_add_err(|| ())?;
-    if res["code"].as_u64().map_add_err(|| ())? == 0 {
+    let res = yaml_str_to_json_value(&res).stack_err(|| ())?;
+    if res["code"].as_u64().stack()? == 0 {
         Ok(res)
     } else {
-        Err(Error::from(format!("raw_log: {}", res["raw_log"]))).map_add_err(|| {
+        Err(Error::from(format!("raw_log: {}", res["raw_log"]))).stack_err(|| {
             format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})")
         })
     }
@@ -62,9 +62,9 @@ pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &s
     // client.toml
     let client_file_path = format!("{daemon_home}/config/client.toml");
     let client_s = FileOptions::read_to_string(&client_file_path).await?;
-    let mut client: toml::Value = toml::from_str(&client_s).map_add_err(|| ())?;
+    let mut client: toml::Value = toml::from_str(&client_s).stack()?;
     client["chain-id"] = chain_id.into();
-    let client_s = toml::to_string_pretty(&client).map_add_err(|| ())?;
+    let client_s = toml::to_string_pretty(&client).stack()?;
     FileOptions::write_str(&client_file_path, &client_s).await?;
     Ok(())
 }
@@ -82,7 +82,7 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     // "1000".into();
     let config_file_path = format!("{daemon_home}/config/config.toml");
     let config_s = FileOptions::read_to_string(&config_file_path).await?;
-    let mut config: toml::Value = toml::from_str(&config_s).map_add_err(|| ())?;
+    let mut config: toml::Value = toml::from_str(&config_s).stack()?;
     // reduce all of these by a factor of 5
     /*
     timeout_propose = "3s"
@@ -100,7 +100,7 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     config["consensus"]["timeout_precommit"] = "200ms".into();
     config["consensus"]["timeout_precommit_delta"] = "100ms".into();
     config["consensus"]["timeout_commit"] = "1000ms".into();
-    let config_s = toml::to_string_pretty(&config).map_add_err(|| ())?;
+    let config_s = toml::to_string_pretty(&config).stack()?;
     FileOptions::write_str(&config_file_path, &config_s).await?;
     Ok(())
 }
@@ -108,9 +108,9 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
 pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
     let app_toml_path = format!("{daemon_home}/config/app.toml");
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await?;
-    let mut app_toml: toml::Value = toml::from_str(&app_toml_s).map_add_err(|| ())?;
+    let mut app_toml: toml::Value = toml::from_str(&app_toml_s).stack()?;
     app_toml["minimum-gas-prices"] = min_gas_price.into();
-    let app_toml_s = toml::to_string_pretty(&app_toml).map_add_err(|| ())?;
+    let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
     FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
     Ok(())
 }
@@ -118,7 +118,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
     let block_s = sh_cosmovisor_no_dbg("query block", &[]).await?;
-    let block: Value = serde_json::from_str(&block_s).map_add_err(|| ())?;
+    let block: Value = serde_json::from_str(&block_s).stack()?;
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
         .to_string()
@@ -132,7 +132,7 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
         if get_block_height().await? >= height {
             Ok(())
         } else {
-            ().map_add_err(|| ())
+            Err(Error::empty())
         }
     }
     info!("waiting for height {height}");
@@ -171,12 +171,12 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
     let stdout = comres
         .stdout
         .split_once('\n')
-        .map_add_err(|| "cosmovisor run command did not have expected info line")?
+        .stack_err(|| "cosmovisor run command did not have expected info line")?
         .1;
 
     let v = yaml_str_to_json_value(stdout)?;
-    let total = v["pagination"]["total"].as_str().map_add_err(|| ())?;
-    total.parse::<u64>().map_add_err(|| ())
+    let total = v["pagination"]["total"].as_str().stack()?;
+    total.parse::<u64>().stack()
 }
 
 /*
@@ -209,7 +209,7 @@ pub async fn cosmovisor_submit_gov_file_proposal(
     let proposal_file_path = format!("{daemon_home}/config/proposal.json");
     FileOptions::write_str(&proposal_file_path, proposal_s)
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     sh_cosmovisor_tx("gov submit-proposal", &[
         proposal_type,
         &proposal_file_path,
@@ -226,7 +226,7 @@ pub async fn cosmovisor_submit_gov_file_proposal(
         "validator",
     ])
     .await
-    .map_add_err(|| {
+    .stack_err(|| {
         format!(
             "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
              {proposal_s})"
@@ -243,7 +243,7 @@ pub async fn cosmovisor_gov_file_proposal(
 ) -> Result<()> {
     cosmovisor_submit_gov_file_proposal(daemon_home, proposal_type, proposal_s, base_fee)
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
     // the deposit is done as part of the chain addition proposal
     sh_cosmovisor_tx("gov vote", &[
@@ -289,7 +289,7 @@ pub async fn cosmovisor_submit_gov_proposal(
     ]);
     sh_cosmovisor_tx("gov submit-proposal", &args)
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     Ok(())
 }
 
@@ -301,7 +301,7 @@ pub async fn cosmovisor_gov_proposal(
 ) -> Result<()> {
     cosmovisor_submit_gov_proposal(proposal_type, proposal_args, base_fee)
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
     sh_cosmovisor_tx("gov deposit", &[
         &proposal_id,
@@ -348,7 +348,7 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
 pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
     let comres = sh_no_dbg("cosmovisor run version", &[]).await?;
     let val = get_separated_val(
-        comres.lines().next().map_add_err(|| ())?,
+        comres.lines().next().stack()?,
         " ",
         "\u{1b}[36mpath=\u{1b}[0m",
         "",
@@ -438,7 +438,7 @@ pub async fn cosmovisor_start(
         let current_height = get_block_height().await?;
         wait_for_height(25, Duration::from_millis(300), current_height + 1)
             .await
-            .map_add_err(|| {
+            .stack_err(|| {
                 format!(
                     "daemon {} could not reach height {}, probably a genesis issue, check runner \
                      logs",
@@ -455,7 +455,7 @@ pub async fn cosmovisor_start(
         // propogations that only start on height 2
         wait_for_height(25, Duration::from_millis(300), current_height + 2)
             .await
-            .map_add_err(|| {
+            .stack_err(|| {
                 format!(
                     "daemon could not reach height {}, probably a consensus failure, check runner \
                      logs",
@@ -474,12 +474,8 @@ pub async fn cosmovisor_start(
 }
 
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
-    let validator = yaml_str_to_json_value(
-        &sh_cosmovisor("keys show", &[key_name])
-            .await
-            .map_add_err(|| ())?,
-    )
-    .map_add_err(|| ())?;
+    let validator =
+        yaml_str_to_json_value(&sh_cosmovisor("keys show", &[key_name]).await.stack()?).stack()?;
     Ok(json_inner(&validator[0]["address"]))
 }
 
@@ -487,10 +483,10 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
 pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, u128>> {
     let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     let balances = yaml_str_to_json_value(&balances)?;
     let mut res = BTreeMap::new();
-    for balance in balances["balances"].as_array().map_add_err(|| ())? {
+    for balance in balances["balances"].as_array().stack()? {
         res.insert(
             json_inner(&balance["denom"]),
             u128::from_str_radix(&json_inner(&balance["amount"]), 10)?,
@@ -515,7 +511,7 @@ pub async fn cosmovisor_bank_send(
         &[],
     )
     .await
-    .map_add_err(|| "cosmovisor_bank_send")?;
+    .stack_err(|| "cosmovisor_bank_send")?;
     Ok(())
 }
 
@@ -528,7 +524,7 @@ pub async fn get_treasury() -> Result<f64> {
         &yaml_str_to_json_value(&sh_cosmovisor("query dao show-treasury", &[]).await?)?
             ["treasury_balance"][0]["amount"],
     );
-    anom_to_nom(&inner).map_add_err(|| format!("inner was: {inner}"))
+    anom_to_nom(&inner).stack_err(|| format!("inner was: {inner}"))
 }
 
 pub async fn get_treasury_inflation_annual() -> Result<f64> {
@@ -550,10 +546,10 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
     let pool = sh_cosmovisor("query staking pool", &[]).await?;
     let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":")?;
     let bonded_tokens = bonded_tokens.trim_matches('"');
-    let bonded_tokens = anom_to_nom(bonded_tokens).map_add_err(|| ())?;
+    let bonded_tokens = anom_to_nom(bonded_tokens).stack()?;
     let unbonded_tokens = get_separated_val(&pool, "\n", "not_bonded_tokens", ":")?;
     let unbonded_tokens = unbonded_tokens.trim_matches('"');
-    let unbonded_tokens = anom_to_nom(unbonded_tokens).map_add_err(|| ())?;
+    let unbonded_tokens = anom_to_nom(unbonded_tokens).stack()?;
     Ok(DbgStakingPool {
         bonded_tokens,
         unbonded_tokens,

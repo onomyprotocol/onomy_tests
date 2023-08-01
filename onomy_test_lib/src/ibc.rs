@@ -1,6 +1,6 @@
 use log::info;
 pub use super_orchestrator::stacked_errors::Result;
-use super_orchestrator::{get_separated_val, stacked_errors::MapAddError};
+use super_orchestrator::{get_separated_val, stacked_errors::StackableErr};
 
 pub use crate::types::{IbcPair, IbcSide};
 use crate::{
@@ -68,8 +68,8 @@ impl IbcSide {
             self.transfer_channel, leaf_denom
         )])
         .await
-        .map_add_err(|| ())?;
-        let hash = get_separated_val(&hash, "\n", "hash", ":").map_add_err(|| ())?;
+        .stack()?;
+        let hash = get_separated_val(&hash, "\n", "hash", ":").stack()?;
         Ok(format!("ibc/{hash}"))
     }
 }

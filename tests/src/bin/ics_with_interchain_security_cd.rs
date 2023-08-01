@@ -18,7 +18,7 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
         remove_files_in_dir, sh,
-        stacked_errors::{MapAddError, Result},
+        stacked_errors::{Error, Result, StackableErr},
         FileOptions, STD_DELAY, STD_TRIES,
     },
     token18, Args, ONOMY_IBC_NOM, TIMEOUT,
@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
             "onomyd" => onomyd_runner(&args).await,
             "consumer" => consumer(&args).await,
             "hermes" => hermes_runner(&args).await,
-            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
         sh("make --directory ./../onomy/ build", &[]).await?;
@@ -139,7 +139,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 }
 
 async fn hermes_runner(args: &Args) -> Result<()> {
-    let hermes_home = args.hermes_home.as_ref().map_add_err(|| ())?;
+    let hermes_home = args.hermes_home.as_ref().stack()?;
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
 
     // get mnemonic from onomyd
@@ -184,14 +184,14 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let consumer_id = CONSUMER_ID;
-    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
-        .map_add_err(|| ())?;
+        .stack()?;
     let mut nm_consumer =
         NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("{consumer_id}d:26001"))
             .await
-            .map_add_err(|| ())?;
+            .stack()?;
 
     let mnemonic = onomyd_setup(daemon_home).await?;
     // send mnemonic to hermes
@@ -278,7 +278,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 }
 
 async fn consumer(args: &Args) -> Result<()> {
-    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
     let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
     // we need the initial consumer state

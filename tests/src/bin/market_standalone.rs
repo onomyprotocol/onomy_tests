@@ -6,7 +6,7 @@ use onomy_test_lib::{
     setups::market_standalone_setup,
     super_orchestrator::{
         sh,
-        stacked_errors::{MapAddError, Result},
+        stacked_errors::{Error, Result, StackableErr},
     },
     Args, TIMEOUT,
 };
@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
             "standalone" => standalone_runner(&args).await,
-            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
         sh("make --directory ./../market/ build-standalone", &[]).await?;
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
 }
 
 async fn standalone_runner(args: &Args) -> Result<()> {
-    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     market_standalone_setup(daemon_home, "market").await?;
     let mut cosmovisor_runner = cosmovisor_start("standalone_runner.log", None).await?;
 

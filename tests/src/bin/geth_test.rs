@@ -9,7 +9,7 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
         sh,
-        stacked_errors::{Error, MapAddError, Result},
+        stacked_errors::{Error, Result, StackableErr},
         wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
     },
     Args, TIMEOUT,
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         match s.as_str() {
             "geth" => geth_runner().await,
             "test" => test_runner().await,
-            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
         container_runner(&args).await

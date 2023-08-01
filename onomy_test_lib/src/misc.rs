@@ -4,7 +4,7 @@ use awint::awi::*;
 use clap::Parser;
 use serde_json::{json, Value};
 use super_orchestrator::{
-    stacked_errors::{Error, MapAddError, Result},
+    stacked_errors::{Error, Result, StackableErr},
     std_init,
 };
 
@@ -69,11 +69,11 @@ pub struct Args {
 /// Calls [super_orchestrator::std_init] and returns the result of
 /// [crate::Args::parse]
 pub fn onomy_std_init() -> Result<Args> {
-    std_init().map_add_err(|| "onomy_std_init")?;
+    std_init().stack_err(|| "onomy_std_init")?;
     let mut args = Args::parse();
     args.bin_name = env::args()
         .next()
-        .map_add_err(|| ())?
+        .stack()?
         .split('/')
         .last()
         .unwrap()
@@ -119,7 +119,7 @@ pub fn anom_to_nom(val: &str) -> Result<f64> {
     ) {
         Ok(o) => {
             let mut f = FP::new(false, o, 128).unwrap();
-            FP::try_to_f64(&mut f).map_add_err(|| "anom_to_nom() f64 overflow")
+            FP::try_to_f64(&mut f).stack_err(|| "anom_to_nom() f64 overflow")
         }
         Err(e) => {
             // `SerdeError` can't implement Error
@@ -135,9 +135,9 @@ pub fn yaml_str_to_json_value(yaml_input: &str) -> Result<serde_json::Value> {
     let deserializer = serde_yaml::Deserializer::from_str(yaml_input);
     let mut json_v = vec![];
     let mut serializer = serde_json::Serializer::new(&mut json_v);
-    serde_transcode::transcode(deserializer, &mut serializer).map_add_err(|| ())?;
-    let json_s = String::from_utf8(json_v).map_add_err(|| ())?;
-    let tmp: serde_json::Value = serde_json::from_str(&json_s).map_add_err(|| ())?;
+    serde_transcode::transcode(deserializer, &mut serializer).stack()?;
+    let json_s = String::from_utf8(json_v).stack()?;
+    let tmp: serde_json::Value = serde_json::from_str(&json_s).stack()?;
     Ok(tmp)
 }
 
@@ -155,7 +155,7 @@ pub fn reprefix_bech32(s: &str, new_prefix: &str) -> Result<String> {
             "new_prefix \"{new_prefix}\" is not ascii alphabetic"
         )))
     }
-    let decoded = bech32::decode(s).map_err(|e| Error::boxed(Box::new(e)))?.1;
+    let decoded = bech32::decode(s).stack()?.1;
     let encoded = bech32::encode(new_prefix, decoded, bech32::Variant::Bech32).unwrap();
     Ok(encoded)
 }

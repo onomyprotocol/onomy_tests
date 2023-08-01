@@ -12,7 +12,7 @@ use onomy_test_lib::{
     setups::gravity_standalone_setup,
     super_orchestrator::{
         sh,
-        stacked_errors::{MapAddError, Result},
+        stacked_errors::{Error, Result, StackableErr},
     },
     Args, TIMEOUT,
 };
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
             "gravity" => gravity_runner(&args).await,
-            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
         sh("make --directory ./../arc/module clean", &[]).await?;
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
 }
 
 async fn gravity_runner(args: &Args) -> Result<()> {
-    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     gravity_standalone_setup(daemon_home).await?;
     let mut cosmovisor_runner = cosmovisor_start("gravity_runner.log", None).await?;
 

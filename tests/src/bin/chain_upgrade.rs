@@ -9,7 +9,7 @@ use onomy_test_lib::{
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
-        stacked_errors::{MapAddError, Result},
+        stacked_errors::{Error, Result, StackableErr},
         STD_DELAY, STD_TRIES,
     },
     Args, TIMEOUT,
@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
             "onomyd" => onomyd_runner(&args).await,
-            _ => format!("entry_name \"{s}\" is not recognized").map_add_err(|| ()),
+            _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
         /*sh("make --directory ./../onomy/ build", &[]).await?;
@@ -71,9 +71,9 @@ async fn container_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
-    let onomy_current_version = args.onomy_current_version.as_ref().map_add_err(|| ())?;
-    let onomy_upgrade_version = args.onomy_upgrade_version.as_ref().map_add_err(|| ())?;
-    let daemon_home = args.daemon_home.as_ref().map_add_err(|| ())?;
+    let onomy_current_version = args.onomy_current_version.as_ref().stack()?;
+    let onomy_upgrade_version = args.onomy_upgrade_version.as_ref().stack()?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
 
     info!("current version: {onomy_current_version}, upgrade version: {onomy_upgrade_version}");
 
