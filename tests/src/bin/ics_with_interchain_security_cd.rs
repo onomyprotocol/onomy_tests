@@ -205,7 +205,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let consumer_id = CONSUMER_ID;
-    let daemon_home = args.daemon_home.as_ref().stack().stack()?;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .stack()?;
