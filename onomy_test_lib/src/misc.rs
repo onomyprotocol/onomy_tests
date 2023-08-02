@@ -76,7 +76,7 @@ pub fn onomy_std_init() -> Result<Args> {
         .stack()?
         .split('/')
         .last()
-        .unwrap()
+        .stack()?
         .to_owned();
     Ok(args)
 }

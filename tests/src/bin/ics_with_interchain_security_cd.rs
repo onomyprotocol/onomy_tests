@@ -52,14 +52,17 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        sh("make --directory ./../onomy/ build", &[]).await?;
+        sh("make --directory ./../onomy/ build", &[])
+            .await
+            .stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
             &[],
         )
-        .await?;
-        container_runner(&args).await
+        .await
+        .stack()?;
+        container_runner(&args).await.stack()
     }
 }
 
@@ -78,7 +81,9 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await?;
 
     // prepare volumed resources
-    remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"]).await?;
+    remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"])
+        .await
+        .stack()?;
 
     // prepare hermes config
     write_hermes_config(
@@ -88,7 +93,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         ],
         &format!("{dockerfiles_dir}/dockerfile_resources"),
     )
-    .await?;
+    .await
+    .stack()?;
 
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"
@@ -133,107 +139,130 @@ async fn container_runner(args: &Args) -> Result<()> {
         Some(dockerfiles_dir),
         true,
         logs_dir,
-    )?
+    )
+    .stack()?
     .add_common_volumes(&[(logs_dir, "/logs")]);
-    cn.run_all(true).await?;
-    cn.wait_with_timeout_all(true, TIMEOUT).await?;
+    cn.run_all(true).await.stack()?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     Ok(())
 }
 
 async fn hermes_runner(args: &Args) -> Result<()> {
     let hermes_home = args.hermes_home.as_ref().stack()?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+        .await
+        .stack()?;
 
     // get mnemonic from onomyd
-    let mnemonic: String = nm_onomyd.recv().await?;
+    let mnemonic: String = nm_onomyd.recv().await.stack()?;
     // set keys for our chains
-    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic).await?;
+    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic)
+        .await
+        .stack()?;
     sh_hermes(
         "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
         &[],
     )
-    .await?;
+    .await
+    .stack()?;
     sh_hermes(
         &format!("keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"),
         &[],
     )
-    .await?;
+    .await
+    .stack()?;
 
     // wait for setup
-    nm_onomyd.recv::<()>().await?;
+    nm_onomyd.recv::<()>().await.stack()?;
 
-    let ibc_pair = IbcPair::hermes_setup_ics_pair(CONSUMER_ID, "onomy").await?;
-    let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log").await?;
-    ibc_pair.hermes_check_acks().await?;
+    let ibc_pair = IbcPair::hermes_setup_ics_pair(CONSUMER_ID, "onomy")
+        .await
+        .stack()?;
+    let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log")
+        .await
+        .stack()?;
+    ibc_pair.hermes_check_acks().await.stack()?;
 
     // tell that chains have been connected
-    nm_onomyd.send::<IbcPair>(&ibc_pair).await?;
+    nm_onomyd.send::<IbcPair>(&ibc_pair).await.stack()?;
 
     // signal to update gas denom
-    let ibc_nom = nm_onomyd.recv::<String>().await?;
-    hermes_runner.terminate(TIMEOUT).await?;
-    hermes_set_gas_price_denom(hermes_home, CONSUMER_ID, &ibc_nom).await?;
+    let ibc_nom = nm_onomyd.recv::<String>().await.stack()?;
+    hermes_runner.terminate(TIMEOUT).await.stack()?;
+    hermes_set_gas_price_denom(hermes_home, CONSUMER_ID, &ibc_nom)
+        .await
+        .stack()?;
 
     // restart
-    let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await?;
-    nm_onomyd.send::<()>(&()).await?;
+    let mut hermes_runner = hermes_start("/logs/hermes_runner.log").await.stack()?;
+    nm_onomyd.send::<()>(&()).await.stack()?;
 
     // termination signal
-    nm_onomyd.recv::<()>().await?;
-    hermes_runner.terminate(TIMEOUT).await?;
+    nm_onomyd.recv::<()>().await.stack()?;
+    hermes_runner.terminate(TIMEOUT).await.stack()?;
     Ok(())
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let consumer_id = CONSUMER_ID;
-    let daemon_home = args.daemon_home.as_ref().stack()?;
+    let daemon_home = args.daemon_home.as_ref().stack().stack()?;
     let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
         .await
         .stack()?;
     let mut nm_consumer =
         NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("{consumer_id}d:26001"))
             .await
+            .stack()
             .stack()?;
 
-    let mnemonic = onomyd_setup(daemon_home).await?;
+    let mnemonic = onomyd_setup(daemon_home).await.stack()?;
     // send mnemonic to hermes
-    nm_hermes.send::<String>(&mnemonic).await?;
+    nm_hermes.send::<String>(&mnemonic).await.stack()?;
 
     // keep these here for local testing purposes
-    let addr = &cosmovisor_get_addr("validator").await?;
+    let addr = &cosmovisor_get_addr("validator").await.stack()?;
     sleep(Duration::ZERO).await;
 
-    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await?;
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     let ccvconsumer_state = cosmovisor_add_consumer(
         daemon_home,
         consumer_id,
         &test_proposal(consumer_id, "anative"),
     )
-    .await?;
+    .await
+    .stack()?;
 
     // send to consumer
-    nm_consumer.send::<String>(&ccvconsumer_state).await?;
+    nm_consumer
+        .send::<String>(&ccvconsumer_state)
+        .await
+        .stack()?;
 
     // send keys
     nm_consumer
         .send::<String>(
-            &FileOptions::read_to_string(&format!("{daemon_home}/config/node_key.json")).await?,
+            &FileOptions::read_to_string(&format!("{daemon_home}/config/node_key.json"))
+                .await
+                .stack()?,
         )
-        .await?;
+        .await
+        .stack()?;
     nm_consumer
         .send::<String>(
             &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
-                .await?,
+                .await
+                .stack()?,
         )
-        .await?;
+        .await
+        .stack()?;
 
     // wait for consumer to be online
-    nm_consumer.recv::<()>().await?;
+    nm_consumer.recv::<()>().await.stack()?;
     // notify hermes to connect the chains
-    nm_hermes.send::<()>(&()).await?;
+    nm_hermes.send::<()>(&()).await.stack()?;
     // when hermes is done
-    let ibc_pair = nm_hermes.recv::<IbcPair>().await?;
+    let ibc_pair = nm_hermes.recv::<IbcPair>().await.stack()?;
     info!("IbcPair: {ibc_pair:?}");
 
     // send anom to consumer
@@ -241,40 +270,44 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .b
         .cosmovisor_ibc_transfer(
             "validator",
-            &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX)?,
+            &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
             &token18(100.0e3, ""),
             "anom",
         )
-        .await?;
+        .await
+        .stack()?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(4).await?;
+    wait_for_num_blocks(4).await.stack()?;
     // notify consumer that we have sent NOM
-    nm_consumer.send::<IbcPair>(&ibc_pair).await?;
+    nm_consumer.send::<IbcPair>(&ibc_pair).await.stack()?;
 
     // tell hermes to restart with updated gas denom on its side
-    let ibc_nom = nm_consumer.recv::<String>().await?;
-    nm_hermes.send::<String>(&ibc_nom).await?;
-    nm_hermes.recv::<()>().await?;
-    nm_consumer.send::<()>(&()).await?;
+    let ibc_nom = nm_consumer.recv::<String>().await.stack()?;
+    nm_hermes.send::<String>(&ibc_nom).await.stack()?;
+    nm_hermes.recv::<()>().await.stack()?;
+    nm_consumer.send::<()>(&()).await.stack()?;
 
     // recieve round trip signal
-    nm_consumer.recv::<()>().await?;
+    nm_consumer.recv::<()>().await.stack()?;
     // check that the IBC NOM converted back to regular NOM
     assert_eq!(
-        cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3").await?["anom"],
+        cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3")
+            .await
+            .stack()?["anom"],
         u256!(5000)
     );
 
     // signal to collectively terminate
-    nm_hermes.send::<()>(&()).await?;
-    nm_consumer.send::<()>(&()).await?;
-    cosmovisor_runner.terminate(TIMEOUT).await?;
+    nm_hermes.send::<()>(&()).await.stack()?;
+    nm_consumer.send::<()>(&()).await.stack()?;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
     FileOptions::write_str(
         "/logs/onomyd_export.json",
-        &sh_cosmovisor_no_dbg("export", &[]).await?,
+        &sh_cosmovisor_no_dbg("export", &[]).await.stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(())
 }
@@ -282,87 +315,106 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT).await?;
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+        .await
+        .stack()?;
     // we need the initial consumer state
-    let ccvconsumer_state_s: String = nm_onomyd.recv().await?;
+    let ccvconsumer_state_s: String = nm_onomyd.recv().await.stack()?;
 
-    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s).await?;
+    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s)
+        .await
+        .stack()?;
 
     // get keys
-    let node_key = nm_onomyd.recv::<String>().await?;
+    let node_key = nm_onomyd.recv::<String>().await.stack()?;
     // we used same keys for consumer as producer, need to copy them over or else
     // the node will not be a working validator for itself
-    FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key).await?;
+    FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key)
+        .await
+        .stack()?;
 
-    let priv_validator_key = nm_onomyd.recv::<String>().await?;
+    let priv_validator_key = nm_onomyd.recv::<String>().await.stack()?;
     FileOptions::write_str(
         &format!("{daemon_home}/config/priv_validator_key.json"),
         &priv_validator_key,
     )
-    .await?;
+    .await
+    .stack()?;
 
     let mut cosmovisor_runner =
-        cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None).await?;
+        cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None)
+            .await
+            .stack()?;
 
-    let addr = &cosmovisor_get_addr("validator").await?;
+    let addr = &cosmovisor_get_addr("validator").await.stack()?;
 
     // signal that we have started
-    nm_onomyd.send::<()>(&()).await?;
+    nm_onomyd.send::<()>(&()).await.stack()?;
 
     // wait for producer to send us stuff
-    let ibc_pair = nm_onomyd.recv::<IbcPair>().await?;
+    let ibc_pair = nm_onomyd.recv::<IbcPair>().await.stack()?;
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
-    let ibc_nom = &ibc_pair.a.get_ibc_denom("anom").await?;
+    let ibc_nom = &ibc_pair.a.get_ibc_denom("anom").await.stack()?;
     assert_eq!(ibc_nom, ONOMY_IBC_NOM);
-    let balances = cosmovisor_get_balances(addr).await?;
+    let balances = cosmovisor_get_balances(addr).await.stack()?;
     assert!(balances.contains_key(ibc_nom));
 
     // we have IBC NOM, shut down, change gas in app.toml, restart
-    cosmovisor_runner.terminate(TIMEOUT).await?;
-    set_minimum_gas_price(daemon_home, &format!("1{ibc_nom}")).await?;
-    let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None).await?;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
+    set_minimum_gas_price(daemon_home, &format!("1{ibc_nom}"))
+        .await
+        .stack()?;
+    let mut cosmovisor_runner = cosmovisor_start(&format!("{chain_id}d_runner.log"), None)
+        .await
+        .stack()?;
     // tell hermes to restart with updated gas denom on its side
-    nm_onomyd.send::<String>(ibc_nom).await?;
-    nm_onomyd.recv::<()>().await?;
+    nm_onomyd.send::<String>(ibc_nom).await.stack()?;
+    nm_onomyd.recv::<()>().await.stack()?;
     info!("restarted with new gas denom");
 
     // test normal transfer
     let dst_addr = &reprefix_bech32(
         "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
         CONSUMER_ACCOUNT_PREFIX,
-    )?;
-    cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom).await?;
+    )
+    .stack()?;
+    cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom)
+        .await
+        .stack()?;
     assert_eq!(
-        cosmovisor_get_balances(dst_addr).await?[ibc_nom],
+        cosmovisor_get_balances(dst_addr).await.stack()?[ibc_nom],
         u256!(5000)
     );
 
     let test_addr = &reprefix_bech32(
         "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
         PROVIDER_ACCOUNT_PREFIX,
-    )?;
+    )
+    .stack()?;
     info!("sending back to {}", test_addr);
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
         .a
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
-        .await?;
-    wait_for_num_blocks(4).await?;
+        .await
+        .stack()?;
+    wait_for_num_blocks(4).await.stack()?;
 
     // round trip signal
-    nm_onomyd.send::<()>(&()).await?;
+    nm_onomyd.send::<()>(&()).await.stack()?;
 
     // termination signal
-    nm_onomyd.recv::<()>().await?;
-    cosmovisor_runner.terminate(TIMEOUT).await?;
+    nm_onomyd.recv::<()>().await.stack()?;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_export.json"),
-        &sh_cosmovisor_no_dbg("export", &[]).await?,
+        &sh_cosmovisor_no_dbg("export", &[]).await.stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(())
 }
