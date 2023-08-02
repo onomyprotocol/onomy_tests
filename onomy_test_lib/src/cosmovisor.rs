@@ -62,11 +62,15 @@ pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &s
     genesis["chain_id"] = chain_id.into();
     // client.toml
     let client_file_path = format!("{daemon_home}/config/client.toml");
-    let client_s = FileOptions::read_to_string(&client_file_path).await?;
+    let client_s = FileOptions::read_to_string(&client_file_path)
+        .await
+        .stack()?;
     let mut client: toml::Value = toml::from_str(&client_s).stack()?;
     client["chain-id"] = chain_id.into();
     let client_s = toml::to_string_pretty(&client).stack()?;
-    FileOptions::write_str(&client_file_path, &client_s).await?;
+    FileOptions::write_str(&client_file_path, &client_s)
+        .await
+        .stack()?;
     Ok(())
 }
 
@@ -82,7 +86,9 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     //genesis["app_state"]["gravity"]["params"]["average_block_time"] =
     // "1000".into();
     let config_file_path = format!("{daemon_home}/config/config.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path).await?;
+    let config_s = FileOptions::read_to_string(&config_file_path)
+        .await
+        .stack()?;
     let mut config: toml::Value = toml::from_str(&config_s).stack()?;
     // reduce all of these by a factor of 5
     /*
@@ -102,23 +108,27 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     config["consensus"]["timeout_precommit_delta"] = "100ms".into();
     config["consensus"]["timeout_commit"] = "1000ms".into();
     let config_s = toml::to_string_pretty(&config).stack()?;
-    FileOptions::write_str(&config_file_path, &config_s).await?;
+    FileOptions::write_str(&config_file_path, &config_s)
+        .await
+        .stack()?;
     Ok(())
 }
 
 pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
     let app_toml_path = format!("{daemon_home}/config/app.toml");
-    let app_toml_s = FileOptions::read_to_string(&app_toml_path).await?;
+    let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;
     let mut app_toml: toml::Value = toml::from_str(&app_toml_s).stack()?;
     app_toml["minimum-gas-prices"] = min_gas_price.into();
     let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
-    FileOptions::write_str(&app_toml_path, &app_toml_s).await?;
+    FileOptions::write_str(&app_toml_path, &app_toml_s)
+        .await
+        .stack()?;
     Ok(())
 }
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
-    let block_s = sh_cosmovisor_no_dbg("query block", &[]).await?;
+    let block_s = sh_cosmovisor_no_dbg("query block", &[]).await.stack()?;
     let block: Value = serde_json::from_str(&block_s).stack()?;
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
@@ -145,8 +155,10 @@ pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Re
 /// the very beginning to make sure execution starts towards the beginning of a
 /// new block.
 pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
-    let height = get_block_height().await?;
-    wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks).await
+    let height = get_block_height().await.stack()?;
+    wait_for_height(STD_TRIES, STD_DELAY, height + num_blocks)
+        .await
+        .stack()
 }
 
 /// Returns the number of proposals
@@ -156,7 +168,8 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
         &[],
     )
     .run_to_completion()
-    .await?;
+    .await
+    .stack()?;
     if let Err(e) = comres.assert_success() {
         // work around bad zero casing design
         if comres
@@ -175,7 +188,7 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
         .stack_err(|| "cosmovisor run command did not have expected info line")?
         .1;
 
-    let v = yaml_str_to_json_value(stdout)?;
+    let v = yaml_str_to_json_value(stdout).stack()?;
     let total = v["pagination"]["total"].as_str().stack()?;
     total.parse::<u64>().stack()
 }
@@ -245,7 +258,7 @@ pub async fn cosmovisor_gov_file_proposal(
     cosmovisor_submit_gov_file_proposal(daemon_home, proposal_type, proposal_s, base_fee)
         .await
         .stack()?;
-    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await.stack()?);
     // the deposit is done as part of the chain addition proposal
     sh_cosmovisor_tx("gov vote", &[
         &proposal_id,
@@ -263,7 +276,8 @@ pub async fn cosmovisor_gov_file_proposal(
         "--from",
         "validator",
     ])
-    .await?;
+    .await
+    .stack()?;
     Ok(())
 }
 
@@ -303,7 +317,7 @@ pub async fn cosmovisor_gov_proposal(
     cosmovisor_submit_gov_proposal(proposal_type, proposal_args, base_fee)
         .await
         .stack()?;
-    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await?);
+    let proposal_id = format!("{}", cosmovisor_get_num_proposals().await.stack()?);
     sh_cosmovisor_tx("gov deposit", &[
         &proposal_id,
         deposit,
@@ -319,7 +333,8 @@ pub async fn cosmovisor_gov_proposal(
         "--from",
         "validator",
     ])
-    .await?;
+    .await
+    .stack()?;
     // the deposit is done as part of the chain addition proposal
     sh_cosmovisor_tx("gov vote", &[
         &proposal_id,
@@ -336,24 +351,28 @@ pub async fn cosmovisor_gov_proposal(
         "--from",
         "validator",
     ])
-    .await?;
+    .await
+    .stack()?;
     Ok(())
 }
 
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
-    let s = sh_cosmovisor("tendermint show-node-id", &[]).await?;
+    let s = sh_cosmovisor("tendermint show-node-id", &[])
+        .await
+        .stack()?;
     let tendermint_id = s.trim();
     Ok(format!("{tendermint_id}@{hostname}:26656"))
 }
 
 pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
-    let comres = sh_no_dbg("cosmovisor run version", &[]).await?;
+    let comres = sh_no_dbg("cosmovisor run version", &[]).await.stack()?;
     let val = get_separated_val(
         comres.lines().next().stack()?,
         " ",
         "\u{1b}[36mpath=\u{1b}[0m",
         "",
-    )?;
+    )
+    .stack()?;
     Ok(val)
 }
 
@@ -374,8 +393,8 @@ pub struct CosmovisorRunner {
 
 impl CosmovisorRunner {
     pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
-        self.runner.send_unix_sigterm()?;
-        self.runner.wait_with_timeout(timeout).await
+        self.runner.send_unix_sigterm().stack()?;
+        self.runner.wait_with_timeout(timeout).await.stack()
     }
 }
 
@@ -425,7 +444,8 @@ pub async fn cosmovisor_start(
         .stderr_log(&cosmovisor_log)
         .stdout_log(&cosmovisor_log)
         .run()
-        .await?;
+        .await
+        .stack()?;
 
     if quick_halt {
         info!("skipping waiting because halt_height <= 2");
@@ -434,7 +454,9 @@ pub async fn cosmovisor_start(
         info!("waiting for daemon to run");
         // avoid the initial debug failure
         sleep(Duration::from_millis(300)).await;
-        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[])).await?;
+        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[]))
+            .await
+            .stack()?;
         // account for if we are not starting at height 0
         let current_height = get_block_height().await?;
         wait_for_height(25, Duration::from_millis(300), current_height + 1)
@@ -485,7 +507,7 @@ pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, U256
     let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
         .await
         .stack()?;
-    let balances = yaml_str_to_json_value(&balances)?;
+    let balances = yaml_str_to_json_value(&balances).stack()?;
     let mut res = BTreeMap::new();
     for balance in balances["balances"].as_array().stack()? {
         res.insert(
@@ -522,17 +544,21 @@ pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {
 
 pub async fn get_treasury() -> Result<f64> {
     let inner = json_inner(
-        &yaml_str_to_json_value(&sh_cosmovisor("query dao show-treasury", &[]).await?)?
-            ["treasury_balance"][0]["amount"],
+        &yaml_str_to_json_value(
+            &sh_cosmovisor("query dao show-treasury", &[])
+                .await
+                .stack()?,
+        )
+        .stack()?["treasury_balance"][0]["amount"],
     );
     anom_to_nom(&inner).stack_err(|| format!("inner was: {inner}"))
 }
 
 pub async fn get_treasury_inflation_annual() -> Result<f64> {
-    wait_for_num_blocks(1).await?;
-    let start = get_treasury().await?;
-    wait_for_num_blocks(1).await?;
-    let end = get_treasury().await?;
+    wait_for_num_blocks(1).await.stack()?;
+    let start = get_treasury().await.stack()?;
+    wait_for_num_blocks(1).await.stack()?;
+    let end = get_treasury().await.stack()?;
     // we assume 5 second blocks
     Ok(((end - start) / (start * 5.0)) * (86400.0 * 365.0))
 }
@@ -544,11 +570,11 @@ pub struct DbgStakingPool {
 }
 
 pub async fn get_staking_pool() -> Result<DbgStakingPool> {
-    let pool = sh_cosmovisor("query staking pool", &[]).await?;
-    let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":")?;
+    let pool = sh_cosmovisor("query staking pool", &[]).await.stack()?;
+    let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":").stack()?;
     let bonded_tokens = bonded_tokens.trim_matches('"');
     let bonded_tokens = anom_to_nom(bonded_tokens).stack()?;
-    let unbonded_tokens = get_separated_val(&pool, "\n", "not_bonded_tokens", ":")?;
+    let unbonded_tokens = get_separated_val(&pool, "\n", "not_bonded_tokens", ":").stack()?;
     let unbonded_tokens = unbonded_tokens.trim_matches('"');
     let unbonded_tokens = anom_to_nom(unbonded_tokens).stack()?;
     Ok(DbgStakingPool {
@@ -563,31 +589,37 @@ pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
             &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
                 valoper_addr,
             ])
-            .await?,
-        )?["rewards"][0]["amount"],
+            .await
+            .stack()?,
+        )
+        .stack()?["rewards"][0]["amount"],
     ))
+    .stack()
 }
 
 pub async fn get_validator_delegated() -> Result<f64> {
     let validator_addr = get_separated_val(
-        &sh_cosmovisor("keys show validator", &[]).await?,
+        &sh_cosmovisor("keys show validator", &[]).await.stack()?,
         "\n",
         "address",
         ":",
     )?;
-    let s = sh_cosmovisor("query staking delegations", &[&validator_addr]).await?;
+    let s = sh_cosmovisor("query staking delegations", &[&validator_addr])
+        .await
+        .stack()?;
     anom_to_nom(&json_inner(
-        &yaml_str_to_json_value(&s)?["delegation_responses"][0]["balance"]["amount"],
+        &yaml_str_to_json_value(&s).stack()?["delegation_responses"][0]["balance"]["amount"],
     ))
+    .stack()
 }
 
 /// APR calculation is: [Amount(Rewards End) - Amount(Rewards
 /// Beg)]/Amount(Delegated) * # of Blocks/Blocks_per_year
 pub async fn get_apr_annual(valoper_addr: &str) -> Result<f64> {
-    wait_for_num_blocks(1).await?;
-    let delegated = get_validator_delegated().await?;
-    let reward_start = get_outstanding_rewards(valoper_addr).await?;
-    wait_for_num_blocks(1).await?;
-    let reward_end = get_outstanding_rewards(valoper_addr).await?;
+    wait_for_num_blocks(1).await.stack()?;
+    let delegated = get_validator_delegated().await.stack()?;
+    let reward_start = get_outstanding_rewards(valoper_addr).await.stack()?;
+    wait_for_num_blocks(1).await.stack()?;
+    let reward_end = get_outstanding_rewards(valoper_addr).await.stack()?;
     Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
 }

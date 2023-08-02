@@ -52,7 +52,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         "--features",
         "geth",
     ])
-    .await?;
+    .await
+    .stack()?;
 
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"
@@ -85,15 +86,18 @@ async fn container_runner(args: &Args) -> Result<()> {
         Some(dockerfiles_dir),
         true,
         logs_dir,
-    )?
+    )
+    .stack()?
     .add_common_volumes(&[(logs_dir, "/logs")]);
     cn.run_all(true).await?;
-    cn.wait_with_timeout_all(true, TIMEOUT).await?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     Ok(())
 }
 
 async fn test_runner() -> Result<()> {
-    let mut nm_geth = NetMessenger::connect(STD_TRIES, STD_DELAY, "geth:26000").await?;
+    let mut nm_geth = NetMessenger::connect(STD_TRIES, STD_DELAY, "geth:26000")
+        .await
+        .stack()?;
 
     // manual HTTP request
     /*
@@ -126,7 +130,9 @@ async fn test_runner() -> Result<()> {
     async fn is_eth_up(web3: &Web3) -> Result<()> {
         web3.eth_syncing().await.map(|_| ()).stack()
     }
-    wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3)).await?;
+    wait_for_ok(STD_TRIES, STD_DELAY, || is_eth_up(&web3))
+        .await
+        .stack()?;
     info!("geth is running");
 
     dbg!(web3
@@ -138,7 +144,7 @@ async fn test_runner() -> Result<()> {
     // for running your own Prometheus metrics client
 
     // terminate
-    nm_geth.send::<()>(&()).await?;
+    nm_geth.send::<()>(&()).await.stack()?;
 
     Ok(())
 }
@@ -172,29 +178,39 @@ const ETH_GENESIS: &str = r#"
 "#;
 
 async fn geth_runner() -> Result<()> {
-    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT).await?;
+    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+        .await
+        .stack()?;
 
     let genesis_file = "/resources/eth_genesis.json";
-    FileOptions::write_str(genesis_file, ETH_GENESIS).await?;
+    FileOptions::write_str(genesis_file, ETH_GENESIS)
+        .await
+        .stack()?;
 
     // the private key must not have the leading "0x"
     let private_key_no_0x = "b1bab011e03a9862664706fc3bbaa1b16651528e5f0e7fbfcbfdd8be302a13e7";
     let private_key_path = "/resources/test_private_key.txt";
     let test_password = "testpassword";
     let test_password_path = "/resources/test_password.txt";
-    FileOptions::write_str(private_key_path, private_key_no_0x).await?;
-    FileOptions::write_str(test_password_path, test_password).await?;
+    FileOptions::write_str(private_key_path, private_key_no_0x)
+        .await
+        .stack()?;
+    FileOptions::write_str(test_password_path, test_password)
+        .await
+        .stack()?;
 
     sh("geth account import --password", &[
         test_password_path,
         private_key_path,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     sh("geth --identity \"testnet\" --networkid 15 init", &[
         genesis_file,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
     let mut geth_runner = Command::new("geth", &[
@@ -222,11 +238,12 @@ async fn geth_runner() -> Result<()> {
     .stderr_log(&geth_log)
     .stdout_log(&geth_log)
     .run()
-    .await?;
+    .await
+    .stack()?;
 
     // terminate
-    nm_test.recv::<()>().await?;
+    nm_test.recv::<()>().await.stack()?;
 
-    geth_runner.terminate().await?;
+    geth_runner.terminate().await.stack()?;
     Ok(())
 }

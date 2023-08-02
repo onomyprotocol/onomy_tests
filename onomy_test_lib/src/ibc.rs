@@ -38,7 +38,8 @@ impl IbcSide {
             "ibc-transfer transfer transfer",
             &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
         )
-        .await?;
+        .await
+        .stack()?;
 
         Ok(())
     }
@@ -71,7 +72,8 @@ impl IbcSide {
             "--from",
             from_key,
         ])
-        .await?;
+        .await
+        .stack()?;
 
         Ok(())
     }
@@ -110,17 +112,19 @@ impl IbcPair {
         //let client_pair = create_client_pair(a_chain, b_chain).await?;
         // create one client and connection pair that will be used for IBC transfer and
         // ICS communication
-        let connection_pair = create_connection_pair(&a_chain, &b_chain).await?;
+        let connection_pair = create_connection_pair(&a_chain, &b_chain).await.stack()?;
 
         // a_chain<->b_chain consumer<->provider
         let ics_channel_pair =
-            create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true).await?;
+            create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true)
+                .await
+                .stack()?;
 
         // ICS channel creation also automatically creates a transfer channel, but it
         // starts in the init state and we need to manually perform the 3 other steps.
 
         //let transfer_channel_pair = create_channel_pair(&a_chain, &connection_pair.0,
-        // "transfer", "transfer", false).await?;
+        // "transfer", "transfer", false).await.stack()?;
 
         // FIXME this is hard coded
         let transfer_channel_pair = ("channel-1".to_string(), "channel-1".to_string());
@@ -131,7 +135,8 @@ impl IbcPair {
             ),
             &[],
         )
-        .await?;
+        .await
+        .stack()?;
         sh_hermes(
             &format!(
                 "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
@@ -140,7 +145,8 @@ impl IbcPair {
             ),
             &[],
         )
-        .await?;
+        .await
+        .stack()?;
         sh_hermes(
             &format!(
                 "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} \
@@ -149,7 +155,8 @@ impl IbcPair {
             ),
             &[],
         )
-        .await?;
+        .await
+        .stack()?;
 
         info!("{consumer} <-> {provider} consumer-provider and transfer channels have been set up");
 

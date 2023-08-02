@@ -3,7 +3,7 @@ use onomy_test_lib::{
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
-        stacked_errors::Result,
+        stacked_errors::{Result, StackableErr},
     },
     Args, TIMEOUT,
 };
@@ -26,7 +26,8 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
         "--target",
         container_target,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     let mut cn = ContainerNetwork::new(
         "test",
@@ -46,9 +47,10 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
         Some(dockerfiles_dir),
         true,
         logs_dir,
-    )?
+    )
+    .stack()?
     .add_common_volumes(&[(logs_dir, "/logs")]);
-    cn.run_all(true).await?;
-    cn.wait_with_timeout_all(true, TIMEOUT).await.unwrap();
+    cn.run_all(true).await.stack()?;
+    cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     Ok(())
 }

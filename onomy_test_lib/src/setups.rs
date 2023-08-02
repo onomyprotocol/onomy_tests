@@ -28,18 +28,28 @@ fn _unused() {
 pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = &token18(225.0e3, "");
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+        .await
+        .stack()?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+    force_chain_id(daemon_home, &mut genesis, chain_id)
+        .await
+        .stack()?;
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
@@ -65,16 +75,19 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
 
-    fast_block_times(daemon_home).await?;
+    fast_block_times(daemon_home).await.stack()?;
 
-    set_minimum_gas_price(daemon_home, "1anom").await?;
+    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
         .run_to_completion()
-        .await?;
+        .await
+        .stack()?;
     comres.assert_success()?;
     let mnemonic = comres
         .stderr
@@ -84,11 +97,15 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
         .stack_err(|| "no last line")?
         .trim()
         .to_owned();
-    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)]).await?;
+    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)])
+        .await
+        .stack()?;
 
     // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)]).await?;
+    sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
+        .await
+        .stack()?;
 
     sh_cosmovisor("gentx validator", &[
         &nom(1.0e6),
@@ -97,32 +114,46 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
         "--min-self-delegation",
         global_min_self_delegation,
     ])
-    .await?;
+    .await
+    .stack()?;
 
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
 
     FileOptions::write_str(
         "/logs/genesis.json",
-        &FileOptions::read_to_string(&genesis_file_path).await?,
+        &FileOptions::read_to_string(&genesis_file_path)
+            .await
+            .stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(mnemonic)
 }
 
 pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Result<String> {
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+        .await
+        .stack()?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
 
     // rename all "stake" to "native"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+    force_chain_id(daemon_home, &mut genesis, chain_id)
+        .await
+        .stack()?;
 
     genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
 
@@ -134,11 +165,17 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
+    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s)
+        .await
+        .stack()?;
 
-    fast_block_times(daemon_home).await?;
-    set_minimum_gas_price(daemon_home, "1anative").await?;
+    fast_block_times(daemon_home).await.stack()?;
+    set_minimum_gas_price(daemon_home, "1anative")
+        .await
+        .stack()?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
@@ -158,7 +195,9 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     // "afootoken");
     let gen_coins = format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}afootoken");
     let stake_coin = token18(1.0e6, "anative");
-    sh_cosmovisor("add-genesis-account validator", &[&gen_coins]).await?;
+    sh_cosmovisor("add-genesis-account validator", &[&gen_coins])
+        .await
+        .stack()?;
     sh_cosmovisor("gentx validator", &[
         &stake_coin,
         "--chain-id",
@@ -166,8 +205,9 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         "--min-self-delegation",
         "1",
     ])
-    .await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+    .await
+    .stack()?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
 
     Ok(mnemonic)
 }
@@ -175,18 +215,28 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
 pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
     let chain_id = "gravity";
     let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+        .await
+        .stack()?;
 
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
 
     // rename all "stake" to "anom"
     let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+    force_chain_id(daemon_home, &mut genesis, chain_id)
+        .await
+        .stack()?;
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
@@ -200,15 +250,18 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
 
-    fast_block_times(daemon_home).await?;
-    set_minimum_gas_price(daemon_home, "1anom").await?;
+    fast_block_times(daemon_home).await.stack()?;
+    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
         .run_to_completion()
-        .await?;
+        .await
+        .stack()?;
     comres.assert_success()?;
     let mnemonic = comres
         .stderr
@@ -219,16 +272,20 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
         .trim()
         .to_owned();
     // TODO for unknown reasons, add-genesis-account cannot find the keys
-    let addr = cosmovisor_get_addr("validator").await?;
-    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)]).await?;
+    let addr = cosmovisor_get_addr("validator").await.stack()?;
+    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)])
+        .await
+        .stack()?;
 
     // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await?;
-    let orch_addr = cosmovisor_get_addr("orchestrator").await?;
-    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)]).await?;
+    sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+    let orch_addr = cosmovisor_get_addr("orchestrator").await.stack()?;
+    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)])
+        .await
+        .stack()?;
 
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
     sh_cosmovisor("gentx validator", &[
         &nom(1.0e6),
         eth_addr,
@@ -238,14 +295,18 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
         "--min-self-delegation",
         min_self_delegation,
     ])
-    .await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+    .await
+    .stack()?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
+        &FileOptions::read_to_string(&genesis_file_path)
+            .await
+            .stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(mnemonic)
 }
@@ -289,11 +350,15 @@ pub async fn cosmovisor_add_consumer(
 ) -> Result<String> {
     let proposal: Value = serde_json::from_str(proposal_s).stack()?;
 
-    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[])
+        .await
+        .stack()?;
     let tendermint_key = tendermint_key.trim();
 
-    cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom").await?;
-    wait_for_num_blocks(1).await?;
+    cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom")
+        .await
+        .stack()?;
+    wait_for_num_blocks(1).await.stack()?;
 
     // do this before getting the consumer-genesis
     sh_cosmovisor_tx("provider assign-consensus-key", &[
@@ -312,7 +377,8 @@ pub async fn cosmovisor_add_consumer(
         "--from",
         "validator",
     ])
-    .await?;
+    .await
+    .stack()?;
 
     // It appears we do not have to wait any blocks
 
@@ -321,7 +387,8 @@ pub async fn cosmovisor_add_consumer(
         "-o",
         "json",
     ])
-    .await?;
+    .await
+    .stack()?;
 
     let mut state: Value = serde_json::from_str(&ccvconsumer_state).stack()?;
 
@@ -341,18 +408,28 @@ pub async fn marketd_setup(
     chain_id: &str,
     ccvconsumer_state_s: &str,
 ) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+        .await
+        .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // add `ccvconsumer_state` to genesis
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
 
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+    force_chain_id(daemon_home, &mut genesis, chain_id)
+        .await
+        .stack()?;
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
@@ -382,22 +459,33 @@ pub async fn marketd_setup(
 
     let genesis_s = genesis.to_string();
 
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
-    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
+    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s)
+        .await
+        .stack()?;
 
-    let addr: &String = &cosmovisor_get_addr("validator").await?;
+    let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
+    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")])
+        .await
+        .stack()?;
 
-    fast_block_times(daemon_home).await?;
-    set_minimum_gas_price(daemon_home, "1anative").await?;
+    fast_block_times(daemon_home).await.stack()?;
+    set_minimum_gas_price(daemon_home, "1anative")
+        .await
+        .stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
+        &FileOptions::read_to_string(&genesis_file_path)
+            .await
+            .stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(())
 }
@@ -407,39 +495,54 @@ pub async fn arc_consumer_setup(
     chain_id: &str,
     ccvconsumer_state_s: &str,
 ) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id]).await?;
-    sh_cosmovisor("config keyring-backend test", &[]).await?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id]).await?;
+    sh_cosmovisor("config chain-id", &[chain_id])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+        .await
+        .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // add `ccvconsumer_state` to genesis
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path).await?;
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
 
     let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
-    force_chain_id(daemon_home, &mut genesis, chain_id).await?;
+    force_chain_id(daemon_home, &mut genesis, chain_id)
+        .await
+        .stack()?;
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s).await?;
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
 
-    let addr: &String = &cosmovisor_get_addr("validator").await?;
-    let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await?;
+    let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
+    let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")]).await?;
+    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")])
+        .await
+        .stack()?;
     sh_cosmovisor("add-genesis-account", &[
         orch_addr,
         &token18(2.0e6, "anative"),
     ])
-    .await?;
+    .await
+    .stack()?;
 
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":")?;
+    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
+    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
     let min_self_delegation = &token18(1.0, "");
     sh_cosmovisor("gentx validator", &[
         &token18(1.0e6, "anative"),
@@ -450,16 +553,20 @@ pub async fn arc_consumer_setup(
         "--min-self-delegation",
         min_self_delegation,
     ])
-    .await?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await?;
+    .await
+    .stack()?;
+    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
 
-    fast_block_times(daemon_home).await?;
+    fast_block_times(daemon_home).await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path).await?,
+        &FileOptions::read_to_string(&genesis_file_path)
+            .await
+            .stack()?,
     )
-    .await?;
+    .await
+    .stack()?;
 
     Ok(())
 }

@@ -15,7 +15,9 @@ pub use crate::{hermes_config::*, ibc::IbcPair};
 /// last line is parsed as a `Value` and the inner "result" is returned.
 pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     info!("running hermes({cmd_with_args}, {args:?})");
-    let stdout = sh(&format!("hermes --json {cmd_with_args}"), args).await?;
+    let stdout = sh(&format!("hermes --json {cmd_with_args}"), args)
+        .await
+        .stack()?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
@@ -23,7 +25,9 @@ pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
 }
 
 pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    let stdout = sh_no_dbg(&format!("hermes --json {cmd_with_args}"), args).await?;
+    let stdout = sh_no_dbg(&format!("hermes --json {cmd_with_args}"), args)
+        .await
+        .stack()?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
@@ -176,7 +180,8 @@ impl IbcPair {
             "--channel",
             &self.a.transfer_channel,
         ])
-        .await?;
+        .await
+        .stack()?;
         sh_hermes_no_dbg("query packet acks --chain", &[
             &self.a.chain_id,
             "--port",
@@ -184,7 +189,8 @@ impl IbcPair {
             "--channel",
             &self.b.transfer_channel,
         ])
-        .await?;
+        .await
+        .stack()?;
         sh_hermes_no_dbg("query packet acks --chain", &[
             &self.b.chain_id,
             "--port",
@@ -192,7 +198,8 @@ impl IbcPair {
             "--channel",
             &self.a.ics_channel,
         ])
-        .await?;
+        .await
+        .stack()?;
         sh_hermes_no_dbg("query packet acks --chain", &[
             &self.a.chain_id,
             "--port",
@@ -200,7 +207,8 @@ impl IbcPair {
             "--channel",
             &self.b.ics_channel,
         ])
-        .await?;
+        .await
+        .stack()?;
         Ok(())
     }
 }
@@ -211,8 +219,8 @@ pub struct HermesRunner {
 
 impl HermesRunner {
     pub async fn terminate(&mut self, timeout: Duration) -> Result<()> {
-        self.runner.send_unix_sigterm()?;
-        self.runner.wait_with_timeout(timeout).await
+        self.runner.send_unix_sigterm().stack()?;
+        self.runner.wait_with_timeout(timeout).await.stack()
     }
 }
 
@@ -222,7 +230,8 @@ pub async fn hermes_start(log_file: &str) -> Result<HermesRunner> {
         .stderr_log(&hermes_log)
         .stdout_log(&hermes_log)
         .run()
-        .await?;
+        .await
+        .stack()?;
     Ok(HermesRunner {
         runner: hermes_runner,
     })
@@ -242,7 +251,7 @@ pub async fn hermes_set_gas_price_denom(
     let inner_table = outer_table["gas-price"].clone();
 
     let config_path = format!("{hermes_home}/config.toml");
-    let config_s = FileOptions::read_to_string(&config_path).await?;
+    let config_s = FileOptions::read_to_string(&config_path).await.stack()?;
     let mut config: toml::Value = toml::from_str(&config_s).stack()?;
     for chain in config["chains"].as_array_mut().stack()? {
         if chain["id"].as_str().stack()? == chain_id {
@@ -251,6 +260,8 @@ pub async fn hermes_set_gas_price_denom(
         }
     }
     let config_s = toml::to_string_pretty(&config).stack()?;
-    FileOptions::write_str(&config_path, &config_s).await?;
+    FileOptions::write_str(&config_path, &config_s)
+        .await
+        .stack()?;
     Ok(())
 }
