@@ -28,8 +28,18 @@ use onomy_test_lib::{
 use tokio::time::sleep;
 
 const CONSUMER_ID: &str = "interchain-security-cd";
+const CONSUMER_VERSION: &str = "v07-Theta";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "cosmos";
+
+fn consumer_binary_name() -> String {
+    format!("{CONSUMER_ID}d")
+}
+
+fn consumer_directory() -> String {
+    format!(".{CONSUMER_ID}")
+    //format!(".onomy_{CONSUMER_ID}")
+}
 
 #[rustfmt::skip]
 const INTERCHAIN_SECURTY_CDD: &str = r#"ENV ICS_VERSION=1.2.0-multiden
@@ -121,11 +131,11 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "/root/.onomy/keyring-test",
             )]),
             Container::new(
-                "interchain-security-cdd",
+                &consumer_binary_name(),
                 Dockerfile::Contents(onomy_std_cosmos_daemon_with_arbitrary(
-                    "interchain-security-cdd",
-                    ".interchain-security-cd",
-                    "v07-Theta",
+                    &consumer_binary_name(),
+                    &consumer_directory(),
+                    CONSUMER_VERSION,
                     INTERCHAIN_SECURTY_CDD,
                 )),
                 entrypoint,
@@ -133,7 +143,7 @@ async fn container_runner(args: &Args) -> Result<()> {
             )
             .volumes(&[(
                 "./tests/resources/keyring-test",
-                "/root/.interchain-security-cd/keyring-test",
+                &format!("/root/{}/keyring-test", consumer_directory()),
             )]),
         ],
         Some(dockerfiles_dir),

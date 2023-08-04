@@ -448,7 +448,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // but first, test governance with IBC NOM as the token
     /*let test_crisis_denom = ONOMY_IBC_NOM;
     let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
-    wait_for_num_blocks(1).await?;
+    wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
         "param-change",
@@ -471,7 +471,7 @@ async fn consumer(args: &Args) -> Result<()> {
         &format!("1{ibc_nom}"),
     )
     .await?;
-    wait_for_num_blocks(5).await?;
+    wait_for_num_blocks(5).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
     sh_cosmovisor("query params subspace crisis ConstantFee", &[]).await?;*/
