@@ -451,6 +451,8 @@ async fn consumer(args: &Args) -> Result<()> {
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
 
+    // interchain-security-cd does not support this proposal
+    /*
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ONOMY_IBC_NOM;
     let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
@@ -483,7 +485,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // inside of yaml, so we will instead test the exported genesis
     sh_cosmovisor("query params subspace crisis ConstantFee", &[])
         .await
-        .stack()?;
+        .stack()?;*/
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
@@ -491,7 +493,7 @@ async fn consumer(args: &Args) -> Result<()> {
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;
-    let exported = yaml_str_to_json_value(&exported).stack()?;
+    /*let exported = yaml_str_to_json_value(&exported).stack()?;
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
         test_crisis_denom
@@ -499,7 +501,7 @@ async fn consumer(args: &Args) -> Result<()> {
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["amount"],
         "1337"
-    );
+    );*/
 
     Ok(())
 }
