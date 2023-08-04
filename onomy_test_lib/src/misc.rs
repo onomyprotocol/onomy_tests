@@ -4,7 +4,7 @@ use awint::awi::*;
 use clap::Parser;
 use serde_json::{json, Value};
 use super_orchestrator::{
-    stacked_errors::{Error, MapAddError, Result},
+    stacked_errors::{Error, Result, StackableErr},
     std_init,
 };
 
@@ -36,7 +36,10 @@ pub fn native_denom() -> Value {
 
 /// IBC NOM denom for our Consumers
 pub const ONOMY_IBC_NOM: &str =
-    "ibc/0EEDE4D6082034D6CD465BD65761C305AACC6FCA1246F87D6A3C1F5488D18A7B";
+    "ibc/5872224386C093865E42B18BDDA56BCB8CDE1E36B82B391E97697520053B0513";
+
+pub const TEST_AMOUNT: &str =
+    "57896044618658097711785492504343953926634992332820282019728792003956564819967";
 
 /// Runs the given entrypoint
 #[derive(Parser, Debug, Clone)]
@@ -66,14 +69,14 @@ pub struct Args {
 /// Calls [super_orchestrator::std_init] and returns the result of
 /// [crate::Args::parse]
 pub fn onomy_std_init() -> Result<Args> {
-    std_init().map_add_err(|| "onomy_std_init")?;
+    std_init().stack_err(|| "onomy_std_init")?;
     let mut args = Args::parse();
     args.bin_name = env::args()
         .next()
-        .map_add_err(|| ())?
+        .stack()?
         .split('/')
         .last()
-        .unwrap()
+        .stack()?
         .to_owned();
     Ok(args)
 }
@@ -87,10 +90,10 @@ pub fn nom(units_of_nom: f64) -> String {
 /// Converts `units_of_nom` to an integer with its units being 1e-18, and adds
 /// on `denom` as a suffix
 pub fn token18(units_of_nom: f64, denom: &str) -> String {
-    // we need 60 bits plus 54 bits for the full repr, round up to 128
-    let mut f = FP::new(false, inlawi!(0u128), 0).unwrap();
+    // there can be 255 bits, but add on 65 for precision and being a multiple of 64
+    let mut f = FP::new(false, inlawi!(0u320), 0).unwrap();
     FP::f64_(&mut f, units_of_nom);
-    // move fixed point to middle
+    // move fixed point to accommodate for 10^18
     f.lshr_(64).unwrap();
     f.set_fp(f.fp() - 64);
     f.digit_cin_mul_(0, 10usize.pow(18));
@@ -116,7 +119,7 @@ pub fn anom_to_nom(val: &str) -> Result<f64> {
     ) {
         Ok(o) => {
             let mut f = FP::new(false, o, 128).unwrap();
-            FP::try_to_f64(&mut f).map_add_err(|| "anom_to_nom() f64 overflow")
+            FP::try_to_f64(&mut f).stack_err(|| "anom_to_nom() f64 overflow")
         }
         Err(e) => {
             // `SerdeError` can't implement Error
@@ -132,9 +135,9 @@ pub fn yaml_str_to_json_value(yaml_input: &str) -> Result<serde_json::Value> {
     let deserializer = serde_yaml::Deserializer::from_str(yaml_input);
     let mut json_v = vec![];
     let mut serializer = serde_json::Serializer::new(&mut json_v);
-    serde_transcode::transcode(deserializer, &mut serializer).map_add_err(|| ())?;
-    let json_s = String::from_utf8(json_v).map_add_err(|| ())?;
-    let tmp: serde_json::Value = serde_json::from_str(&json_s).map_add_err(|| ())?;
+    serde_transcode::transcode(deserializer, &mut serializer).stack()?;
+    let json_s = String::from_utf8(json_v).stack()?;
+    let tmp: serde_json::Value = serde_json::from_str(&json_s).stack()?;
     Ok(tmp)
 }
 
@@ -152,7 +155,7 @@ pub fn reprefix_bech32(s: &str, new_prefix: &str) -> Result<String> {
             "new_prefix \"{new_prefix}\" is not ascii alphabetic"
         )))
     }
-    let decoded = bech32::decode(s).map_err(|e| Error::boxed(Box::new(e)))?.1;
+    let decoded = bech32::decode(s).stack()?.1;
     let encoded = bech32::encode(new_prefix, decoded, bech32::Variant::Bech32).unwrap();
     Ok(encoded)
 }

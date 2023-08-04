@@ -1,15 +1,26 @@
-use std::time::Duration;
-
 use log::info;
+use serde_derive::{Deserialize, Serialize};
 pub use super_orchestrator::stacked_errors::Result;
-use super_orchestrator::{get_separated_val, stacked_errors::MapAddError};
-use tokio::time::sleep;
+use super_orchestrator::{get_separated_val, stacked_errors::StackableErr};
 
-pub use crate::types::{IbcPair, IbcSide};
 use crate::{
     cosmovisor::{sh_cosmovisor_no_dbg, sh_cosmovisor_tx},
-    hermes::{create_channel_pair, create_connection_pair},
+    hermes::{create_channel_pair, create_connection_pair, sh_hermes},
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IbcSide {
+    pub chain_id: String,
+    pub connection: String,
+    pub transfer_channel: String,
+    pub ics_channel: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IbcPair {
+    pub a: IbcSide,
+    pub b: IbcSide,
+}
 
 impl IbcSide {
     /// This call needs to be made on the source side
@@ -27,7 +38,8 @@ impl IbcSide {
             "ibc-transfer transfer transfer",
             &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
         )
-        .await?;
+        .await
+        .stack()?;
 
         Ok(())
     }
@@ -60,7 +72,8 @@ impl IbcSide {
             "--from",
             from_key,
         ])
-        .await?;
+        .await
+        .stack()?;
 
         Ok(())
     }
@@ -71,17 +84,22 @@ impl IbcSide {
             self.transfer_channel, leaf_denom
         )])
         .await
-        .map_add_err(|| ())?;
-        let hash = get_separated_val(&hash, "\n", "hash", ":").map_add_err(|| ())?;
+        .stack()?;
+        let hash = get_separated_val(&hash, "\n", "hash", ":").stack()?;
         Ok(format!("ibc/{hash}"))
     }
 }
 
 impl IbcPair {
-    /// Sets up transfer and consumer-provider IBC channels. This function
-    /// assumes ICS setup has been performed, which creates a client pair
-    /// automatically.
-    pub async fn hermes_setup_pair(consumer: &str, provider: &str) -> Result<IbcPair> {
+    /// Sets up consumer-provider and transfer-transfer IBC channels. This
+    /// function assumes ICS setup has been performed, which creates a
+    /// client pair automatically.
+    ///
+    /// TODO this currently assumes that this is the first channel creation
+    /// function that happens on chain startup, it hard codes the transfer
+    /// channel number. Additionally, `hermes start` should be run _after_
+    /// this function is called.
+    pub async fn hermes_setup_ics_pair(consumer: &str, provider: &str) -> Result<IbcPair> {
         // https://hermes.informal.systems/tutorials/local-chains/add-a-new-relay-path.html
 
         // Note: For ICS, there is a point where a handshake must be initiated by the
@@ -91,39 +109,56 @@ impl IbcPair {
         let b_chain = provider.to_owned();
 
         // a client is already created because of the ICS setup
-        //let client_pair = create_client_pair(a_chain, b_chain).await?;
+        //let client_pair = create_client_pair(a_chain, b_chain).await.stack()?;
         // create one client and connection pair that will be used for IBC transfer and
         // ICS communication
-        let connection_pair = create_connection_pair(&a_chain, &b_chain).await?;
-
-        // this results in some mismatch errors but we use it for now for speeding up
-        // things
-        let tmp = (a_chain.clone(), connection_pair.clone());
-        let transfer_task = tokio::task::spawn(async move {
-            let (a_chain, connection_pair) = tmp;
-            // a_chain<->b_chain transfer<->transfer
-            create_channel_pair(
-                &a_chain.clone(),
-                &connection_pair.0.clone(),
-                "transfer",
-                "transfer",
-                false,
-            )
-            .await
-            .unwrap()
-        });
-
-        // make sure the transfer task gets the first connection TODO make this more
-        // rigorous
-        sleep(Duration::from_secs(1)).await;
+        let connection_pair = create_connection_pair(&a_chain, &b_chain).await.stack()?;
 
         // a_chain<->b_chain consumer<->provider
         let ics_channel_pair =
-            create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true).await?;
+            create_channel_pair(&a_chain, &connection_pair.0, "consumer", "provider", true)
+                .await
+                .stack()?;
 
-        let transfer_channel_pair = transfer_task.await?;
+        // ICS channel creation also automatically creates a transfer channel, but it
+        // starts in the init state and we need to manually perform the 3 other steps.
 
-        info!("{consumer} <-> {provider} transfer and consumer-provider channels have been set up");
+        //let transfer_channel_pair = create_channel_pair(&a_chain, &connection_pair.0,
+        // "transfer", "transfer", false).await.stack()?;
+
+        // FIXME this is hard coded
+        let transfer_channel_pair = ("channel-1".to_string(), "channel-1".to_string());
+        sh_hermes(
+            &format!(
+                "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection \
+                 connection-0 --dst-port transfer --src-port transfer --src-channel channel-1"
+            ),
+            &[],
+        )
+        .await
+        .stack()?;
+        sh_hermes(
+            &format!(
+                "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
+                 connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
+                 --src-channel channel-1"
+            ),
+            &[],
+        )
+        .await
+        .stack()?;
+        sh_hermes(
+            &format!(
+                "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} \
+                 --dst-connection connection-0 --dst-port transfer --src-port transfer \
+                 --dst-channel channel-1 --src-channel channel-1"
+            ),
+            &[],
+        )
+        .await
+        .stack()?;
+
+        info!("{consumer} <-> {provider} consumer-provider and transfer channels have been set up");
 
         Ok(IbcPair {
             a: IbcSide {
