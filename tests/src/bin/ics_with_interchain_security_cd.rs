@@ -4,9 +4,9 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
-        cosmovisor_gov_file_proposal, cosmovisor_start, set_minimum_gas_price, sh_cosmovisor,
-        sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
     hermes::{
@@ -24,7 +24,7 @@ use onomy_test_lib::{
     },
     token18, u64_array_bigints,
     u64_array_bigints::u256,
-    yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -89,7 +89,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         "--target",
         container_target,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     // prepare volumed resources
     remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"])
@@ -406,7 +407,7 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("sending back to {}", test_addr);
 
     // avoid conflict with hermes relayer
-    wait_for_num_blocks(4).await?;
+    wait_for_num_blocks(4).await.stack()?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair

@@ -93,7 +93,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         "--target",
         container_target,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     // prepare volumed resources
     remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"])
@@ -361,8 +362,10 @@ async fn consumer(args: &Args) -> Result<()> {
             .await
             .stack()?;
 
-    let addr = &cosmovisor_get_addr("validator").await?;
-    let pubkey = sh_cosmovisor("tendermint show-validator", &[]).await?;
+    let addr = &cosmovisor_get_addr("validator").await.stack()?;
+    let pubkey = sh_cosmovisor("tendermint show-validator", &[])
+        .await
+        .stack()?;
     let pubkey = pubkey.trim();
     info!("PUBKEY: {pubkey}");
 
@@ -379,7 +382,9 @@ async fn consumer(args: &Args) -> Result<()> {
     assert!(balances.contains_key(ibc_nom));
 
     let valcons_set =
-        onomy_test_lib::cosmovisor::sh_cosmovisor("query tendermint-validator-set", &[]).await?;
+        onomy_test_lib::cosmovisor::sh_cosmovisor("query tendermint-validator-set", &[])
+            .await
+            .stack()?;
     info!("{valcons_set}");
 
     // {"@type":"/cosmos.crypto.ed25519.PubKey","key":"
@@ -406,7 +411,8 @@ async fn consumer(args: &Args) -> Result<()> {
         "-b",
         "block",
     ])
-    .await?;
+    .await
+    .stack()?;
     sleep(TIMEOUT).await;
 
     // we have IBC NOM, shut down, change gas in app.toml, restart
@@ -444,7 +450,7 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("sending back to {}", test_addr);
 
     // avoid conflict with hermes relayer
-    wait_for_num_blocks(4).await?;
+    wait_for_num_blocks(4).await.stack()?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair

@@ -89,7 +89,7 @@ async fn container_runner(args: &Args) -> Result<()> {
     )
     .stack()?
     .add_common_volumes(&[(logs_dir, "/logs")]);
-    cn.run_all(true).await?;
+    cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     Ok(())
 }
@@ -117,9 +117,9 @@ async fn test_runner() -> Result<()> {
         )
         .body(r#"{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}"#)
         .send()
-        .await?
+        .await.stack()?
         .text()
-        .await?;
+        .await.stack()?;
     info!(res);
     */
 

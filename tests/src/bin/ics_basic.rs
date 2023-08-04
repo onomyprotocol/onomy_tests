@@ -89,7 +89,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         "--target",
         container_target,
     ])
-    .await?;
+    .await
+    .stack()?;
 
     // prepare volumed resources
     remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"])
@@ -406,7 +407,7 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("sending back to {}", test_addr);
 
     // avoid conflict with hermes relayer
-    wait_for_num_blocks(4).await?;
+    wait_for_num_blocks(4).await.stack()?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair

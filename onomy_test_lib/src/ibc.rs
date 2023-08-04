@@ -109,7 +109,7 @@ impl IbcPair {
         let b_chain = provider.to_owned();
 
         // a client is already created because of the ICS setup
-        //let client_pair = create_client_pair(a_chain, b_chain).await?;
+        //let client_pair = create_client_pair(a_chain, b_chain).await.stack()?;
         // create one client and connection pair that will be used for IBC transfer and
         // ICS communication
         let connection_pair = create_connection_pair(&a_chain, &b_chain).await.stack()?;

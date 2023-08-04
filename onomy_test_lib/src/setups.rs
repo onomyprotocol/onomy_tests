@@ -180,7 +180,8 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])
         .run_to_completion()
-        .await?;
+        .await
+        .stack()?;
     comres.assert_success()?;
     let mnemonic = comres
         .stderr

@@ -16,7 +16,9 @@ use crate::{anom_to_nom, json_inner, yaml_str_to_json_value};
 /// onto `cmd_with_args` and removes the first line of output (in order to
 /// remove the INF line that always shows with cosmovisor runs)
 pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args).await?;
+    let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args)
+        .await
+        .stack()?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -25,7 +27,9 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
 }
 
 pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args).await?;
+    let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args)
+        .await
+        .stack()?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -140,7 +144,7 @@ pub async fn get_block_height() -> Result<u64> {
 
 pub async fn wait_for_height(num_tries: u64, delay: Duration, height: u64) -> Result<()> {
     async fn height_is_ge(height: u64) -> Result<()> {
-        if get_block_height().await? >= height {
+        if get_block_height().await.stack()? >= height {
             Ok(())
         } else {
             Err(Error::empty())
@@ -458,7 +462,7 @@ pub async fn cosmovisor_start(
             .await
             .stack()?;
         // account for if we are not starting at height 0
-        let current_height = get_block_height().await?;
+        let current_height = get_block_height().await.stack()?;
         wait_for_height(25, Duration::from_millis(300), current_height + 1)
             .await
             .stack_err(|| {

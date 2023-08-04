@@ -113,21 +113,21 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .stack()?;
 
     //sh_cosmovisor("query market book [denom-a] [denom-b] [order-type]",
-    // &[]).await?;
+    // &[]).await.stack()?;
     //sh_cosmovisor("query market bookends [coin-a] [coin-b] [order-type] [rate]
-    // [flags]", &[]).await?;
+    // [flags]", &[]).await.stack()?;
 
-    //sh_cosmovisor_tx("market create-pool [coin-a] [coin-b]").await?;
+    //sh_cosmovisor_tx("market create-pool [coin-a] [coin-b]").await.stack()?;
 
-    //sh_cosmovisor_tx("market create-drop [pair] [drops]").await?;
-    //sh_cosmovisor_tx("market redeem-drop [uid]").await?;
+    //sh_cosmovisor_tx("market create-drop [pair] [drops]").await.stack()?;
+    //sh_cosmovisor_tx("market redeem-drop [uid]").await.stack()?;
 
     //sh_cosmovisor_tx("market market-order [denom-ask] [denom-bid] [amount-bid]
-    // [quote-ask] [slippage]").await?;
+    // [quote-ask] [slippage]").await.stack()?;
 
     //sh_cosmovisor_tx("market create-order [denom-ask] [denom-bid] [order-type]
-    // [amount] [rate] [prev] [next]").await?; cosmovisor("tx market
-    // cancel-order [uid]").await?;
+    // [amount] [rate] [prev] [next]").await.stack()?; cosmovisor("tx market
+    // cancel-order [uid]").await.stack()?;
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     Ok(())
