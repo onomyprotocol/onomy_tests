@@ -476,7 +476,8 @@ async fn consumer(args: &Args) -> Result<()> {
         ),
         &format!("1{ibc_nom}"),
     )
-    .await?;
+    .await
+    .stack()?;
     wait_for_num_blocks(5).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis

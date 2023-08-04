@@ -4,9 +4,9 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
-        wait_for_num_blocks,
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
+        cosmovisor_gov_file_proposal, cosmovisor_start, set_minimum_gas_price, sh_cosmovisor,
+        sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
     hermes::{
@@ -22,15 +22,25 @@ use onomy_test_lib::{
         stacked_errors::{Error, Result, StackableErr},
         FileOptions, STD_DELAY, STD_TRIES,
     },
-    token18,
-    u64_array_bigints::{self, u256},
-    Args, ONOMY_IBC_NOM, TIMEOUT,
+    token18, u64_array_bigints,
+    u64_array_bigints::u256,
+    yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
 const CONSUMER_ID: &str = "arc_eth";
-//const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
+const CONSUMER_VERSION: &str = "v0.1.0";
+const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
+
+fn consumer_binary_name() -> String {
+    format!("{CONSUMER_ID}d")
+}
+
+fn consumer_directory() -> String {
+    format!(".{CONSUMER_ID}")
+    //format!(".onomy_{CONSUMER_ID}")
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -126,19 +136,19 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "/root/.onomy/keyring-test",
             )]),
             Container::new(
-                "arc_ethd",
+                &consumer_binary_name(),
                 Dockerfile::Contents(onomy_std_cosmos_daemon(
-                    "arc_ethd",
-                    ".onomy_arc_eth",
-                    "v0.1.0",
-                    "arc_ethd",
+                    &consumer_binary_name(),
+                    &consumer_directory(),
+                    CONSUMER_VERSION,
+                    &consumer_binary_name(),
                 )),
                 entrypoint,
                 &["--entry-name", "consumer"],
             )
             .volumes(&[(
                 "./tests/resources/keyring-test",
-                "/root/.onomy_arc_eth/keyring-test",
+                &format!("/root/{}/keyring-test", consumer_directory()),
             )]),
         ],
         Some(dockerfiles_dir),
@@ -426,9 +436,15 @@ async fn consumer(args: &Args) -> Result<()> {
         u256!(5000)
     );
 
-    let test_addr =
-        &reprefix_bech32("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3", "onomy").stack()?;
+    let test_addr = &reprefix_bech32(
+        "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
+        PROVIDER_ACCOUNT_PREFIX,
+    )
+    .stack()?;
     info!("sending back to {}", test_addr);
+
+    // avoid conflict with hermes relayer
+    wait_for_num_blocks(4).await?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
@@ -438,15 +454,43 @@ async fn consumer(args: &Args) -> Result<()> {
         .stack()?;
     wait_for_num_blocks(4).await.stack()?;
 
+    let pubkey = sh_cosmovisor("tendermint show-validator", &[])
+        .await
+        .stack()?;
+    let pubkey = pubkey.trim();
+    sh_cosmovisor_tx("staking", &[
+        "create-validator",
+        "--commission-max-change-rate",
+        "0.01",
+        "--commission-max-rate",
+        "0.10",
+        "--commission-rate",
+        "0.05",
+        "--from",
+        "validator",
+        "--min-self-delegation",
+        "1",
+        "--amount",
+        &token18(1.0e3, ONOMY_IBC_NOM),
+        "--fees",
+        &format!("1000000{ONOMY_IBC_NOM}"),
+        "--pubkey",
+        pubkey,
+        "-y",
+        "-b",
+        "block",
+    ])
+    .await
+    .stack()?;
+
     // round trip signal
     nm_onomyd.send::<()>(&()).await.stack()?;
 
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
-    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
     // but first, test governance with IBC NOM as the token
-    /*let test_crisis_denom = ONOMY_IBC_NOM;
+    let test_crisis_denom = ONOMY_IBC_NOM;
     let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
@@ -470,17 +514,22 @@ async fn consumer(args: &Args) -> Result<()> {
         ),
         &format!("1{ibc_nom}"),
     )
-    .await?;
+    .await
+    .stack()?;
     wait_for_num_blocks(5).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor("query params subspace crisis ConstantFee", &[]).await?;*/
+    sh_cosmovisor("query params subspace crisis ConstantFee", &[])
+        .await
+        .stack()?;
 
-    cosmovisor_runner.terminate(TIMEOUT).await?;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
-    let exported = sh_cosmovisor_no_dbg("export", &[]).await?;
-    FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported).await?;
-    /*let exported = yaml_str_to_json_value(&exported)?;
+    let exported = sh_cosmovisor_no_dbg("export", &[]).await.stack()?;
+    FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
+        .await
+        .stack()?;
+    let exported = yaml_str_to_json_value(&exported).stack()?;
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
         test_crisis_denom
@@ -488,7 +537,7 @@ async fn consumer(args: &Args) -> Result<()> {
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["amount"],
         "1337"
-    );*/
+    );
 
     Ok(())
 }
