@@ -52,18 +52,18 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let addr = &cosmovisor_get_addr("validator").await.stack()?;
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").stack()?;
-    let tmp = sh_cosmovisor("cosmovisor run tendermint show-address", &[])
+    let tmp = sh_cosmovisor("tendermint show-address", &[])
         .await
         .stack()?;
     let valcons_addr = tmp.trim();
     info!("address: {addr}");
     info!("valoper address: {valoper_addr}");
     info!("valcons address: {valcons_addr}");
-    sleep(TIMEOUT).await;
+    //sleep(TIMEOUT).await;
 
     // get valcons bech32 and pub key
     // cosmovisor run query tendermint-validator-set
-    let valcons_set = sh_cosmovisor("cosmovisor run query tendermint-validator-set", &[])
+    let valcons_set = sh_cosmovisor("query tendermint-validator-set", &[])
         .await
         .stack()?;
     info!("{valcons_set}");

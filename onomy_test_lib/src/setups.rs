@@ -213,7 +213,8 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     Ok(mnemonic)
 }
 
-pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
+// NOTE: this uses the local tendermint consAddr for the bridge power
+pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) -> Result<String> {
     let chain_id = "gravity";
     let min_self_delegation = &token18(1.0, "");
     sh_cosmovisor("config chain-id", &[chain_id])
@@ -287,17 +288,37 @@ pub async fn gravity_standalone_setup(daemon_home: &str) -> Result<String> {
 
     let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
-    sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
-        eth_addr,
-        &orch_addr,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        min_self_delegation,
-    ])
-    .await
-    .stack()?;
+
+    let consaddr = sh_cosmovisor("tendermint show-address", &[]).await?;
+    let consaddr = consaddr.trim();
+
+    if use_old_gentx {
+        sh_cosmovisor("gentx", &[
+            "validator",
+            &nom(1.0e6),
+            eth_addr,
+            &orch_addr,
+            "--chain-id",
+            chain_id,
+            "--min-self-delegation",
+            min_self_delegation,
+        ])
+        .await
+        .stack()?;
+    } else {
+        sh_cosmovisor("gentx", &[
+            &nom(1.0e6),
+            consaddr,
+            eth_addr,
+            "orchestrator",
+            "--chain-id",
+            chain_id,
+            "--min-self-delegation",
+            min_self_delegation,
+        ])
+        .await
+        .stack()?;
+    }
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
 
     FileOptions::write_str(
