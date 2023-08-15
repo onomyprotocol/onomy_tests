@@ -279,13 +279,6 @@ pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) ->
         .await
         .stack()?;
 
-    // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
-    let orch_addr = cosmovisor_get_addr("orchestrator").await.stack()?;
-    sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)])
-        .await
-        .stack()?;
-
     let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
 
@@ -293,6 +286,13 @@ pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) ->
     let consaddr = consaddr.trim();
 
     if use_old_gentx {
+        // unconditionally needed for some Arc tests
+        sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+        let orch_addr = cosmovisor_get_addr("orchestrator").await.stack()?;
+        sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)])
+            .await
+            .stack()?;
+
         sh_cosmovisor("gentx", &[
             "validator",
             &nom(1.0e6),
@@ -310,7 +310,7 @@ pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) ->
             &nom(1.0e6),
             consaddr,
             eth_addr,
-            "orchestrator",
+            "validator",
             "--chain-id",
             chain_id,
             "--min-self-delegation",

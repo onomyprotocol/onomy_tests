@@ -141,6 +141,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sh_cosmovisor("query params subspace crisis ConstantFee", &[])
         .await
         .stack()?;
+    sleep(TIMEOUT).await;
 
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
