@@ -38,8 +38,8 @@ fn consumer_binary_name() -> String {
 }
 
 fn consumer_directory() -> String {
-    format!(".{CONSUMER_ID}")
-    //format!(".onomy_{CONSUMER_ID}")
+    //format!(".{CONSUMER_ID}")
+    format!(".onomy_{CONSUMER_ID}")
 }
 
 #[tokio::main]
@@ -387,9 +387,7 @@ async fn consumer(args: &Args) -> Result<()> {
             .stack()?;
     info!("{valcons_set}");
 
-    // {"@type":"/cosmos.crypto.ed25519.PubKey","key":"
-    // aFV+2+0YfVjwS6cDhuRPTfpBuDmH3J2btCtu+vyfg5w="}
-    sh_cosmovisor_tx("staking", &[
+    /*sh_cosmovisor_tx("staking", &[
         "create-validator",
         "--commission-max-change-rate",
         "0.01",
@@ -413,7 +411,7 @@ async fn consumer(args: &Args) -> Result<()> {
     ])
     .await
     .stack()?;
-    sleep(TIMEOUT).await;
+    sleep(TIMEOUT).await;*/
 
     // we have IBC NOM, shut down, change gas in app.toml, restart
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;

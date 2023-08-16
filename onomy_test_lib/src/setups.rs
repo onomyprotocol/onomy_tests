@@ -550,26 +550,23 @@ pub async fn arc_consumer_setup(
         .stack()?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
-    let orch_addr: &String = &cosmovisor_get_addr("orchestrator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
     sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")])
         .await
         .stack()?;
-    sh_cosmovisor("add-genesis-account", &[
-        orch_addr,
-        &token18(2.0e6, "anative"),
-    ])
-    .await
-    .stack()?;
+
+    let consaddr = sh_cosmovisor("tendermint show-address", &[]).await?;
+    let consaddr = consaddr.trim();
 
     let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
     let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor("gentx validator", &[
+    sh_cosmovisor("gentx", &[
         &token18(1.0e6, "anative"),
+        consaddr,
         eth_addr,
-        orch_addr,
+        "validator",
         "--chain-id",
         chain_id,
         "--min-self-delegation",
@@ -578,6 +575,21 @@ pub async fn arc_consumer_setup(
     .await
     .stack()?;
     sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
+
+    // TODO it seems that this works, shouldn't it fail because of the signature?
+    // Arc only: remove `MsgCreateValidator`
+    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
+        .await
+        .stack()?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
+    genesis["app_state"]["genutil"]["gen_txs"][0]["body"]["messages"]
+        .as_array_mut()
+        .unwrap()
+        .remove(0);
+    let genesis_s = genesis.to_string();
+    FileOptions::write_str(&genesis_file_path, &genesis_s)
+        .await
+        .stack()?;
 
     fast_block_times(daemon_home).await.stack()?;
 
