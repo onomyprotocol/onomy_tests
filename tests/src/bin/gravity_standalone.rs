@@ -52,7 +52,9 @@ async fn main() -> Result<()> {
 
 async fn gravity_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    gravity_standalone_setup(daemon_home, false).await.stack()?;
+    gravity_standalone_setup(daemon_home, false, "onomy")
+        .await
+        .stack()?;
     let mut cosmovisor_runner = cosmovisor_start("gravity_runner.log", None).await.stack()?;
 
     let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;

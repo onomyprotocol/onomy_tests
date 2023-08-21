@@ -7,12 +7,13 @@ use super_orchestrator::{
 use tokio::time::sleep;
 
 use crate::{
+    arc_test_denoms,
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
-    native_denom, nom, nom_denom, token18, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
+    native_denom, nom, nom_denom, reprefix_bech32, token18, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
 };
 
 // make sure some things are imported so we don't have to wrangle with this for
@@ -214,7 +215,11 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
 }
 
 // NOTE: this uses the local tendermint consAddr for the bridge power
-pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) -> Result<String> {
+pub async fn gravity_standalone_setup(
+    daemon_home: &str,
+    use_old_gentx: bool,
+    address_prefix: &str,
+) -> Result<String> {
     let chain_id = "gravity";
     let min_self_delegation = &token18(1.0, "");
     sh_cosmovisor("config chain-id", &[chain_id])
@@ -232,20 +237,43 @@ pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) ->
         .await
         .stack()?;
 
-    // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id)
         .await
         .stack()?;
 
-    // put in the test `footoken` and the staking `anom`
-    let denom_metadata = nom_denom();
+    let denom_metadata = arc_test_denoms();
     genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
 
+    // for airdrop tests
+    genesis["app_state"]["distribution"]["fee_pool"]["community_pool"] = json!(
+        [{"denom": "stake", "amount": "10000000000.0"}]
+    );
+    // SHA256 hash of distribution.ModuleName
+    let distribution_addr = reprefix_bech32(
+        "gravity1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8r0kyvh",
+        address_prefix,
+    )
+    .unwrap();
+    genesis["app_state"]["auth"]["accounts"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!(
+            [{"@type": "/cosmos.auth.v1beta1.ModuleAccount",
+            "base_account": { "account_number": "0", "address": distribution_addr,
+            "pub_key": null,"sequence": "0"},
+            "name": "distribution", "permissions": ["basic"]}]
+        ));
+    genesis["app_state"]["bank"]["balances"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!(
+            [{"address": distribution_addr, "coins": [{"amount": "10000000000", "denom": "stake"}]}]
+        ));
+
     // decrease the governing period for fast tests
-    let gov_period = "800ms";
+    let gov_period = "10s";
     let gov_period: Value = gov_period.into();
     genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
     genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
@@ -257,7 +285,9 @@ pub async fn gravity_standalone_setup(daemon_home: &str, use_old_gentx: bool) ->
         .stack()?;
 
     fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
+    set_minimum_gas_price(daemon_home, "1footoken")
+        .await
+        .stack()?;
 
     // we need the stderr to get the mnemonic
     let comres = Command::new("cosmovisor run keys add validator", &[])

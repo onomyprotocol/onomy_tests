@@ -34,6 +34,17 @@ pub fn native_denom() -> Value {
     ])
 }
 
+pub fn arc_test_denoms() -> Value {
+    json!([
+        {"name": "Foo Token", "symbol": "FOO", "base": "footoken", "display": "mfootoken",
+        "description": "Foo token", "denom_units": [{"denom": "footoken", "exponent": 0},
+        {"denom": "mfootoken", "exponent": 6}]},
+        {"name": "Stake Token", "symbol": "STAKE", "base": "stake", "display": "mstake",
+        "description": "Staking token", "denom_units": [{"denom": "stake", "exponent": 0},
+        {"denom": "mstake", "exponent": 6}]}
+    ])
+}
+
 /// IBC NOM denom for our Consumers
 pub const ONOMY_IBC_NOM: &str =
     "ibc/5872224386C093865E42B18BDDA56BCB8CDE1E36B82B391E97697520053B0513";
@@ -64,6 +75,10 @@ pub struct Args {
     pub onomy_current_version: Option<String>,
     #[arg(long, env)]
     pub onomy_upgrade_version: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub skip_npm: bool,
+    #[arg(long)]
+    pub i: Option<u64>,
 }
 
 /// Calls [super_orchestrator::std_init] and returns the result of

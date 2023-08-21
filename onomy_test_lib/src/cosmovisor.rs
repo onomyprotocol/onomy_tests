@@ -380,6 +380,7 @@ pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
     Ok(val)
 }
 
+#[derive(Default)]
 pub struct CosmovisorOptions {
     pub halt_height: Option<u64>,
 }

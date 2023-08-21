@@ -458,6 +458,13 @@ async fn consumer(args: &Args) -> Result<()> {
         .stack()?;
     wait_for_num_blocks(4).await.stack()?;
 
+    //cosmovisor run tx staking create-validator --commission-max-change-rate 0.01
+    // --commission-max-rate 0.10 --commission-rate 0.05 --from validator
+    // --min-self-delegation 1 --amount
+    // 1000000000000000000000ibc/
+    // 5872224386C093865E42B18BDDA56BCB8CDE1E36B82B391E97697520053B0513 --fees
+    // 1000000ibc/5872224386C093865E42B18BDDA56BCB8CDE1E36B82B391E97697520053B0513
+    // --pubkey '' -y -b block sleep(TIMEOUT).await;
     let pubkey = sh_cosmovisor("tendermint show-validator", &[])
         .await
         .stack()?;
@@ -475,7 +482,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, ONOMY_IBC_NOM),
+        &token18(1.0e3, "anative"), // FIXME why is it requiring anative
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
