@@ -118,7 +118,7 @@ pub async fn onomyd_setup(
         .await
         .stack()?;
 
-    let self_delegate = if options.map(|o| o.high_staking_level) == Some(false) {
+    let self_delegate = if options.map(|o| o.high_staking_level) != Some(true) {
         // unconditionally needed for some Arc tests
         sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
         sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
