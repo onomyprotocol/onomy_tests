@@ -22,11 +22,27 @@ fn _unused() {
     drop(sleep(TIMEOUT));
 }
 
+#[derive(Default)]
+pub struct CosmosSetupOptions {
+    // used for APR tests, as normally there is a lot of undelegated tokens that would mess up
+    // calculations
+    pub high_staking_level: bool,
+}
+
+impl CosmosSetupOptions {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
+pub async fn onomyd_setup(
+    daemon_home: &str,
+    options: Option<CosmosSetupOptions>,
+) -> Result<String> {
     let chain_id = "onomy";
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id])
@@ -102,14 +118,19 @@ pub async fn onomyd_setup(daemon_home: &str) -> Result<String> {
         .await
         .stack()?;
 
-    // unconditionally needed for some Arc tests
-    sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
-    sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
-        .await
-        .stack()?;
+    let self_delegate = if options.map(|o| o.high_staking_level) == Some(false) {
+        // unconditionally needed for some Arc tests
+        sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+        sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
+            .await
+            .stack()?;
+        nom(1.0e6)
+    } else {
+        nom(1.99e6)
+    };
 
     sh_cosmovisor("gentx validator", &[
-        &nom(1.0e6),
+        &self_delegate,
         "--chain-id",
         chain_id,
         "--min-self-delegation",

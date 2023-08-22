@@ -620,11 +620,11 @@ pub async fn get_validator_delegated() -> Result<f64> {
 
 /// APR calculation is: [Amount(Rewards End) - Amount(Rewards
 /// Beg)]/Amount(Delegated) * # of Blocks/Blocks_per_year
-pub async fn get_apr_annual(valoper_addr: &str) -> Result<f64> {
+pub async fn get_apr_annual(valoper_addr: &str, blocks_per_year: f64) -> Result<f64> {
     wait_for_num_blocks(1).await.stack()?;
     let delegated = get_validator_delegated().await.stack()?;
     let reward_start = get_outstanding_rewards(valoper_addr).await.stack()?;
     wait_for_num_blocks(1).await.stack()?;
     let reward_end = get_outstanding_rewards(valoper_addr).await.stack()?;
-    Ok(((reward_end - reward_start) * 365.0 * 86400.0) / (delegated * 5.0))
+    Ok(((reward_end - reward_start) * blocks_per_year) / delegated)
 }
