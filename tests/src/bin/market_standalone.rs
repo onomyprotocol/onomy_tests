@@ -15,7 +15,6 @@ use onomy_test_lib::{
         stacked_errors::{Error, Result, StackableErr},
         Command, FileOptions,
     },
-    u64_array_bigints::{self, u256},
     Args, TIMEOUT,
 };
 use tokio::time::sleep;
@@ -73,17 +72,23 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     let coin_pair = CoinPair::new("afootoken", "anative").stack()?;
 
     // test numerical limits
-    let large = u256!(5192296858534827628530496329220095);
-    let large_squared = u256!(26959946667150639794667015087019620289043427352885315420110951809025);
-    market.create_pool(&coin_pair, large, large).await.stack()?;
     market
-        .create_drop(&coin_pair, large_squared)
+        .create_pool(&coin_pair, Market::MAX_COIN, Market::MAX_COIN)
+        .await
+        .stack()?;
+    market
+        .create_drop(&coin_pair, Market::MAX_COIN_SQUARED)
         .await
         .stack()?;
     market.show_pool(&coin_pair).await.stack()?;
     market.show_members(&coin_pair).await.stack()?;
     market
-        .market_order(coin_pair.coin_a(), coin_pair.coin_b(), large, 5000)
+        .market_order(
+            coin_pair.coin_a(),
+            coin_pair.coin_b(),
+            Market::MAX_COIN,
+            5000,
+        )
         .await
         .stack()?;
     market.redeem_drop(1).await.stack()?;
@@ -92,7 +97,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
             coin_pair.coin_a(),
             coin_pair.coin_b(),
             "stop",
-            large,
+            Market::MAX_COIN,
             (1100, 900),
             (0, 0),
         )
@@ -103,7 +108,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
             coin_pair.coin_a(),
             coin_pair.coin_b(),
             "limit",
-            large,
+            Market::MAX_COIN,
             (1100, 900),
             (0, 0),
         )

@@ -27,6 +27,9 @@ pub struct CosmosSetupOptions {
     // used for APR tests, as normally there is a lot of undelegated tokens that would mess up
     // calculations
     pub high_staking_level: bool,
+
+    // used for checking the numerical limits of the market
+    pub large_test_amount: bool,
 }
 
 impl CosmosSetupOptions {
@@ -114,11 +117,17 @@ pub async fn onomyd_setup(
         .stack_err(|| "no last line")?
         .trim()
         .to_owned();
-    sh_cosmovisor("add-genesis-account validator", &[&nom(2.0e6)])
+
+    let amount = if options.as_ref().map(|o| o.large_test_amount) == Some(true) {
+        format!("{TEST_AMOUNT}anom")
+    } else {
+        nom(2.0e6)
+    };
+    sh_cosmovisor("add-genesis-account validator", &[&amount])
         .await
         .stack()?;
 
-    let self_delegate = if options.map(|o| o.high_staking_level) != Some(true) {
+    let self_delegate = if options.as_ref().map(|o| o.high_staking_level) != Some(true) {
         // unconditionally needed for some Arc tests
         sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
         sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
@@ -542,9 +551,12 @@ pub async fn marketd_setup(
     let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")])
-        .await
-        .stack()?;
+    sh_cosmovisor("add-genesis-account", &[
+        addr,
+        &format!("{TEST_AMOUNT}anative"),
+    ])
+    .await
+    .stack()?;
 
     fast_block_times(daemon_home).await.stack()?;
     set_minimum_gas_price(daemon_home, "1anative")

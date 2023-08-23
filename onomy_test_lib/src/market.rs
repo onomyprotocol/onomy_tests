@@ -1,7 +1,7 @@
 //! Market module functions
 
 use super_orchestrator::stacked_errors::{Error, StackableErr};
-use u64_array_bigints::U256;
+use u64_array_bigints::{u256, U256};
 
 use crate::{
     cosmovisor::{cosmovisor_get_balances, sh_cosmovisor, sh_cosmovisor_tx},
@@ -79,6 +79,11 @@ pub struct Market {
 }
 
 impl Market {
+    /// Max absolute coin amounts supported by the market module currently
+    pub const MAX_COIN: U256 = u256!(5192296858534827628530496329220095);
+    pub const MAX_COIN_SQUARED: U256 =
+        u256!(26959946667150639794667015087019620289043427352885315420110951809025);
+
     pub fn new(account: &str, fees: &str) -> Self {
         Market {
             account: account.to_owned(),
@@ -99,6 +104,10 @@ impl Market {
             "--fees",
             &self.fees,
         ]);
+        if let Some(ref gas) = self.gas {
+            args.push("--gas");
+            args.push(gas);
+        }
         sh_cosmovisor_tx(cmd_with_args, &args)
             .await
             .stack_err(|| "market module transaction error")?;
