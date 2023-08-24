@@ -9,7 +9,7 @@ use onomy_test_lib::{
 };
 
 pub fn dockerfile_onomyd() -> String {
-    onomy_std_cosmos_daemon("onomyd", ".onomy", "v1.1.1", "onomyd")
+    onomy_std_cosmos_daemon("onomyd", ".onomy", "v1.1.2", "onomyd")
 }
 
 /// Useful for running simple container networks that have a standard format and

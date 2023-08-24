@@ -14,14 +14,14 @@ name = "geth_test"
 required-features = ["geth"]
 
 [dependencies]
-clap = { version = "4.3", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 clarity = { git = "https://github.com/onomyprotocol/clarity.git", rev = "3e875b608a2d9302c8b23dd40dc8705901db230c", optional = true }
 deep_space = { git = "https://github.com/onomyprotocol/deep_space.git", rev = "36aa611a1ccfd4a48e1248d029a11cb026106254", optional = true }
 log = "0.4"
 onomy_test_lib = { path = "../onomy_test_lib" }
 reqwest = "0.11"
 serde_json = "1.0"
-tokio = { version = "1.29", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 web30 = { git = "https://github.com/onomyprotocol/web30.git", rev = "e5f7eac019d9c9f2730316295564e69336ef036c", features = ["warn_on_rpc_error"], optional = true }
 
 [features]

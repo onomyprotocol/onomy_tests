@@ -47,7 +47,7 @@ enabled = true
 # Interval (in number of blocks) at which pending packets
 # should be periodically cleared. A value of '0' will disable
 # periodic packet clearing. [Default: 100]
-clear_interval = 100
+clear_interval = 0
 
 # Whether or not to clear packets on start. [Default: true]
 clear_on_start = true
@@ -123,6 +123,7 @@ grpc_addr = 'http://onomyd:9090'
 # Specify the WebSocket address and port where the chain WebSocket server
 # listens on. Required
 websocket_addr = 'ws://onomyd:26657/websocket'
+event_source = { mode = 'push', url = '$WS_URL', batch_delay = '200ms' }
 
 # Specify the maximum amount of time (duration) that the RPC requests should
 # take before timing out. Default: 10s (10 seconds)
@@ -345,7 +346,7 @@ id = '{chain_id}'
 ccv_consumer_chain = {ccv_consumer_chain}
 rpc_addr = 'http://{chain_id}d:26657'
 grpc_addr = 'http://{chain_id}d:9090'
-websocket_addr = 'ws://{chain_id}d:26657/websocket'
+event_source = {{ mode = 'push', url = 'ws://{chain_id}d:26657/websocket', batch_delay = '200ms' }}
 rpc_timeout = '10s'
 account_prefix = '{account_prefix}'
 key_name = 'validator'
@@ -362,6 +363,7 @@ max_block_time = '{max_block_time}'
 trusting_period = '14days'
 trust_threshold = {{ numerator = '1', denominator = '3' }}
 address_type = {{ derivation = 'cosmos' }}
+
 "##
         )
     }
