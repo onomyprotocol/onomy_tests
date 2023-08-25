@@ -47,9 +47,9 @@ async fn main() -> Result<()> {
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    let mut options = CosmosSetupOptions::new();
+    let mut options = CosmosSetupOptions::new(daemon_home);
     options.high_staking_level = true;
-    onomyd_setup(daemon_home, Some(options)).await.stack()?;
+    onomyd_setup(options).await.stack()?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     let addr = &cosmovisor_get_addr("validator").await.stack()?;

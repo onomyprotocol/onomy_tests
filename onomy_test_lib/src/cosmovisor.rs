@@ -459,12 +459,12 @@ pub async fn cosmovisor_start(
         info!("waiting for daemon to run");
         // avoid the initial debug failure
         sleep(Duration::from_millis(300)).await;
-        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[]))
+        wait_for_ok(5, STD_DELAY, || sh_cosmovisor("status", &[]))
             .await
             .stack()?;
         // account for if we are not starting at height 0
         let current_height = get_block_height().await.stack()?;
-        wait_for_height(25, Duration::from_millis(300), current_height + 1)
+        wait_for_height(5, Duration::from_millis(300), current_height + 1)
             .await
             .stack_err(|| {
                 format!(
@@ -481,7 +481,7 @@ pub async fn cosmovisor_start(
         );
         // we also wait for height 2, because there are consensus failures and reward
         // propogations that only start on height 2
-        wait_for_height(25, Duration::from_millis(300), current_height + 2)
+        wait_for_height(5, Duration::from_millis(300), current_height + 2)
             .await
             .stack_err(|| {
                 format!(

@@ -24,17 +24,25 @@ fn _unused() {
 
 #[derive(Default)]
 pub struct CosmosSetupOptions {
+    pub daemon_home: String,
+
     // used for APR tests, as normally there is a lot of undelegated tokens that would mess up
     // calculations
     pub high_staking_level: bool,
 
     // used for checking the numerical limits of the market
     pub large_test_amount: bool,
+
+    // mnemonic for the validator to use instead of randomly generating
+    pub mnemonic: Option<String>,
 }
 
 impl CosmosSetupOptions {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(daemon_home: &str) -> Self {
+        CosmosSetupOptions {
+            daemon_home: daemon_home.to_owned(),
+            ..Default::default()
+        }
     }
 }
 
@@ -42,10 +50,8 @@ impl CosmosSetupOptions {
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(
-    daemon_home: &str,
-    options: Option<CosmosSetupOptions>,
-) -> Result<String> {
+pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
+    let daemon_home = &options.daemon_home;
     let chain_id = "onomy";
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id])
@@ -103,22 +109,35 @@ pub async fn onomyd_setup(
 
     set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
 
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
-        .run_to_completion()
+    let mnemonic = if let Some(mnemonic) = options.mnemonic {
+        let comres = Command::new(
+            &format!("{daemon_home}/cosmovisor/current/bin/onomyd keys add validator --recover"),
+            &[],
+        )
+        .run_with_input_to_completion(mnemonic.as_bytes())
         .await
         .stack()?;
-    comres.assert_success()?;
-    let mnemonic = comres
-        .stderr
-        .trim()
-        .lines()
-        .last()
-        .stack_err(|| "no last line")?
-        .trim()
-        .to_owned();
+        comres.assert_success()?;
+        mnemonic
+    } else {
+        // we need the stderr to get the mnemonic
+        let comres = Command::new("cosmovisor run keys add validator", &[])
+            .run_to_completion()
+            .await
+            .stack()?;
+        comres.assert_success()?;
+        let mnemonic = comres
+            .stderr
+            .trim()
+            .lines()
+            .last()
+            .stack_err(|| "no last line")?
+            .trim()
+            .to_owned();
+        mnemonic
+    };
 
-    let amount = if options.as_ref().map(|o| o.large_test_amount) == Some(true) {
+    let amount = if options.large_test_amount {
         format!("{TEST_AMOUNT}anom")
     } else {
         nom(2.0e6)
@@ -127,12 +146,11 @@ pub async fn onomyd_setup(
         .await
         .stack()?;
 
-    let self_delegate = if options.as_ref().map(|o| o.high_staking_level) != Some(true) {
-        // unconditionally needed for some Arc tests
-        sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+    let self_delegate = if options.high_staking_level {
+        /*sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
         sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
             .await
-            .stack()?;
+            .stack()?;*/
         nom(1.0e6)
     } else {
         nom(1.99e6)
