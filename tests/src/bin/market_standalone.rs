@@ -15,6 +15,7 @@ use onomy_test_lib::{
         stacked_errors::{Error, Result, StackableErr},
         Command, FileOptions,
     },
+    u64_array_bigints::{self, u256},
     Args, TIMEOUT,
 };
 use tokio::time::sleep;
@@ -65,7 +66,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .stack()?;
     let mut cosmovisor_runner = cosmovisor_start(&format!("{CHAIN_ID}d_runner.log"), None).await?;
 
-    let market = Market::new("validator", "1000000anative");
+    let mut market = Market::new("validator", "1000000anative");
+    market.max_gas = Some(u256!(300000));
 
     let addr = &cosmovisor_get_addr("validator").await.stack()?;
     info!("{:?}", cosmovisor_get_balances(addr).await.stack()?);
@@ -85,6 +87,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     market
         .market_order(
             coin_pair.coin_a(),
+            Market::MAX_COIN,
             coin_pair.coin_b(),
             Market::MAX_COIN,
             5000,

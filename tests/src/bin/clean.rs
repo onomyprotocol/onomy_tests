@@ -10,6 +10,7 @@ async fn main() -> Result<()> {
     remove_files_in_dir("./tests/dockerfiles/dockerfile_resources", &[
         "__tmp_hermes_config.toml",
         "onomyd",
+        "marketd",
         "onexd",
         "gravity",
         "arc_ethd",
