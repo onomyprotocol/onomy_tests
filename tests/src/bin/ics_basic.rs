@@ -102,8 +102,15 @@ async fn container_runner(args: &Args) -> Result<()> {
     // prepare hermes config
     write_hermes_config(
         &[
-            HermesChainConfig::new("onomy", "onomy", false, "anom", true),
-            HermesChainConfig::new(CONSUMER_ID, CONSUMER_ACCOUNT_PREFIX, true, "anative", true),
+            HermesChainConfig::new("onomy", "onomyd", "onomy", false, "anom", true),
+            HermesChainConfig::new(
+                CONSUMER_ID,
+                &format!("{CONSUMER_ID}d"),
+                CONSUMER_ACCOUNT_PREFIX,
+                true,
+                "anative",
+                true,
+            ),
         ],
         &format!("{dockerfiles_dir}/dockerfile_resources"),
     )
@@ -287,7 +294,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            &token18(100.0e3, ""),
+            &token18(1.0e3, ""),
             "anom",
         )
         .await
@@ -438,7 +445,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, ONOMY_IBC_NOM),
+        &token18(500.0, ONOMY_IBC_NOM),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",

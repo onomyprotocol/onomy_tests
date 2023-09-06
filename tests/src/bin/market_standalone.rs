@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
         let mut cmd = Command::new(&format!("go build ./cmd/{CHAIN_ID}d"), &[]).ci_mode(true);
         cmd.cwd = Some("./../market/".to_owned());
         let comres = cmd.run_to_completion().await.stack()?;
-        comres.assert_success()?;
+        comres.assert_success().stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             &format!(

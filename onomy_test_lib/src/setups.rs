@@ -117,7 +117,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         .run_with_input_to_completion(mnemonic.as_bytes())
         .await
         .stack()?;
-        comres.assert_success()?;
+        comres.assert_success().stack()?;
         mnemonic
     } else {
         // we need the stderr to get the mnemonic
@@ -125,9 +125,10 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
             .run_to_completion()
             .await
             .stack()?;
-        comres.assert_success()?;
+        comres.assert_success().stack()?;
         let mnemonic = comres
-            .stderr
+            .stderr_as_str()
+            .stack()?
             .trim()
             .lines()
             .last()
@@ -231,9 +232,10 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         .run_to_completion()
         .await
         .stack()?;
-    comres.assert_success()?;
+    comres.assert_success().stack()?;
     let mnemonic = comres
-        .stderr
+        .stderr_as_str()
+        .stack()?
         .trim()
         .lines()
         .last()
@@ -342,9 +344,10 @@ pub async fn gravity_standalone_setup(
         .run_to_completion()
         .await
         .stack()?;
-    comres.assert_success()?;
+    comres.assert_success().stack()?;
     let mnemonic = comres
-        .stderr
+        .stderr_as_str()
+        .stack()?
         .trim()
         .lines()
         .last()

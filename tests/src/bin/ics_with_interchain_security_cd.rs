@@ -294,7 +294,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            &token18(100.0e3, ""),
+            &token18(1.0e3, ""),
             "anom",
         )
         .await
@@ -445,7 +445,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, ONOMY_IBC_NOM),
+        &token18(500.0, ONOMY_IBC_NOM),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
