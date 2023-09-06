@@ -308,16 +308,20 @@ memo_prefix = ''
 */
 
 pub struct HermesChainConfig {
-    chain_id: String,
-    account_prefix: String,
-    ccv_consumer_chain: bool,
-    gas_denom: String,
-    fast_block_times: bool,
+    pub chain_id: String,
+    pub rpc_addr: String,
+    pub grpc_addr: String,
+    pub event_addr: String,
+    pub account_prefix: String,
+    pub ccv_consumer_chain: bool,
+    pub gas_denom: String,
+    pub fast_block_times: bool,
 }
 
 impl HermesChainConfig {
     pub fn new(
         chain_id: &str,
+        hostname: &str,
         account_prefix: &str,
         ccv_consumer_chain: bool,
         gas_denom: &str,
@@ -325,6 +329,9 @@ impl HermesChainConfig {
     ) -> Self {
         Self {
             chain_id: chain_id.to_owned(),
+            rpc_addr: format!("http://{hostname}:26657"),
+            grpc_addr: format!("http://{hostname}:9090"),
+            event_addr: format!("ws://{hostname}:26657/websocket"),
             account_prefix: account_prefix.to_owned(),
             ccv_consumer_chain,
             gas_denom: gas_denom.to_owned(),
@@ -336,6 +343,9 @@ impl HermesChainConfig {
 impl ToString for HermesChainConfig {
     fn to_string(&self) -> String {
         let chain_id = &self.chain_id;
+        let rpc_addr = &self.rpc_addr;
+        let grpc_addr = &self.grpc_addr;
+        let event_addr = &self.event_addr;
         let account_prefix = &self.account_prefix;
         let ccv_consumer_chain = self.ccv_consumer_chain;
         let gas_denom = &self.gas_denom;
@@ -344,9 +354,9 @@ impl ToString for HermesChainConfig {
             r##"[[chains]]
 id = '{chain_id}'
 ccv_consumer_chain = {ccv_consumer_chain}
-rpc_addr = 'http://{chain_id}d:26657'
-grpc_addr = 'http://{chain_id}d:9090'
-event_source = {{ mode = 'push', url = 'ws://{chain_id}d:26657/websocket', batch_delay = '200ms' }}
+rpc_addr = '{rpc_addr}'
+grpc_addr = '{grpc_addr}'
+event_source = {{ mode = 'push', url = '{event_addr}', batch_delay = '200ms' }}
 rpc_timeout = '10s'
 account_prefix = '{account_prefix}'
 key_name = 'validator'

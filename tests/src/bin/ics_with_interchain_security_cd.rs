@@ -102,8 +102,15 @@ async fn container_runner(args: &Args) -> Result<()> {
     // prepare hermes config
     write_hermes_config(
         &[
-            HermesChainConfig::new("onomy", "onomy", false, "anom", true),
-            HermesChainConfig::new(CONSUMER_ID, CONSUMER_ACCOUNT_PREFIX, true, "anative", true),
+            HermesChainConfig::new("onomy", "onomyd", "onomy", false, "anom", true),
+            HermesChainConfig::new(
+                CONSUMER_ID,
+                &format!("{CONSUMER_ID}d"),
+                CONSUMER_ACCOUNT_PREFIX,
+                true,
+                "anative",
+                true,
+            ),
         ],
         &format!("{dockerfiles_dir}/dockerfile_resources"),
     )
