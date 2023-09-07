@@ -24,6 +24,8 @@ fn _unused() {
 
 #[derive(Default)]
 pub struct CosmosSetupOptions {
+    pub chain_id: String,
+
     pub daemon_home: String,
 
     // used for APR tests, as normally there is a lot of undelegated tokens that would mess up
@@ -40,6 +42,7 @@ pub struct CosmosSetupOptions {
 impl CosmosSetupOptions {
     pub fn new(daemon_home: &str) -> Self {
         CosmosSetupOptions {
+            chain_id: "onomy".to_owned(),
             daemon_home: daemon_home.to_owned(),
             ..Default::default()
         }
@@ -52,7 +55,7 @@ impl CosmosSetupOptions {
 /// This additionally returns the single validator mnemonic
 pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     let daemon_home = &options.daemon_home;
-    let chain_id = "onomy";
+    let chain_id = &options.chain_id;
     let global_min_self_delegation = &token18(225.0e3, "");
     sh_cosmovisor("config chain-id", &[chain_id])
         .await
