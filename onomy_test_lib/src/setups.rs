@@ -130,7 +130,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
             .stack()?;
         comres.assert_success().stack()?;
         let mnemonic = comres
-            .stderr_as_str()
+            .stderr_as_utf8()
             .stack()?
             .trim()
             .lines()
@@ -237,7 +237,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         .stack()?;
     comres.assert_success().stack()?;
     let mnemonic = comres
-        .stderr_as_str()
+        .stderr_as_utf8()
         .stack()?
         .trim()
         .lines()
@@ -349,7 +349,7 @@ pub async fn gravity_standalone_setup(
         .stack()?;
     comres.assert_success().stack()?;
     let mnemonic = comres
-        .stderr_as_str()
+        .stderr_as_utf8()
         .stack()?
         .trim()
         .lines()

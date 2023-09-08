@@ -177,7 +177,7 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
     if let Err(e) = comres.assert_success() {
         // work around bad zero casing design
         if comres
-            .stderr_as_str()
+            .stderr_as_utf8()
             .stack()?
             .trim()
             .starts_with("Error: no proposals found")
@@ -188,7 +188,7 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
         }
     }
     let stdout = comres
-        .stdout_as_str()
+        .stdout_as_utf8()
         .stack()?
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?

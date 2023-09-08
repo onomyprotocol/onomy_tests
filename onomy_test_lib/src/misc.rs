@@ -64,6 +64,8 @@ pub struct Args {
     /// specifies the entry_name to run
     #[arg(long)]
     pub entry_name: Option<String>,
+    #[arg(long, default_value_t = String::new())]
+    pub uuid: String,
     /// Used by Cosmovisor for the name of the Daemon (e.x. `onomyd`)
     #[arg(long, env)]
     pub daemon_name: Option<String>,

@@ -32,9 +32,12 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        let mut cmd = Command::new(&format!("go build ./cmd/{CHAIN_ID}d"), &[]).ci_mode(true);
-        cmd.cwd = Some("./../market/".to_owned());
-        let comres = cmd.run_to_completion().await.stack()?;
+        let comres = Command::new(&format!("go build ./cmd/{CHAIN_ID}d"), &[])
+            .ci_mode(true)
+            .cwd("./../market/")
+            .run_to_completion()
+            .await
+            .stack()?;
         comres.assert_success().stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(

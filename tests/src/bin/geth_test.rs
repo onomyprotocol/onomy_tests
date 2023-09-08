@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
             "geth" => geth_runner().await,
-            "test" => test_runner().await,
+            "test" => test_runner(&args).await,
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
@@ -87,17 +87,21 @@ async fn container_runner(args: &Args) -> Result<()> {
         true,
         logs_dir,
     )
-    .stack()?
-    .add_common_volumes(&[(logs_dir, "/logs")]);
+    .stack()?;
+    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    let uuid = cn.uuid_as_string();
+    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
+    cn.terminate_all().await;
     Ok(())
 }
 
-async fn test_runner() -> Result<()> {
-    let mut nm_geth = NetMessenger::connect(STD_TRIES, STD_DELAY, "geth:26000")
-        .await
-        .stack()?;
+async fn test_runner(args: &Args) -> Result<()> {
+    let mut nm_geth =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("geth_{}:26000", args.uuid))
+            .await
+            .stack()?;
 
     // manual HTTP request
     /*
@@ -123,8 +127,10 @@ async fn test_runner() -> Result<()> {
     info!(res);
     */
 
+    let geth_url = &format!("http://geth_{}:8545", args.uuid);
+
     // requests using the `web30` crate
-    let web3 = Web3::new("http://geth:8545", Duration::from_secs(30));
+    let web3 = Web3::new(geth_url, Duration::from_secs(30));
     // `Web3::new` only waits for initial handshakes, we need to wait for Tcp and
     // syncing
     async fn is_eth_up(web3: &Web3) -> Result<()> {
