@@ -16,7 +16,7 @@ serde-transcode = "1.1"
 serde_derive = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.9"
-super_orchestrator = { version = "0.6", default-features = false, features = ["env_logger_support", "ctrlc_support", "nix_support"] }
+super_orchestrator = { version = "0.7", default-features = false, features = ["env_logger_support", "ctrlc_support", "nix_support"] }
 #super_orchestrator = { git = "https://github.com/AaronKutch/super_orchestrator", rev = "2661d4b0f1031b626b84eebbee5859b2e62aed07", default-features = false, features = ["env_logger_support", "ctrlc_support", "nix_support"] }
 #super_orchestrator = { path = "../../super_orchestrator", default-features = false, features = [ "env_logger_support", "ctrlc_support", "nix_support"] }
 tokio = { version = "1", features = ["full"] }
