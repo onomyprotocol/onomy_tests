@@ -13,6 +13,10 @@ name = "geth_test"
 # we want to avoid bringing in a ton of dependencies unless we want to run this
 required-features = ["geth"]
 
+[[bin]]
+name = "onex_genesis"
+required-features = ["onex_genesis"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clarity = { git = "https://github.com/onomyprotocol/clarity.git", rev = "3e875b608a2d9302c8b23dd40dc8705901db230c", optional = true }
@@ -27,3 +31,5 @@ web30 = { git = "https://github.com/onomyprotocol/web30.git", rev = "e5f7eac019d
 [features]
 default = []
 geth = ["clarity", "deep_space", "web30"]
+# disable for CI
+onex_genesis = []
