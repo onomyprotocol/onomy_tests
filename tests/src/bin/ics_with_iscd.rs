@@ -4,17 +4,19 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
-        cosmovisor_gov_file_proposal, cosmovisor_start, set_minimum_gas_price, sh_cosmovisor,
-        sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        wait_for_num_blocks,
     },
-    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon},
+    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
     hermes::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,
     },
     onomy_std_init, reprefix_bech32,
-    setups::{cosmovisor_add_consumer, marketd_setup, onomyd_setup, test_proposal},
+    setups::{
+        cosmovisor_add_consumer, marketd_setup, onomyd_setup, test_proposal, CosmosSetupOptions,
+    },
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -24,14 +26,14 @@ use onomy_test_lib::{
     },
     token18, u64_array_bigints,
     u64_array_bigints::u256,
-    yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
+    Args, ONOMY_IBC_NOM, TIMEOUT,
 };
 use tokio::time::sleep;
 
-const CONSUMER_ID: &str = "market";
-const CONSUMER_VERSION: &str = "v0.1.0";
+const CONSUMER_ID: &str = "interchain-security-cd";
+const CONSUMER_VERSION: &str = "v07-Theta";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
-const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
+const CONSUMER_ACCOUNT_PREFIX: &str = "cosmos";
 
 fn consumer_binary_name() -> String {
     format!("{CONSUMER_ID}d")
@@ -41,6 +43,15 @@ fn consumer_directory() -> String {
     format!(".{CONSUMER_ID}")
     //format!(".onomy_{CONSUMER_ID}")
 }
+
+#[rustfmt::skip]
+const INTERCHAIN_SECURTY_CDD: &str = r#"ENV ICS_VERSION=1.2.0-multiden
+ADD https://github.com/cosmos/interchain-security/archive/refs/tags/v$ICS_VERSION.tar.gz /root/v$ICS_VERSION.tar.gz
+RUN cd /root && tar -xvf ./v$ICS_VERSION.tar.gz
+RUN cd /root/interchain-security-$ICS_VERSION && go build ./cmd/interchain-security-cdd
+RUN mkdir -p $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/
+RUN mv /root/interchain-security-$ICS_VERSION/interchain-security-cdd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/$DAEMON_NAME
+"#;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,18 +68,9 @@ async fn main() -> Result<()> {
         sh("make --directory ./../onomy/ build", &[])
             .await
             .stack()?;
-        sh("make --directory ./../market/ build", &[])
-            .await
-            .stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
             "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
-            &[],
-        )
-        .await
-        .stack()?;
-        sh(
-            "cp ./../market/marketd ./tests/dockerfiles/dockerfile_resources/marketd",
             &[],
         )
         .await
@@ -97,17 +99,6 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    // prepare hermes config
-    write_hermes_config(
-        &[
-            HermesChainConfig::new("onomy", "onomy", false, "anom", true),
-            HermesChainConfig::new(CONSUMER_ID, CONSUMER_ACCOUNT_PREFIX, true, "anative", true),
-        ],
-        &format!("{dockerfiles_dir}/dockerfile_resources"),
-    )
-    .await
-    .stack()?;
-
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
@@ -134,11 +125,11 @@ async fn container_runner(args: &Args) -> Result<()> {
             )]),
             Container::new(
                 &consumer_binary_name(),
-                Dockerfile::Contents(onomy_std_cosmos_daemon(
+                Dockerfile::Contents(onomy_std_cosmos_daemon_with_arbitrary(
                     &consumer_binary_name(),
                     &consumer_directory(),
                     CONSUMER_VERSION,
-                    &consumer_binary_name(),
+                    INTERCHAIN_SECURTY_CDD,
                 )),
                 entrypoint,
                 &["--entry-name", "consumer"],
@@ -152,10 +143,39 @@ async fn container_runner(args: &Args) -> Result<()> {
         true,
         logs_dir,
     )
-    .stack()?
-    .add_common_volumes(&[(logs_dir, "/logs")]);
+    .stack()?;
+    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    let uuid = cn.uuid_as_string();
+    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+
+    // prepare hermes config
+    write_hermes_config(
+        &[
+            HermesChainConfig::new(
+                "onomy",
+                &format!("onomyd_{uuid}"),
+                "onomy",
+                false,
+                "anom",
+                true,
+            ),
+            HermesChainConfig::new(
+                CONSUMER_ID,
+                &format!("{}_{}", consumer_binary_name(), uuid),
+                CONSUMER_ACCOUNT_PREFIX,
+                true,
+                "anative",
+                true,
+            ),
+        ],
+        &format!("{dockerfiles_dir}/dockerfile_resources"),
+    )
+    .await
+    .stack()?;
+
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
+    cn.terminate_all().await;
     Ok(())
 }
 
@@ -218,16 +238,22 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let consumer_id = CONSUMER_ID;
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    let mut nm_hermes = NetMessenger::connect(STD_TRIES, STD_DELAY, "hermes:26000")
+    let mut nm_hermes =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("hermes_{}:26000", args.uuid))
+            .await
+            .stack()?;
+    let mut nm_consumer = NetMessenger::connect(
+        STD_TRIES,
+        STD_DELAY,
+        &format!("{}_{}:26001", consumer_binary_name(), args.uuid),
+    )
+    .await
+    .stack()
+    .stack()?;
+
+    let mnemonic = onomyd_setup(CosmosSetupOptions::new(daemon_home))
         .await
         .stack()?;
-    let mut nm_consumer =
-        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("{consumer_id}d:26001"))
-            .await
-            .stack()
-            .stack()?;
-
-    let mnemonic = onomyd_setup(daemon_home, None).await.stack()?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await.stack()?;
 
@@ -283,7 +309,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            &token18(100.0e3, ""),
+            &token18(1.0e3, ""),
             "anom",
         )
         .await
@@ -434,7 +460,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, ONOMY_IBC_NOM),
+        &token18(500.0, ONOMY_IBC_NOM),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
@@ -452,6 +478,8 @@ async fn consumer(args: &Args) -> Result<()> {
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
 
+    // interchain-security-cd does not support this proposal
+    /*
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ONOMY_IBC_NOM;
     let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
@@ -484,7 +512,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // inside of yaml, so we will instead test the exported genesis
     sh_cosmovisor("query params subspace crisis ConstantFee", &[])
         .await
-        .stack()?;
+        .stack()?;*/
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
@@ -492,7 +520,7 @@ async fn consumer(args: &Args) -> Result<()> {
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;
-    let exported = yaml_str_to_json_value(&exported).stack()?;
+    /*let exported = yaml_str_to_json_value(&exported).stack()?;
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
         test_crisis_denom
@@ -500,7 +528,7 @@ async fn consumer(args: &Args) -> Result<()> {
     assert_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["amount"],
         "1337"
-    );
+    );*/
 
     Ok(())
 }

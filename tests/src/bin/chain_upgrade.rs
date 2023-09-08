@@ -5,7 +5,7 @@ use onomy_test_lib::{
         get_treasury, get_treasury_inflation_annual, sh_cosmovisor, wait_for_height,
     },
     nom, onomy_std_init,
-    setups::onomyd_setup,
+    setups::{onomyd_setup, CosmosSetupOptions},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
@@ -65,10 +65,13 @@ async fn container_runner(args: &Args) -> Result<()> {
         true,
         logs_dir,
     )
-    .stack()?
-    .add_common_volumes(&[(logs_dir, "/logs")]);
+    .stack()?;
+    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    let uuid = cn.uuid_as_string();
+    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
+    cn.terminate_all().await;
     Ok(())
 }
 
@@ -79,7 +82,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     info!("current version: {onomy_current_version}, upgrade version: {onomy_upgrade_version}");
 
-    onomyd_setup(daemon_home, None).await.stack()?;
+    onomyd_setup(CosmosSetupOptions::new(daemon_home))
+        .await
+        .stack()?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     assert_eq!(

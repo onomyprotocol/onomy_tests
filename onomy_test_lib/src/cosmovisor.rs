@@ -177,7 +177,8 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
     if let Err(e) = comres.assert_success() {
         // work around bad zero casing design
         if comres
-            .stderr
+            .stderr_as_utf8()
+            .stack()?
             .trim()
             .starts_with("Error: no proposals found")
         {
@@ -187,7 +188,8 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
         }
     }
     let stdout = comres
-        .stdout
+        .stdout_as_utf8()
+        .stack()?
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
         .1;
@@ -459,12 +461,12 @@ pub async fn cosmovisor_start(
         info!("waiting for daemon to run");
         // avoid the initial debug failure
         sleep(Duration::from_millis(300)).await;
-        wait_for_ok(STD_TRIES, STD_DELAY, || sh_cosmovisor("status", &[]))
+        wait_for_ok(5, STD_DELAY, || sh_cosmovisor("status", &[]))
             .await
             .stack()?;
         // account for if we are not starting at height 0
         let current_height = get_block_height().await.stack()?;
-        wait_for_height(25, Duration::from_millis(300), current_height + 1)
+        wait_for_height(5, Duration::from_millis(300), current_height + 1)
             .await
             .stack_err(|| {
                 format!(
@@ -481,7 +483,7 @@ pub async fn cosmovisor_start(
         );
         // we also wait for height 2, because there are consensus failures and reward
         // propogations that only start on height 2
-        wait_for_height(25, Duration::from_millis(300), current_height + 2)
+        wait_for_height(5, Duration::from_millis(300), current_height + 2)
             .await
             .stack_err(|| {
                 format!(

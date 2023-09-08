@@ -75,7 +75,7 @@ impl CoinPair {
 pub struct Market {
     pub account: String,
     pub fees: String,
-    pub gas: Option<String>,
+    pub max_gas: Option<U256>,
 }
 
 impl Market {
@@ -88,7 +88,7 @@ impl Market {
         Market {
             account: account.to_owned(),
             fees: fees.to_owned(),
-            gas: None,
+            max_gas: None,
         }
     }
 
@@ -104,9 +104,10 @@ impl Market {
             "--fees",
             &self.fees,
         ]);
-        if let Some(ref gas) = self.gas {
+        let max_gas = self.max_gas.map(|x| format!("{x}"));
+        if let Some(ref max_gas) = max_gas {
             args.push("--gas");
-            args.push(gas);
+            args.push(max_gas);
         }
         sh_cosmovisor_tx(cmd_with_args, &args)
             .await
@@ -172,12 +173,14 @@ impl Market {
     pub async fn market_order(
         &self,
         coin_ask: &str,
+        amount_ask: U256,
         coin_bid: &str,
         amount_bid: U256,
         slippage: u16,
     ) -> Result<()> {
         self.configured_tx("market market-order", &[
             coin_ask,
+            &format!("{}", amount_ask),
             coin_bid,
             &format!("{}", amount_bid),
             &format!("{}", slippage),

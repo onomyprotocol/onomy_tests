@@ -1,5 +1,5 @@
 use onomy_test_lib::{
-    dockerfiles::onomy_std_cosmos_daemon,
+    dockerfiles::{onomy_std_cosmos_daemon, onomy_std_cosmos_daemon_with_arbitrary},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
@@ -10,6 +10,13 @@ use onomy_test_lib::{
 
 pub fn dockerfile_onomyd() -> String {
     onomy_std_cosmos_daemon("onomyd", ".onomy", "v1.1.2", "onomyd")
+}
+
+#[rustfmt::skip]
+const DOWNLOAD_ONEXD: &str = r#"ADD https://github.com/onomyprotocol/multiverse/releases/download/$DAEMON_VERSION/onexd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/onexd"#;
+
+pub fn dockerfile_onexd() -> String {
+    onomy_std_cosmos_daemon_with_arbitrary("onexd", ".onomy_onex", "v0.1.0.1-onex", DOWNLOAD_ONEXD)
 }
 
 /// Useful for running simple container networks that have a standard format and
@@ -48,9 +55,12 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
         true,
         logs_dir,
     )
-    .stack()?
-    .add_common_volumes(&[(logs_dir, "/logs")]);
+    .stack()?;
+    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    let uuid = cn.uuid_as_string();
+    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
+    cn.terminate_all().await;
     Ok(())
 }

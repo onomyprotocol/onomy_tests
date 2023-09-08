@@ -49,4 +49,4 @@ jobs:
           rustup component add clippy
       - name: Run `cargo clippy`
         run: |
-          cargo clippy --all --all-targets --all-features -- -D clippy::all
+          cargo clippy --all --all-targets -- -D clippy::all
