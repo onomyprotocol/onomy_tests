@@ -37,8 +37,8 @@ const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 const PROPOSAL: &str =
     include_str!("./../../../../market/tools/config/testnet/onex-testnet-genesis-proposal.json");
-const GENESIS: &str =
-    include_str!("./../../../../market/tools/config/testnet/onex-testnet-genesis.json");
+const PARTIAL_GENESIS: &str =
+    include_str!("./../../../../market/tools/config/testnet/onex-testnet-partial-genesis.json");
 // NOTE: this sets spawn and genesis times to this for testing purposes, this
 // needs to be in the past but not more than 28 days ago, otherwise the consumer
 // will not start on time or the test will not be able to query some things
@@ -62,7 +62,7 @@ pub async fn onexd_setup(
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // add `ccvconsumer_state` to genesis
-    let genesis_s = GENESIS;
+    let genesis_s = PARTIAL_GENESIS;
 
     let mut genesis: Value = serde_json::from_str(genesis_s).stack()?;
 
