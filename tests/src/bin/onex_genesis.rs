@@ -128,6 +128,8 @@ async fn container_runner(args: &Args) -> Result<()> {
         bin_entrypoint,
         "--target",
         container_target,
+        "--features",
+        "onex_genesis",
     ])
     .await
     .stack()?;
@@ -399,7 +401,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await.stack()?;
-    // we used same keys for consumer as producer, need to copy them over or else
+    // we used same keys for consumer as provider, need to copy them over or else
     // the node will not be a working validator for itself
     FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key)
         .await
@@ -423,7 +425,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // signal that we have started
     nm_onomyd.send::<()>(&()).await.stack()?;
 
-    // wait for producer to send us stuff
+    // wait for provider to send us stuff
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await.stack()?;
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side

@@ -104,7 +104,7 @@ impl IbcPair {
 
         // Note: For ICS, there is a point where a handshake must be initiated by the
         // consumer chain, so we must make the consumer chain the "a-chain" and the
-        // producer chain the "b-chain"
+        // provider chain the "b-chain"
         let a_chain = consumer.to_owned();
         let b_chain = provider.to_owned();
 

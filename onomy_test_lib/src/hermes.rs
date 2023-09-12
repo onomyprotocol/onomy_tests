@@ -133,7 +133,7 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
 ///
 /// Note: For ICS, there is a point where a handshake must be initiated by the
 /// consumer chain, so we must make the consumer chain the "a-chain" and the
-/// producer chain the "b-chain"
+/// provider chain the "b-chain"
 pub async fn create_channel_pair(
     a_chain: &str,
     a_connection: &str,

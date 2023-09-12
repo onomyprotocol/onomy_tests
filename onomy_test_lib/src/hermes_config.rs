@@ -316,6 +316,7 @@ pub struct HermesChainConfig {
     pub ccv_consumer_chain: bool,
     pub gas_denom: String,
     pub fast_block_times: bool,
+    pub max_gas: u64,
 }
 
 impl HermesChainConfig {
@@ -336,6 +337,7 @@ impl HermesChainConfig {
             ccv_consumer_chain,
             gas_denom: gas_denom.to_owned(),
             fast_block_times,
+            max_gas: 1000000,
         }
     }
 }
@@ -350,6 +352,7 @@ impl ToString for HermesChainConfig {
         let ccv_consumer_chain = self.ccv_consumer_chain;
         let gas_denom = &self.gas_denom;
         let max_block_time = if self.fast_block_times { "2s" } else { "30s" };
+        let max_gas = &format!("{}", self.max_gas);
         format!(
             r##"[[chains]]
 id = '{chain_id}'
@@ -362,7 +365,7 @@ account_prefix = '{account_prefix}'
 key_name = 'validator'
 store_prefix = 'ibc'
 default_gas = 100000
-max_gas = 400000
+max_gas = {max_gas}
 # note: this is changed to IBC NOM during bootstrap
 gas_price = {{ price = 1, denom = '{gas_denom}' }}
 gas_multiplier = 1.1
