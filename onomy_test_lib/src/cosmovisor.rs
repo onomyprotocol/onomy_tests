@@ -130,6 +130,22 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
     Ok(())
 }
 
+/// NOTE: this seems to delay the startup of different APIs, taking several
+/// seconds for things like port 26657 to start working. This mainly enables
+/// port 1317 which can be accessed from a browser
+pub async fn enable_swagger_apis(daemon_home: &str) -> Result<()> {
+    let app_toml_path = format!("{daemon_home}/config/app.toml");
+    let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;
+    let mut app_toml: toml::Value = toml::from_str(&app_toml_s).stack()?;
+    app_toml["api"]["enable"] = true.into();
+    app_toml["api"]["swagger"] = true.into();
+    let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
+    FileOptions::write_str(&app_toml_path, &app_toml_s)
+        .await
+        .stack()?;
+    Ok(())
+}
+
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
     let block_s = sh_cosmovisor_no_dbg("query block", &[]).await.stack()?;
