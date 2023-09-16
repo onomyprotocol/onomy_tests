@@ -76,11 +76,11 @@ async fn container_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
-    let onomy_current_version = args.onomy_current_version.as_ref().stack()?;
-    let onomy_upgrade_version = args.onomy_upgrade_version.as_ref().stack()?;
+    let current_version = args.current_version.as_ref().stack()?;
+    let upgrade_version = args.upgrade_version.as_ref().stack()?;
     let daemon_home = args.daemon_home.as_ref().stack()?;
 
-    info!("current version: {onomy_current_version}, upgrade version: {onomy_upgrade_version}");
+    info!("current version: {current_version}, upgrade version: {upgrade_version}");
 
     onomyd_setup(CosmosSetupOptions::new(daemon_home))
         .await
@@ -89,18 +89,18 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     assert_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
-        onomy_current_version
+        current_version
     );
 
     let upgrade_prepare_start = get_block_height().await.stack()?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
 
-    let description = &format!("\"upgrade {onomy_upgrade_version}\"");
+    let description = &format!("\"upgrade {upgrade_version}\"");
 
     cosmovisor_gov_proposal(
         "software-upgrade",
         &[
-            onomy_upgrade_version,
+            upgrade_version,
             "--title",
             description,
             "--description",
@@ -120,7 +120,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     assert_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
-        onomy_upgrade_version
+        upgrade_version
     );
 
     info!("{:?}", get_staking_pool().await.stack()?);

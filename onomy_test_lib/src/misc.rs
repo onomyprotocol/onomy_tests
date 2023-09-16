@@ -75,9 +75,9 @@ pub struct Args {
     #[arg(long, env)]
     pub hermes_home: Option<String>,
     #[arg(long, env)]
-    pub onomy_current_version: Option<String>,
+    pub current_version: Option<String>,
     #[arg(long, env)]
-    pub onomy_upgrade_version: Option<String>,
+    pub upgrade_version: Option<String>,
     #[arg(long, default_value_t = false)]
     pub skip_npm: bool,
     #[arg(long)]
