@@ -14,6 +14,7 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -85,12 +86,16 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     onomyd_setup(CosmosSetupOptions::new(daemon_home))
         .await
         .stack()?;
+
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     assert_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         current_version
     );
+
+    //sh(&format!("cosmovisor add-upgrade v1.1.2 /logs/onomyd --upgrade-height
+    // 10"), &[]).await.stack()?;
 
     let upgrade_prepare_start = get_block_height().await.stack()?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);

@@ -5,7 +5,7 @@ ENV PATH=$PATH:/root/go/bin
 
 ENV DAEMON_NAME="onexd"
 ENV DAEMON_HOME="/root/.onomy_onex"
-ENV CURRENT_VERSION=v0.1.0.1-onex
+ENV CURRENT_VERSION=v0.1.0.4-onex
 ENV UPGRADE_VERSION=v0.1.0.3-onex
 ENV REPO="onomyprotocol/multiverse"
 

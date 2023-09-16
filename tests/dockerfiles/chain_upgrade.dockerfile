@@ -11,6 +11,7 @@ ENV REPO="onomyprotocol/onomy"
 
 ADD https://github.com/$REPO/releases/download/$CURRENT_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME
 ADD https://github.com/$REPO/releases/download/$UPGRADE_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/upgrades/$UPGRADE_VERSION/bin/$DAEMON_NAME
+#ADD https://github.com/$REPO/releases/download/$UPGRADE_VERSION/$DAEMON_NAME /tmp/$DAEMON_NAME
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME

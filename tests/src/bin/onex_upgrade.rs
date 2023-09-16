@@ -428,16 +428,18 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("current version: {current_version}, upgrade version: {upgrade_version}");
 
     // FIXME TODO the version v0.1.0.1-onex had an empty version string bug
-    /*assert_eq!(
+    assert_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         current_version
-    );*/
+    );
 
     let upgrade_prepare_start = get_block_height().await.stack()?;
     let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
 
-    let description = &format!("\"upgrade {upgrade_version}\"");
+    //sh(&format!("cosmovisor add-upgrade {upgrade_version} /logs/onexd
+    // --upgrade-height {upgrade_height}"), &[]).await.stack()?;
 
+    let description = &format!("\"upgrade {upgrade_version}\"");
     cosmovisor_gov_proposal(
         "software-upgrade",
         &[
@@ -450,12 +452,12 @@ async fn consumer(args: &Args) -> Result<()> {
             upgrade_height,
         ],
         &token18(500.0, ONOMY_IBC_NOM),
-        &format!("1{ONOMY_IBC_NOM}"),
+        &format!("10{ONOMY_IBC_NOM}"),
     )
     .await
     .stack()?;
 
-    wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 5)
+    wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 7)
         .await
         .stack()?;
 
