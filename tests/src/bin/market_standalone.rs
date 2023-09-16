@@ -120,7 +120,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         )
         .await
         .stack()?;
-    market.cancel_order(5).await.stack()?;
+    market.cancel_order(6).await.stack()?;
 
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
