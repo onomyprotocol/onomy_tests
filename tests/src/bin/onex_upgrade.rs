@@ -59,6 +59,18 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
+        /*
+        sh("make --directory ./../multiverse/ build", &[])
+            .await
+            .stack()?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(
+            "mv ./../multiverse/onexd ./tests/dockerfiles/dockerfile_resources/onexd",
+            &[],
+        )
+        .await
+        .stack()?;
+        */
         container_runner(&args).await.stack()
     }
 }
@@ -422,12 +434,13 @@ async fn consumer(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
+    wait_for_num_blocks(4).await.stack()?;
+
     // upgrade first, then have the sanity checks afterwards to see if anything
     // breaks
 
     info!("current version: {current_version}, upgrade version: {upgrade_version}");
 
-    // FIXME TODO the version v0.1.0.1-onex had an empty version string bug
     assert_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         current_version

@@ -5,12 +5,13 @@ ENV PATH=$PATH:/root/go/bin
 
 ENV DAEMON_NAME="onexd"
 ENV DAEMON_HOME="/root/.onomy_onex"
-ENV CURRENT_VERSION=v0.1.0.4-onex
-ENV UPGRADE_VERSION=v0.1.0.3-onex
+ENV CURRENT_VERSION=v0.1.1-onex
+ENV UPGRADE_VERSION=v0.1.1.199-onex-dummy
 ENV REPO="onomyprotocol/multiverse"
 
 ADD https://github.com/$REPO/releases/download/$CURRENT_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME
 ADD https://github.com/$REPO/releases/download/$UPGRADE_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/upgrades/$UPGRADE_VERSION/bin/$DAEMON_NAME
+#ADD ./dockerfile_resources/onexd $DAEMON_HOME/cosmovisor/upgrades/$UPGRADE_VERSION/bin/$DAEMON_NAME
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME

@@ -1,5 +1,5 @@
 use onomy_test_lib::{
-    dockerfiles::{onomy_std_cosmos_daemon, onomy_std_cosmos_daemon_with_arbitrary},
+    dockerfiles::onomy_std_cosmos_daemon_with_arbitrary,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,

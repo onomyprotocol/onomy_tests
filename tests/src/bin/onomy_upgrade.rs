@@ -14,7 +14,6 @@ use onomy_test_lib::{
     },
     Args, TIMEOUT,
 };
-use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<()> {
