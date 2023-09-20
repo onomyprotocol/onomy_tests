@@ -477,7 +477,7 @@ pub async fn cosmovisor_start(
         info!("waiting for daemon to run");
         // avoid the initial debug failure
         sleep(Duration::from_millis(300)).await;
-        wait_for_ok(5, STD_DELAY, || sh_cosmovisor("status", &[]))
+        wait_for_ok(10, STD_DELAY, || sh_cosmovisor("status", &[]))
             .await
             .stack()?;
         // account for if we are not starting at height 0

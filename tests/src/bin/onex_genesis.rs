@@ -5,8 +5,9 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
-        cosmovisor_gov_file_proposal, cosmovisor_start, fast_block_times, set_minimum_gas_price,
-        sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
+        cosmovisor_gov_file_proposal, cosmovisor_gov_proposal, cosmovisor_start, fast_block_times,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        wait_for_num_blocks,
     },
     dockerfiles::dockerfile_hermes,
     hermes::{
@@ -32,18 +33,22 @@ use onomy_test_lib::{
 use serde_json::Value;
 use tokio::time::sleep;
 
-const CONSUMER_ID: &str = "onex-testnet-1";
+const CONSUMER_ID: &str = "onex-testnet-2";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 const PROPOSAL: &str =
-    include_str!("./../../../../market/tools/config/testnet/onex-testnet-genesis-proposal.json");
+    include_str!("./../../../../environments/testnet/onex-testnet-2/genesis-proposal.json");
 const PARTIAL_GENESIS: &str =
-    include_str!("./../../../../market/tools/config/testnet/onex-testnet-partial-genesis.json");
+    include_str!("./../../../../environments/testnet/onex-testnet-2/genesis.json");
 // NOTE: this sets spawn and genesis times to this for testing purposes, this
 // needs to be in the past but not more than 28 days ago, otherwise the consumer
 // will not start on time or the test will not be able to query some things
-const TIME: &str = "2023-09-08T15:00:00.000Z";
+const TIME: &str = "2023-09-16T15:00:00.000Z";
 const MNEMONIC: &str = include_str!("./../../../../testnet_dealer_mnemonic.txt");
+// NOTE: for the final genesis you should check disabling the line that
+// overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
+// that the bootstrap runner has OK logs, says "this node is not a validator",
+// and sleeps until genesis time
 
 pub async fn onexd_setup(
     daemon_home: &str,
@@ -486,7 +491,7 @@ async fn consumer(args: &Args) -> Result<()> {
     let amount_sqr = amount.checked_mul(amount).unwrap();
     let coin_pair = CoinPair::new("anom", ibc_nom).stack()?;
     let mut market = Market::new("validator", &format!("1000000{ibc_nom}"));
-    market.max_gas = Some(u256!(300000));
+    market.max_gas = Some(u256!(1000000));
     market
         .create_pool(&coin_pair, amount, amount)
         .await
@@ -521,7 +526,7 @@ async fn consumer(args: &Args) -> Result<()> {
         )
         .await
         .stack()?;
-    market.cancel_order(5).await.stack()?;
+    //market.cancel_order(6).await.stack()?;
 
     let pubkey = sh_cosmovisor("tendermint show-validator", &[])
         .await
@@ -540,7 +545,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, ibc_nom),
+        &token18(1.0e3, "aonex"),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
@@ -561,7 +566,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // TODO go back to using IBC NOM
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ibc_nom.as_str();
-    let test_deposit = token18(2000.0, ibc_nom);
+    let test_deposit = token18(2000.0, "aonex");
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
