@@ -35,6 +35,8 @@ pub struct CosmosSetupOptions {
     // used for checking the numerical limits of the market
     pub large_test_amount: bool,
 
+    pub onex_testnet_amounts: bool,
+
     // mnemonic for the validator to use instead of randomly generating
     pub mnemonic: Option<String>,
 }
@@ -141,7 +143,12 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         mnemonic
     };
 
-    let amount = if options.large_test_amount {
+    let amount = if options.onex_testnet_amounts {
+        "15000000000000000000000000abtc,100000000000000000000000000anom,\
+         20000000000000000000000000000ausdc,20000000000000000000000000000ausdt,\
+         20000000000000000000000000wei"
+            .to_owned()
+    } else if options.large_test_amount {
         format!("{TEST_AMOUNT}anom")
     } else {
         nom(2.0e6)
