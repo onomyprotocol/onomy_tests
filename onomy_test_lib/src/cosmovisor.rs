@@ -78,6 +78,22 @@ pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &s
     Ok(())
 }
 
+/// `force_chain_id` without genesis arg
+pub async fn force_chain_id_no_genesis(daemon_home: &str, chain_id: &str) -> Result<()> {
+    // client.toml
+    let client_file_path = format!("{daemon_home}/config/client.toml");
+    let client_s = FileOptions::read_to_string(&client_file_path)
+        .await
+        .stack()?;
+    let mut client: toml::Value = toml::from_str(&client_s).stack()?;
+    client["chain-id"] = chain_id.into();
+    let client_s = toml::to_string_pretty(&client).stack()?;
+    FileOptions::write_str(&client_file_path, &client_s)
+        .await
+        .stack()?;
+    Ok(())
+}
+
 pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     // speed up block speed to be one second. NOTE: keep the inflation calculations
     // to expect 5s block times, and just assume 5 second block time because the
@@ -141,6 +157,32 @@ pub async fn enable_swagger_apis(daemon_home: &str) -> Result<()> {
     app_toml["api"]["swagger"] = true.into();
     let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
     FileOptions::write_str(&app_toml_path, &app_toml_s)
+        .await
+        .stack()?;
+    Ok(())
+}
+
+/// Peers need to be in the form
+/// "5735836cbaa747e013e47b11839db2c2990b918a@121.37.49.12:26656", where the
+/// node id is from `... tendermint show-node-id` and ip can be gained from
+/// `docker inspect` or `hostname -I` or reading from `/etc/hosts`
+pub async fn set_persistent_peers(daemon_home: &str, persistent_peers: &[String]) -> Result<()> {
+    let config_file_path = format!("{daemon_home}/config/config.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path)
+        .await
+        .stack()?;
+    let mut config: toml::Value = toml::from_str(&config_s).stack()?;
+
+    let mut persistent_peers_s = String::new();
+    for (i, s) in persistent_peers.iter().enumerate() {
+        persistent_peers_s.push_str(s);
+        if i != (persistent_peers.len() - 1) {
+            persistent_peers_s.push(',');
+        }
+    }
+    config["p2p"]["persistent_peers"] = persistent_peers_s.into();
+    let config_s = toml::to_string_pretty(&config).stack()?;
+    FileOptions::write_str(&config_file_path, &config_s)
         .await
         .stack()?;
     Ok(())
@@ -482,7 +524,7 @@ pub async fn cosmovisor_start(
             .stack()?;
         // account for if we are not starting at height 0
         let current_height = get_block_height().await.stack()?;
-        wait_for_height(5, Duration::from_millis(300), current_height + 1)
+        wait_for_height(10, Duration::from_millis(300), current_height + 1)
             .await
             .stack_err(|| {
                 format!(
@@ -499,7 +541,7 @@ pub async fn cosmovisor_start(
         );
         // we also wait for height 2, because there are consensus failures and reward
         // propogations that only start on height 2
-        wait_for_height(5, Duration::from_millis(300), current_height + 2)
+        wait_for_height(10, Duration::from_millis(300), current_height + 2)
             .await
             .stack_err(|| {
                 format!(
