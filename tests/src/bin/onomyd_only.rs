@@ -17,6 +17,7 @@ use onomy_test_lib::{
     },
     token18, yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
 };
+use serde_json::json;
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -61,7 +62,19 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     info!("address: {addr}");
     info!("valoper address: {valoper_addr}");
     info!("valcons address: {valcons_addr}");
-    //sleep(TIMEOUT).await;
+
+    let test_deposit = token18(500.0, "anom");
+    let proposal = json!({
+        "title": "Text Proposal",
+        "description": "a text proposal",
+        "type": "Text",
+        "deposit": test_deposit
+    });
+    cosmovisor_gov_file_proposal(daemon_home, None, &proposal.to_string(), "1anom")
+        .await
+        .stack()?;
+    let proposals = sh_cosmovisor("query gov proposals", &[]).await.stack()?;
+    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
 
     // get valcons bech32 and pub key
     // cosmovisor run query tendermint-validator-set
@@ -118,7 +131,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let test_deposit = token18(2000.0, "anom");
     cosmovisor_gov_file_proposal(
         daemon_home,
-        "param-change",
+        Some("param-change"),
         &format!(
             r#"
     {{

@@ -468,7 +468,7 @@ pub async fn cosmovisor_add_consumer(
         .stack()?;
     let tendermint_key = tendermint_key.trim();
 
-    cosmovisor_gov_file_proposal(daemon_home, "consumer-addition", proposal_s, "1anom")
+    cosmovisor_gov_file_proposal(daemon_home, Some("consumer-addition"), proposal_s, "1anom")
         .await
         .stack()?;
     wait_for_num_blocks(1).await.stack()?;

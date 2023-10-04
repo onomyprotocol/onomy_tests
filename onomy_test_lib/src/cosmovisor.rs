@@ -275,12 +275,16 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
 /// Writes the proposal at `{daemon_home}/config/proposal.json` and runs `tx gov
 /// submit-proposal [proposal_type]`.
 ///
+/// If `proposal_type.is_none()`, `--proposal` is passed without the
+/// [proposal_type], and instead the type needs to be specified in the
+/// proposal file, this is the case for some proposals such as text proposals.
+///
 /// Gov proposals have the annoying property that error statuses (e.x. bad fees
 /// will not result in an error at the `Command` level) are not propogated, this
 /// will detect if an error happens.
 pub async fn cosmovisor_submit_gov_file_proposal(
     daemon_home: &str,
-    proposal_type: &str,
+    proposal_type: Option<&str>,
     proposal_s: &str,
     base_fee: &str,
 ) -> Result<()> {
@@ -288,25 +292,44 @@ pub async fn cosmovisor_submit_gov_file_proposal(
     FileOptions::write_str(&proposal_file_path, proposal_s)
         .await
         .stack()?;
-    sh_cosmovisor_tx("gov submit-proposal", &[
-        proposal_type,
-        &proposal_file_path,
-        "--gas",
-        "auto",
-        "--gas-adjustment",
-        "1.3",
-        "--gas-prices",
-        base_fee,
-        "-y",
-        "-b",
-        "block",
-        "--from",
-        "validator",
-    ])
-    .await
+    if let Some(proposal_type) = proposal_type {
+        sh_cosmovisor_tx("gov submit-proposal", &[
+            proposal_type,
+            &proposal_file_path,
+            "--gas",
+            "auto",
+            "--gas-adjustment",
+            "1.3",
+            "--gas-prices",
+            base_fee,
+            "-y",
+            "-b",
+            "block",
+            "--from",
+            "validator",
+        ])
+        .await
+    } else {
+        sh_cosmovisor_tx("gov submit-proposal", &[
+            "--proposal",
+            &proposal_file_path,
+            "--gas",
+            "auto",
+            "--gas-adjustment",
+            "1.3",
+            "--gas-prices",
+            base_fee,
+            "-y",
+            "-b",
+            "block",
+            "--from",
+            "validator",
+        ])
+        .await
+    }
     .stack_err(|| {
         format!(
-            "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type}, proposal_s: \
+            "cosmovisor_submit_gov_file_proposal(proposal_type: {proposal_type:?}, proposal_s: \
              {proposal_s})"
         )
     })?;
@@ -315,7 +338,7 @@ pub async fn cosmovisor_submit_gov_file_proposal(
 
 pub async fn cosmovisor_gov_file_proposal(
     daemon_home: &str,
-    proposal_type: &str,
+    proposal_type: Option<&str>,
     proposal_s: &str,
     base_fee: &str,
 ) -> Result<()> {

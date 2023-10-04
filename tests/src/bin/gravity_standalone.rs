@@ -68,7 +68,7 @@ async fn gravity_runner(args: &Args) -> Result<()> {
     let test_deposit = token18(2000.0, "anom");
     cosmovisor_gov_file_proposal(
         daemon_home,
-        "param-change",
+        Some("param-change"),
         &format!(
             r#"
     {{
