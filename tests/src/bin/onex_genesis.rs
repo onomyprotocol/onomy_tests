@@ -30,20 +30,20 @@ use onomy_test_lib::{
     },
     yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::time::sleep;
 
-const CONSUMER_ID: &str = "onex-testnet-2";
+const CONSUMER_ID: &str = "onex-testnet-3";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 const PROPOSAL: &str =
-    include_str!("./../../../../environments/testnet/onex-testnet-2/genesis-proposal.json");
+    include_str!("./../../../../environments/testnet/onex-testnet-3/genesis-proposal.json");
 const PARTIAL_GENESIS: &str =
-    include_str!("./../../../../environments/testnet/onex-testnet-2/genesis.json");
+    include_str!("./../../../../environments/testnet/onex-testnet-3/partial-genesis.json");
 // NOTE: this sets spawn and genesis times to this for testing purposes, this
 // needs to be in the past but not more than 28 days ago, otherwise the consumer
 // will not start on time or the test will not be able to query some things
-const TIME: &str = "2023-09-16T15:00:00.000Z";
+const TIME: &str = "2023-10-06T15:00:00.000Z";
 const MNEMONIC: &str = include_str!("./../../../../testnet_dealer_mnemonic.txt");
 // NOTE: for the final genesis you should check disabling the line that
 // overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
@@ -72,6 +72,20 @@ pub async fn onexd_setup(
     let mut genesis: Value = serde_json::from_str(genesis_s).stack()?;
 
     genesis["genesis_time"] = TIME.into();
+
+    // put some aONEX balance on our account so it can be bonded
+    let mut array = genesis["app_state"]["bank"]["balances"]
+        .as_array_mut()
+        .unwrap();
+    for balance in array {
+        if balance["address"].as_str().unwrap() == "onomy1yks83spz6lvrrys8kh0untt22399tskk6jafcv" {
+            balance["coins"].as_array_mut().unwrap().insert(
+                2,
+                json!({"denom": "aonex", "amount": "20000000000000000000000000000"}),
+            );
+            break
+        }
+    }
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
     genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
@@ -356,7 +370,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await.stack()?;
 
@@ -474,7 +488,7 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("sending back to {}", test_addr);
 
     // avoid conflict with hermes relayer
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
@@ -482,7 +496,7 @@ async fn consumer(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
 
     // market module specific sanity checks (need to check all tx commands
     // specifically to make sure permissions are correct)
@@ -570,7 +584,7 @@ async fn consumer(args: &Args) -> Result<()> {
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
-        "param-change",
+        Some("param-change"),
         &format!(
             r#"
     {{

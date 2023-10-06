@@ -53,7 +53,7 @@ pub const ONOMY_IBC_NOM: &str =
 pub const TEST_AMOUNT: U256 =
     u256!(57896044618658097711785492504343953926634992332820282019728792003956564819967);
 
-/// Runs the given entrypoint
+/// Common arguments we run across our runners
 #[derive(Parser, Debug, Clone)]
 #[command(about)]
 pub struct Args {
@@ -64,6 +64,7 @@ pub struct Args {
     /// specifies the entry_name to run
     #[arg(long)]
     pub entry_name: Option<String>,
+    /// The `ContainerNetwork` UUID
     #[arg(long, default_value_t = String::new())]
     pub uuid: String,
     /// Used by Cosmovisor for the name of the Daemon (e.x. `onomyd`)
@@ -82,6 +83,8 @@ pub struct Args {
     pub skip_npm: bool,
     #[arg(long)]
     pub i: Option<u64>,
+    #[arg(long)]
+    pub test_type: Option<String>,
 }
 
 /// Calls [super_orchestrator::std_init] and returns the result of

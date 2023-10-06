@@ -6,7 +6,7 @@ ENV PATH=$PATH:/root/go/bin
 ENV DAEMON_NAME="onexd"
 ENV DAEMON_HOME="/root/.onomy_onex"
 ENV CURRENT_VERSION=v0.1.1-onex
-ENV UPGRADE_VERSION=v1.0.0-onex-testnet
+ENV UPGRADE_VERSION=v1.0.1-onex-testnet
 ENV REPO="onomyprotocol/multiverse"
 
 ADD https://github.com/$REPO/releases/download/$CURRENT_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME

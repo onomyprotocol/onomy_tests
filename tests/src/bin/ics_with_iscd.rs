@@ -315,7 +315,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await.stack()?;
 
@@ -433,7 +433,7 @@ async fn consumer(args: &Args) -> Result<()> {
     info!("sending back to {}", test_addr);
 
     // avoid conflict with hermes relayer
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
 
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
@@ -441,7 +441,7 @@ async fn consumer(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    wait_for_num_blocks(4).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
 
     let pubkey = sh_cosmovisor("tendermint show-validator", &[])
         .await
