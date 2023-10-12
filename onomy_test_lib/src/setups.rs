@@ -162,9 +162,9 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
             .await
             .stack()?;*/
-        nom(1.0e6)
-    } else {
         nom(1.99e6)
+    } else {
+        nom(1.0e6)
     };
 
     sh_cosmovisor("gentx validator", &[
