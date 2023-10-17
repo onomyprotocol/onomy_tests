@@ -8,7 +8,7 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        Command, FileOptions,
+        wait_for_ok, Command, FileOptions,
     },
     Args, TIMEOUT,
 };
@@ -54,15 +54,25 @@ fn standalone_dockerfile() -> String {
     let dockerfile_resource = BINARY_NAME;
     format!(
         r#"{ONOMY_STD}
+# for psql for commands to the postgres container
+RUN dnf install -y postgresql
+# for debug
+RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+# for cosmovisor
 {COSMOVISOR}
 
+# interfacing with the running graph
 RUN npm install -g @graphprotocol/graph-cli
 
+# firehose
 RUN git clone --depth 1 --branch v0.6.0 https://github.com/figment-networks/firehose-cosmos
 # not working for me, too flaky
 #RUN cd /firehose-cosmos && make install
 ADD https://github.com/graphprotocol/firehose-cosmos/releases/download/v0.6.0/firecosmos_linux_amd64 /usr/bin/firecosmos
 RUN chmod +x /usr/bin/firecosmos
+
+# graph-node
+RUN git clone --depth 1 --branch v0.32.0 https://github.com/graphprotocol/graph-node
 
 ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
@@ -135,16 +145,12 @@ async fn container_runner(args: &Args) -> Result<()> {
 
     let mut cn = ContainerNetwork::new(
         "test",
-        vec![
-            Container::new(
-                "standalone",
-                Dockerfile::Contents(standalone_dockerfile()),
-                entrypoint,
-                &["--entry-name", "standalone"],
-            ),
-            //Container::new("graph-node",
-            // Dockerfile::NameTag("graphprotocol/graph-node:v0.32.0"), Some(""), &[]),
-        ],
+        vec![Container::new(
+            "standalone",
+            Dockerfile::Contents(standalone_dockerfile()),
+            entrypoint,
+            &["--entry-name", "standalone"],
+        )],
         Some(dockerfiles_dir),
         true,
         logs_dir,
@@ -160,7 +166,7 @@ async fn container_runner(args: &Args) -> Result<()> {
             None,
             &[],
         )
-        .environment_vars(&[("POSTGRES_PASSWORD", "root")]),
+        .environment_vars(&[("POSTGRES_PASSWORD", "root"), ("POSTGRES_USER", "postgres")]),
     )
     .stack()?;
 
@@ -172,16 +178,44 @@ async fn container_runner(args: &Args) -> Result<()> {
 
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
+    let uuid = &args.uuid;
     let firehose_log = FileOptions::write2("/logs", "firehose.log");
 
     market_standalone_setup(daemon_home, CHAIN_ID)
         .await
         .stack()?;
 
+    async fn postgres_health(uuid: &str) -> Result<()> {
+        let comres = Command::new(
+            &format!("psql --host=postgres_{uuid} -U postgres --command=\\l"),
+            &[],
+        )
+        .env("PGPASSWORD", "root")
+        .run_to_completion()
+        .await
+        .stack()?;
+        comres.assert_success().stack()?;
+        Ok(())
+    }
+    wait_for_ok(10, Duration::from_secs(1), || postgres_health(uuid))
+        .await
+        .stack()?;
+
+    // setup the postgres database
+    let comres = Command::new(
+        &format!("createdb --host=postgres_{uuid} -U postgres graph-node"),
+        &[],
+    )
+    .env("PGPASSWORD", "root")
+    .run_to_completion()
+    .await
+    .stack()?;
+    comres.assert_success().stack()?;
+
     let mut config = FileOptions::read_to_string(CONFIG_TOML_PATH)
         .await
         .stack()?;
-    config.push_str(&EXTRACTOR_CONFIG);
+    config.push_str(EXTRACTOR_CONFIG);
     FileOptions::write_str(CONFIG_TOML_PATH, &config)
         .await
         .stack()?;
@@ -209,6 +243,10 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .run()
     .await
     .stack()?;
+
+    // grpcurl -plaintext -max-time 2 localhost:9030 sf.firehose.v2.Stream/Blocks
+    // note: we may need to pass the proto files, I don't know if reflection is not
+    // working and that's why it has errors
 
     sleep(TIMEOUT).await;
 
