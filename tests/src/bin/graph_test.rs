@@ -54,8 +54,8 @@ fn standalone_dockerfile() -> String {
     let dockerfile_resource = BINARY_NAME;
     format!(
         r#"{ONOMY_STD}
-# for psql for commands to the postgres container
-RUN dnf install -y postgresql
+# postgres and protobuf dependencies
+RUN dnf install -y postgresql libpq-devel protobuf protobuf-compiler protobuf-devel
 # for debug
 RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 # for cosmovisor
@@ -73,6 +73,11 @@ RUN chmod +x /usr/bin/firecosmos
 
 # graph-node
 RUN git clone --depth 1 --branch v0.32.0 https://github.com/graphprotocol/graph-node
+RUN cd /graph-node && cargo build --release -p graph-node
+
+# our subgraph
+RUN git clone https://github.com/onomyprotocol/mgraph
+#RUN cd /yarn && yarn && yarn codegen
 
 ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
