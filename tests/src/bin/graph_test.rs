@@ -100,6 +100,11 @@ RUN cd /graph-node && cargo build --release -p graph-node
 RUN git clone https://github.com/onomyprotocol/mgraph
 RUN cd /mgraph && npm install && npm run build
 
+# ipfs
+ADD https://dist.ipfs.tech/kubo/v0.23.0/kubo_v0.23.0_linux-amd64.tar.gz /tmp/kubo.tar.gz
+RUN cd /tmp && tar -xf /tmp/kubo.tar.gz && mv /tmp/kubo/ipfs /usr/bin/ipfs
+RUN ipfs init
+
 ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
 ENV DAEMON_VERSION={version}
@@ -192,7 +197,13 @@ async fn container_runner(args: &Args) -> Result<()> {
             None,
             &[],
         )
-        .environment_vars(&[("POSTGRES_PASSWORD", "root"), ("POSTGRES_USER", "postgres")]),
+        .environment_vars(&[
+            ("POSTGRES_PASSWORD", "root"),
+            ("POSTGRES_USER", "postgres"),
+            ("POSTGRES_DB", "graph-node"),
+            ("POSTGRES_INITDB_ARGS", "-E UTF8 --locale=C"),
+        ])
+        .no_uuid_for_host_name(),
     )
     .stack()?;
 
@@ -205,12 +216,19 @@ async fn container_runner(args: &Args) -> Result<()> {
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
+    let firehose_log = FileOptions::write2("/logs", "firehose.log");
+    let ipfs_log = FileOptions::write2("/logs", "ipfs.log");
+
+    let mut ipfs_runner = Command::new("ipfs daemon", &[])
+        .stderr_log(&ipfs_log)
+        .stdout_log(&ipfs_log)
+        .run()
+        .await
+        .stack()?;
 
     FileOptions::write_str(GRAPH_NODE_CONFIG_PATH, GRAPH_NODE_CONFIG)
         .await
         .stack()?;
-
-    let firehose_log = FileOptions::write2("/logs", "firehose.log");
 
     market_standalone_setup(daemon_home, CHAIN_ID)
         .await
@@ -243,9 +261,11 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
+    // not needed if the correct envs were passed to the postgres docker instance
+    /*
     // setup the postgres database
     let comres = Command::new(
-        &format!("createdb --host=postgres_{uuid} -U postgres graph-node"),
+        "createdb --host=postgres -U postgres graph-node",
         &[],
     )
     .env("PGPASSWORD", "root")
@@ -253,6 +273,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
     comres.assert_success().stack()?;
+    */
 
     //cargo run --release -p graph-node -- --postgres-url
     // postgresql://postgres:root@postgres:5432/graph-node
@@ -281,8 +302,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     let _ = Command::new(
         &format!(
-            "cargo run --release -p graph-node -- --config {GRAPH_NODE_CONFIG_PATH} --node-id \
-             localnet"
+            "cargo run --release -p graph-node -- --config {GRAPH_NODE_CONFIG_PATH} --ipfs \
+             127.0.0.1:5001 --node-id localnet"
         ),
         &[],
     )
@@ -300,6 +321,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     sleep(Duration::ZERO).await;
     firecosmos_runner.terminate().await.stack()?;
+    ipfs_runner.terminate().await.stack()?;
 
     Ok(())
 }
