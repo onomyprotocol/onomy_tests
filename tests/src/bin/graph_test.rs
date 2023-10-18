@@ -46,6 +46,27 @@ enabled = true
 output_file = "stdout"
 "#;
 
+const GRAPH_NODE_CONFIG_PATH: &str = "/graph_node_config.toml";
+const GRAPH_NODE_CONFIG: &str = r#"[deployment]
+[[deployment.rule]]
+shard = "primary"
+indexers = [ "default" ]
+
+[store]
+[store.primary]
+connection = "postgresql://postgres:root@postgres:5432/graph-node"
+pool_size = 10
+
+[chains]
+ingestor = "block_ingestor_node"
+
+[chains.localnet]
+shard = "primary"
+protocol = "cosmos"
+provider = [
+  { label = "localnet", details = { type = "firehose", url = "http://localhost:9030/" }},
+]"#;
+
 #[rustfmt::skip]
 fn standalone_dockerfile() -> String {
     let daemon_name = BINARY_NAME;
@@ -77,7 +98,7 @@ RUN cd /graph-node && cargo build --release -p graph-node
 
 # our subgraph
 RUN git clone https://github.com/onomyprotocol/mgraph
-#RUN cd /yarn && yarn && yarn codegen
+RUN cd /mgraph && npm install && npm run build
 
 ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
@@ -184,9 +205,25 @@ async fn container_runner(args: &Args) -> Result<()> {
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
+
+    FileOptions::write_str(GRAPH_NODE_CONFIG_PATH, GRAPH_NODE_CONFIG)
+        .await
+        .stack()?;
+
     let firehose_log = FileOptions::write2("/logs", "firehose.log");
 
     market_standalone_setup(daemon_home, CHAIN_ID)
+        .await
+        .stack()?;
+    let mut config = FileOptions::read_to_string(CONFIG_TOML_PATH)
+        .await
+        .stack()?;
+    config.push_str(EXTRACTOR_CONFIG);
+    FileOptions::write_str(CONFIG_TOML_PATH, &config)
+        .await
+        .stack()?;
+
+    FileOptions::write_str(FIREHOSE_CONFIG_PATH, FIREHOSE_CONFIG)
         .await
         .stack()?;
 
@@ -217,17 +254,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .stack()?;
     comres.assert_success().stack()?;
 
-    let mut config = FileOptions::read_to_string(CONFIG_TOML_PATH)
-        .await
-        .stack()?;
-    config.push_str(EXTRACTOR_CONFIG);
-    FileOptions::write_str(CONFIG_TOML_PATH, &config)
-        .await
-        .stack()?;
-
-    FileOptions::write_str(FIREHOSE_CONFIG_PATH, FIREHOSE_CONFIG)
-        .await
-        .stack()?;
+    //cargo run --release -p graph-node -- --postgres-url
+    // postgresql://postgres:root@postgres:5432/graph-node
 
     // TODO translate into running a validator node and then the firecosmos just
     // runs a querying full node
@@ -246,6 +274,21 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .stderr_log(&firehose_log)
     .stdout_log(&firehose_log)
     .run()
+    .await
+    .stack()?;
+
+    sleep(Duration::from_secs(3)).await;
+
+    let _ = Command::new(
+        &format!(
+            "cargo run --release -p graph-node -- --config {GRAPH_NODE_CONFIG_PATH} --node-id \
+             localnet"
+        ),
+        &[],
+    )
+    .cwd("/graph-node")
+    .ci_mode(true)
+    .run_to_completion()
     .await
     .stack()?;
 
