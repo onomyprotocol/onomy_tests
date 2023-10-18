@@ -31,11 +31,12 @@ const FIREHOSE_CONFIG: &str = r#"start:
         - firehose
     flags:
         common-first-streamable-block: 1
-        common-live-blocks-addr:
+        common-live-blocks-addr: localhost:9000
         reader-mode: node
         reader-node-path: /root/.market/cosmovisor/current/bin/marketd
         reader-node-args: start --x-crisis-skip-assert-invariants --home=/root/.market
         reader-node-logs-filter: "module=(p2p|pex|consensus|x/bank|x/market)"
+        firehose-real-time-tolerance: 99999h
         relayer-max-source-latency: 99999h
         verbose: 1"#;
 
@@ -50,7 +51,7 @@ const GRAPH_NODE_CONFIG_PATH: &str = "/graph_node_config.toml";
 const GRAPH_NODE_CONFIG: &str = r#"[deployment]
 [[deployment.rule]]
 shard = "primary"
-indexers = [ "default" ]
+indexers = [ "onex_index_node" ]
 
 [store]
 [store.primary]
@@ -60,11 +61,11 @@ pool_size = 10
 [chains]
 ingestor = "block_ingestor_node"
 
-[chains.localnet]
+[chains.market]
 shard = "primary"
 protocol = "cosmos"
 provider = [
-  { label = "localnet", details = { type = "firehose", url = "http://localhost:9030/" }},
+  { label = "market", details = { type = "firehose", url = "http://localhost:9030/" }},
 ]"#;
 
 #[rustfmt::skip]
@@ -218,6 +219,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
     let firehose_log = FileOptions::write2("/logs", "firehose.log");
     let ipfs_log = FileOptions::write2("/logs", "ipfs.log");
+    let graph_log = FileOptions::write2("/logs", "graph.log");
 
     let mut ipfs_runner = Command::new("ipfs daemon", &[])
         .stderr_log(&ipfs_log)
@@ -300,18 +302,46 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     sleep(Duration::from_secs(3)).await;
 
-    let _ = Command::new(
+    let mut graph_runner = Command::new(
         &format!(
             "cargo run --release -p graph-node -- --config {GRAPH_NODE_CONFIG_PATH} --ipfs \
-             127.0.0.1:5001 --node-id localnet"
+             127.0.0.1:5001 --node-id market"
         ),
         &[],
     )
     .cwd("/graph-node")
-    .ci_mode(true)
-    .run_to_completion()
+    .stderr_log(&graph_log)
+    .stdout_log(&graph_log)
+    .run()
     .await
     .stack()?;
+
+    async fn graph_node_health() -> Result<()> {
+        let comres = Command::new("curl -sL -w 200 http://localhost:8020 -o /dev/null", &[])
+            .run_to_completion()
+            .await
+            .stack()?;
+        comres.assert_success().stack()?;
+        Ok(())
+    }
+    wait_for_ok(100, Duration::from_secs(1), || graph_node_health())
+        .await
+        .stack()?;
+
+    let comres = Command::new("npm run create-local", &[])
+        .cwd("/mgraph")
+        .ci_mode(true)
+        .run_to_completion()
+        .await
+        .stack()?;
+    comres.assert_success().stack()?;
+    let comres = Command::new("npm run deploy-local", &[])
+        .cwd("/mgraph")
+        .ci_mode(true)
+        .run_to_completion()
+        .await
+        .stack()?;
+    comres.assert_success().stack()?;
 
     // grpcurl -plaintext -max-time 2 localhost:9030 sf.firehose.v2.Stream/Blocks
     // note: we may need to pass the proto files, I don't know if reflection is not
@@ -320,6 +350,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     sleep(TIMEOUT).await;
 
     sleep(Duration::ZERO).await;
+    graph_runner.terminate().await.stack()?;
     firecosmos_runner.terminate().await.stack()?;
     ipfs_runner.terminate().await.stack()?;
 
