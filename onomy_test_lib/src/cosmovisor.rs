@@ -134,6 +134,21 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     Ok(())
 }
 
+/// Only use this for non-validator nodes
+pub async fn disable_mempool(daemon_home: &str) -> Result<()> {
+    let config_file_path = format!("{daemon_home}/config/client.toml");
+    let config_s = FileOptions::read_to_string(&config_file_path)
+        .await
+        .stack()?;
+    let mut config: toml::Value = toml::from_str(&config_s).stack()?;
+    config["mempool"]["max-txs"] = "-1".into();
+    let config_s = toml::to_string_pretty(&config).stack()?;
+    FileOptions::write_str(&config_file_path, &config_s)
+        .await
+        .stack()?;
+    Ok(())
+}
+
 pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
     let app_toml_path = format!("{daemon_home}/config/app.toml");
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;
@@ -160,6 +175,33 @@ pub async fn enable_swagger_apis(daemon_home: &str) -> Result<()> {
         .await
         .stack()?;
     Ok(())
+}
+
+pub async fn get_self_ip(hostname_of_self: &str) -> Result<String> {
+    let mut ip = None;
+    let hosts = FileOptions::read_to_string("/etc/hosts").await.stack()?;
+    for line in hosts.lines() {
+        let mut columns = line.split_whitespace();
+        if let Some(first) = columns.next() {
+            for column in columns {
+                if column == hostname_of_self {
+                    ip = Some(first);
+                }
+            }
+        }
+    }
+    let ip =
+        ip.stack_err(|| format!("could not find `hostname_of_self == \"{hostname_of_self}\"`"))?;
+    Ok(ip.to_owned())
+}
+
+pub async fn get_self_peer_info(hostname_of_self: &str, port: &str) -> Result<String> {
+    let node_id = sh_cosmovisor_no_dbg("tendermint show-node-id", &[])
+        .await
+        .stack()?;
+    let node_id = node_id.trim();
+    let ip = get_self_ip(hostname_of_self).await.stack()?;
+    Ok(format!("{node_id}@{ip}:{port}"))
 }
 
 /// Peers need to be in the form
@@ -466,6 +508,17 @@ pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
 #[derive(Default)]
 pub struct CosmovisorOptions {
     pub halt_height: Option<u64>,
+    /// If set, then `cosmovisor_start` will only wait for a good status and not
+    /// for block production
+    pub wait_for_status_only: bool,
+    /// Add a `--home` argument
+    pub home: Option<String>,
+}
+
+impl CosmovisorOptions {
+    pub fn new() -> Self {
+        Default::default()
+    }
 }
 
 /// `cosmovisor run start` spawns the cosmos binary as a completely separate
@@ -517,7 +570,7 @@ pub async fn cosmovisor_start(
     }*/
     let halt_height_s;
     let mut quick_halt = false;
-    if let Some(options) = options {
+    if let Some(options) = options.as_ref() {
         if let Some(halt_height) = options.halt_height {
             if halt_height <= 2 {
                 quick_halt = true;
@@ -525,6 +578,10 @@ pub async fn cosmovisor_start(
             args.push("--halt-height");
             halt_height_s = format!("{}", halt_height);
             args.push(&halt_height_s);
+        }
+        if let Some(ref home) = options.home {
+            args.push("--home");
+            args.push(home);
         }
     }
 
@@ -545,39 +602,41 @@ pub async fn cosmovisor_start(
         wait_for_ok(10, STD_DELAY, || sh_cosmovisor("status", &[]))
             .await
             .stack()?;
-        // account for if we are not starting at height 0
-        let current_height = get_block_height().await.stack()?;
-        wait_for_height(10, Duration::from_millis(300), current_height + 1)
-            .await
-            .stack_err(|| {
-                format!(
-                    "daemon {} could not reach height {}, probably a genesis issue, check runner \
-                     logs",
-                    log_file_name,
-                    current_height + 1
-                )
-            })?;
-        info!(
-            "daemon {} has reached height {}",
-            log_file_name,
-            current_height + 1
-        );
-        // we also wait for height 2, because there are consensus failures and reward
-        // propogations that only start on height 2
-        wait_for_height(10, Duration::from_millis(300), current_height + 2)
-            .await
-            .stack_err(|| {
-                format!(
-                    "daemon could not reach height {}, probably a consensus failure, check runner \
-                     logs",
-                    current_height + 2
-                )
-            })?;
-        info!(
-            "daemon {} has reached height {}",
-            log_file_name,
-            current_height + 2
-        );
+        if !options.as_ref().is_some_and(|o| o.wait_for_status_only) {
+            // account for if we are not starting at height 0
+            let current_height = get_block_height().await.stack()?;
+            wait_for_height(10, Duration::from_millis(300), current_height + 1)
+                .await
+                .stack_err(|| {
+                    format!(
+                        "daemon {} could not reach height {}, probably a genesis issue, check \
+                         runner logs",
+                        log_file_name,
+                        current_height + 1
+                    )
+                })?;
+            info!(
+                "daemon {} has reached height {}",
+                log_file_name,
+                current_height + 1
+            );
+            // we also wait for height 2, because there are consensus failures and reward
+            // propogations that only start on height 2
+            wait_for_height(10, Duration::from_millis(300), current_height + 2)
+                .await
+                .stack_err(|| {
+                    format!(
+                        "daemon could not reach height {}, probably a consensus failure, check \
+                         runner logs",
+                        current_height + 2
+                    )
+                })?;
+            info!(
+                "daemon {} has reached height {}",
+                log_file_name,
+                current_height + 2
+            );
+        }
     }
     Ok(CosmovisorRunner {
         runner: cosmovisor_runner,

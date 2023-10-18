@@ -1,15 +1,24 @@
 use std::time::Duration;
 
+use log::info;
 use onomy_test_lib::{
+    cosmovisor::{
+        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, disable_mempool,
+        fast_block_times, get_self_peer_info, set_persistent_peers, sh_cosmovisor,
+        sh_cosmovisor_no_dbg, CosmovisorOptions,
+    },
     dockerfiles::{COSMOVISOR, ONOMY_STD},
+    market::{CoinPair, Market},
     onomy_std_init,
     setups::market_standalone_setup,
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
+        net_message::NetMessenger,
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        wait_for_ok, Command, FileOptions,
+        wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
     },
+    u64_array_bigints::{self, u256},
     Args, TIMEOUT,
 };
 use tokio::time::sleep;
@@ -22,7 +31,7 @@ const BINARY_NAME: &str = "marketd";
 const BINARY_DIR: &str = ".market";
 const VERSION: &str = "0.0.0";
 
-const FIREHOSE_CONFIG_PATH: &str = "/root/.market/config/firehose.yml";
+const FIREHOSE_CONFIG_PATH: &str = "/firehose/firehose.yml";
 const FIREHOSE_CONFIG: &str = r#"start:
     args:
         - reader
@@ -31,15 +40,14 @@ const FIREHOSE_CONFIG: &str = r#"start:
         - firehose
     flags:
         common-first-streamable-block: 1
-        common-live-blocks-addr: localhost:9000
         reader-mode: node
         reader-node-path: /root/.market/cosmovisor/current/bin/marketd
-        reader-node-args: start --x-crisis-skip-assert-invariants --home=/root/.market
+        reader-node-args: start --x-crisis-skip-assert-invariants --home=/firehose
         reader-node-logs-filter: "module=(p2p|pex|consensus|x/bank|x/market)"
         relayer-max-source-latency: 99999h
         verbose: 1"#;
 
-const CONFIG_TOML_PATH: &str = "/root/.market/config/config.toml";
+const CONFIG_TOML_PATH: &str = "/firehose/config/config.toml";
 const EXTRACTOR_CONFIG: &str = r#"
 [extractor]
 enabled = true
@@ -119,6 +127,9 @@ RUN cosmovisor init $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/{daemon_
 
 # some commands don't like if the data directory does not exist
 RUN mkdir $DAEMON_HOME/data
+
+RUN mkdir /firehose
+RUN mkdir /firehose/data
 "#
     )
 }
@@ -130,6 +141,7 @@ async fn main() -> Result<()> {
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
             "standalone" => standalone_runner(&args).await,
+            "onex_node" => onex_node(&args).await,
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
@@ -174,19 +186,21 @@ async fn container_runner(args: &Args) -> Result<()> {
     ));
     let entrypoint = entrypoint.as_deref();
 
-    let mut cn = ContainerNetwork::new(
-        "test",
-        vec![Container::new(
-            "standalone",
-            Dockerfile::Contents(standalone_dockerfile()),
-            entrypoint,
-            &["--entry-name", "standalone"],
-        )],
-        Some(dockerfiles_dir),
-        true,
-        logs_dir,
-    )
-    .stack()?;
+    let mut containers = vec![Container::new(
+        "standalone",
+        Dockerfile::Contents(standalone_dockerfile()),
+        entrypoint,
+        &["--entry-name", "standalone"],
+    )];
+    containers.push(Container::new(
+        "onex_node",
+        Dockerfile::Contents(standalone_dockerfile()),
+        entrypoint,
+        &["--entry-name", "onex_node"],
+    ));
+
+    let mut cn =
+        ContainerNetwork::new("test", containers, Some(dockerfiles_dir), true, logs_dir).stack()?;
     cn.add_common_volumes(&[(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
     cn.add_common_entrypoint_args(&["--uuid", &uuid]);
@@ -216,6 +230,12 @@ async fn container_runner(args: &Args) -> Result<()> {
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
+
+    let mut nm_onex_node =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("onex_node_{uuid}:26000"))
+            .await
+            .stack()?;
+
     let firehose_err_log = FileOptions::write2("/logs", "firehose_err.log");
     let firehose_std_log = FileOptions::write2("/logs", "firehose_std.log");
     let ipfs_log = FileOptions::write2("/logs", "ipfs.log");
@@ -229,17 +249,6 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .stack()?;
 
     FileOptions::write_str(GRAPH_NODE_CONFIG_PATH, GRAPH_NODE_CONFIG)
-        .await
-        .stack()?;
-
-    market_standalone_setup(daemon_home, CHAIN_ID)
-        .await
-        .stack()?;
-    let mut config = FileOptions::read_to_string(CONFIG_TOML_PATH)
-        .await
-        .stack()?;
-    config.push_str(EXTRACTOR_CONFIG);
-    FileOptions::write_str(CONFIG_TOML_PATH, &config)
         .await
         .stack()?;
 
@@ -277,20 +286,56 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     comres.assert_success().stack()?;
     */
 
-    //cargo run --release -p graph-node -- --postgres-url
-    // postgresql://postgres:root@postgres:5432/graph-node
+    sh_cosmovisor("config chain-id --home /firehose", &[CHAIN_ID])
+        .await
+        .stack()?;
+    sh_cosmovisor("config keyring-backend test --home /firehose", &[])
+        .await
+        .stack()?;
+    sh_cosmovisor_no_dbg("init --overwrite --home /firehose", &[CHAIN_ID])
+        .await
+        .stack()?;
+    //disable_mempool("/firehose").await.stack()?;
+    // ? only for validators?
+    fast_block_times("/firehose").await.stack()?;
 
-    // TODO translate into running a validator node and then the firecosmos just
-    // runs a querying full node
-    /*let mut cosmovisor_runner = cosmovisor_start("standalone_runner.log", None)
+    let (genesis_s, peer_info) = nm_onex_node.recv::<(String, String)>().await.stack()?;
+
+    FileOptions::write_str(&format!("/firehose/config/genesis.json"), &genesis_s)
+        .await
+        .stack()?;
+    set_persistent_peers("/firehose", &[peer_info])
+        .await
+        .stack()?;
+
+    // for checking sync, firehose will run the node
+    /*
+    let mut cosmovisor_runner = cosmovisor_start(
+        "standalone_runner.log",
+        Some(CosmovisorOptions {
+            wait_for_status_only: true,
+            home: Some("/firehose".to_owned()),
+            ..Default::default()
+        }),
+    )
     .await
-    .stack()?;*/
-    //cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
+    .stack()?;
+    sleep(TIMEOUT).await;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
+    */
+
+    let mut config = FileOptions::read_to_string(CONFIG_TOML_PATH)
+        .await
+        .stack()?;
+    config.push_str(EXTRACTOR_CONFIG);
+    FileOptions::write_str(CONFIG_TOML_PATH, &config)
+        .await
+        .stack()?;
 
     let mut firecosmos_runner = Command::new(
         &format!(
-            "firecosmos start --config {daemon_home}/config/firehose.yml --data-dir \
-             {daemon_home}/fh-data"
+            "firecosmos start --config /firehose/firehose.yml --data-dir /firehose/fh-data \
+             --firehose-grpc-listen-addr 0.0.0.0:9030"
         ),
         &[],
     )
@@ -300,7 +345,21 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
-    sleep(Duration::from_secs(3)).await;
+    async fn firecosmos_health() -> Result<()> {
+        let comres = Command::new(
+            "grpcurl -plaintext -max-time 1 localhost:9030 sf.firehose.v2.Stream/Blocks",
+            &[],
+        )
+        .run_to_completion()
+        .await
+        .stack()?;
+        comres.assert_success().stack()?;
+        Ok(())
+    }
+    wait_for_ok(100, Duration::from_secs(2), || firecosmos_health())
+        .await
+        .stack()?;
+    info!("firehose is up");
 
     let mut graph_runner = Command::new(
         &format!(
@@ -357,6 +416,92 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     graph_runner.terminate().await.stack()?;
     firecosmos_runner.terminate().await.stack()?;
     ipfs_runner.terminate().await.stack()?;
+
+    Ok(())
+}
+
+async fn onex_node(args: &Args) -> Result<()> {
+    let daemon_home = args.daemon_home.as_ref().stack()?;
+    let uuid = &args.uuid;
+    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+        .await
+        .stack()?;
+
+    market_standalone_setup(daemon_home, CHAIN_ID)
+        .await
+        .stack()?;
+
+    let genesis_s = FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json"))
+        .await
+        .stack()?;
+    let peer_info = get_self_peer_info(&format!("onex_node_{uuid}"), "26656")
+        .await
+        .stack()?;
+
+    let mut cosmovisor_runner = cosmovisor_start(&format!("{CHAIN_ID}d_runner.log"), None).await?;
+
+    // send genesis file, self peer info, and indicate that we are started
+    nm_test
+        .send::<(String, String)>(&(genesis_s, peer_info))
+        .await
+        .stack()?;
+
+    let mut market = Market::new("validator", "1000000anative");
+    market.max_gas = Some(u256!(1000000));
+
+    let addr = &cosmovisor_get_addr("validator").await.stack()?;
+    info!("{:?}", cosmovisor_get_balances(addr).await.stack()?);
+    let coin_pair = CoinPair::new("afootoken", "anative").stack()?;
+
+    // test numerical limits
+    market
+        .create_pool(&coin_pair, Market::MAX_COIN, Market::MAX_COIN)
+        .await
+        .stack()?;
+    market
+        .create_drop(&coin_pair, Market::MAX_COIN_SQUARED)
+        .await
+        .stack()?;
+    market.show_pool(&coin_pair).await.stack()?;
+    market.show_members(&coin_pair).await.stack()?;
+    market
+        .market_order(
+            coin_pair.coin_a(),
+            Market::MAX_COIN,
+            coin_pair.coin_b(),
+            Market::MAX_COIN,
+            5000,
+        )
+        .await
+        .stack()?;
+    market.redeem_drop(1).await.stack()?;
+    market
+        .create_order(
+            coin_pair.coin_a(),
+            coin_pair.coin_b(),
+            "stop",
+            Market::MAX_COIN,
+            (1100, 900),
+            (0, 0),
+        )
+        .await
+        .stack()?;
+    market
+        .create_order(
+            coin_pair.coin_a(),
+            coin_pair.coin_b(),
+            "limit",
+            Market::MAX_COIN,
+            (1100, 900),
+            (0, 0),
+        )
+        .await
+        .stack()?;
+    market.cancel_order(6).await.stack()?;
+
+    sleep(TIMEOUT).await;
+
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
     Ok(())
 }
