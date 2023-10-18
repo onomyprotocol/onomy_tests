@@ -36,7 +36,6 @@ const FIREHOSE_CONFIG: &str = r#"start:
         reader-node-path: /root/.market/cosmovisor/current/bin/marketd
         reader-node-args: start --x-crisis-skip-assert-invariants --home=/root/.market
         reader-node-logs-filter: "module=(p2p|pex|consensus|x/bank|x/market)"
-        firehose-real-time-tolerance: 99999h
         relayer-max-source-latency: 99999h
         verbose: 1"#;
 
@@ -65,7 +64,7 @@ ingestor = "block_ingestor_node"
 shard = "primary"
 protocol = "cosmos"
 provider = [
-  { label = "market", details = { type = "firehose", url = "http://localhost:9030/" }},
+  { label = "market", details = { type = "firehose", url = "http://localhost:9000/" }},
 ]"#;
 
 #[rustfmt::skip]
@@ -217,7 +216,8 @@ async fn container_runner(args: &Args) -> Result<()> {
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
-    let firehose_log = FileOptions::write2("/logs", "firehose.log");
+    let firehose_err_log = FileOptions::write2("/logs", "firehose_err.log");
+    let firehose_std_log = FileOptions::write2("/logs", "firehose_std.log");
     let ipfs_log = FileOptions::write2("/logs", "ipfs.log");
     let graph_log = FileOptions::write2("/logs", "graph.log");
 
@@ -294,8 +294,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         ),
         &[],
     )
-    .stderr_log(&firehose_log)
-    .stdout_log(&firehose_log)
+    .stderr_log(&firehose_err_log)
+    .stdout_log(&firehose_std_log)
     .run()
     .await
     .stack()?;
@@ -335,12 +335,16 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     comres.assert_success().stack()?;
-    let comres = Command::new("npm run deploy-local", &[])
-        .cwd("/mgraph")
-        .ci_mode(true)
-        .run_to_completion()
-        .await
-        .stack()?;
+    let comres = Command::new(
+        "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 \
+         onomyprotocol/mgraph",
+        &[],
+    )
+    .cwd("/mgraph")
+    .ci_mode(true)
+    .run_to_completion()
+    .await
+    .stack()?;
     comres.assert_success().stack()?;
 
     // grpcurl -plaintext -max-time 2 localhost:9030 sf.firehose.v2.Stream/Blocks
