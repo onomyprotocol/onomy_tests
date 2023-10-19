@@ -134,21 +134,6 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     Ok(())
 }
 
-/// Only use this for non-validator nodes
-pub async fn disable_mempool(daemon_home: &str) -> Result<()> {
-    let config_file_path = format!("{daemon_home}/config/client.toml");
-    let config_s = FileOptions::read_to_string(&config_file_path)
-        .await
-        .stack()?;
-    let mut config: toml::Value = toml::from_str(&config_s).stack()?;
-    config["mempool"]["max-txs"] = "-1".into();
-    let config_s = toml::to_string_pretty(&config).stack()?;
-    FileOptions::write_str(&config_file_path, &config_s)
-        .await
-        .stack()?;
-    Ok(())
-}
-
 pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Result<()> {
     let app_toml_path = format!("{daemon_home}/config/app.toml");
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;

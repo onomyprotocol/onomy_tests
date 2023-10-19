@@ -4,9 +4,9 @@ use common::{dockerfile_standalone_onexd, DOWNLOAD_STANDALONE_ONEXD, STANDALONE_
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, disable_mempool,
-        fast_block_times, get_self_peer_info, set_persistent_peers, sh_cosmovisor,
-        sh_cosmovisor_no_dbg, CosmovisorOptions,
+        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, fast_block_times,
+        get_self_peer_info, set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_dbg,
+        CosmovisorOptions,
     },
     dockerfiles::{COSMOVISOR, ONOMY_STD},
     market::{CoinPair, Market},
@@ -72,7 +72,7 @@ ingestor = "block_ingestor_node"
 shard = "primary"
 protocol = "cosmos"
 provider = [
-  { label = "market", details = { type = "firehose", url = "http://localhost:9000/" }},
+  { label = "market", details = { type = "firehose", url = "http://localhost:9030/" }},
 ]"#;
 
 #[rustfmt::skip]
@@ -297,8 +297,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     sh_cosmovisor_no_dbg("init --overwrite --home /firehose", &[CHAIN_ID])
         .await
         .stack()?;
-    //disable_mempool("/firehose").await.stack()?;
-    // ? only for validators?
+    // TODO only for validators?
     fast_block_times("/firehose").await.stack()?;
 
     let (genesis_s, peer_info) = nm_onex_node.recv::<(String, String)>().await.stack()?;
@@ -310,7 +309,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    // for checking sync, firehose will run the node
+    // for debugging sync, firehose will run the node
     /*
     let mut cosmovisor_runner = cosmovisor_start(
         "standalone_runner.log",
@@ -347,9 +346,12 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
+    // should see stuff from
+    //grpcurl -plaintext -max-time 1 localhost:9030 sf.firehose.v2.Stream/Blocks
+
     async fn firecosmos_health() -> Result<()> {
         let comres = Command::new(
-            "grpcurl -plaintext -max-time 1 localhost:9030 sf.firehose.v2.Stream/Blocks",
+            "curl -sL -w 200 http://localhost:9030 -o /dev/null",
             &[],
         )
         .run_to_completion()
@@ -358,7 +360,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         comres.assert_success().stack()?;
         Ok(())
     }
-    wait_for_ok(100, Duration::from_secs(2), || firecosmos_health())
+    wait_for_ok(100, Duration::from_secs(1), || firecosmos_health())
         .await
         .stack()?;
     info!("firehose is up");
@@ -388,6 +390,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     wait_for_ok(100, Duration::from_secs(1), || graph_node_health())
         .await
         .stack()?;
+    info!("graph-node is up");
 
     let comres = Command::new("npm run create-local", &[])
         .cwd("/mgraph")
@@ -396,7 +399,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     comres.assert_success().stack()?;
-    let comres = Command::new(
+    /*let comres = Command::new(
         "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 \
          onomyprotocol/mgraph",
         &[],
@@ -406,7 +409,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .run_to_completion()
     .await
     .stack()?;
-    comres.assert_success().stack()?;
+    comres.assert_success().stack()?;*/
 
     // grpcurl -plaintext -max-time 2 localhost:9030 sf.firehose.v2.Stream/Blocks
     // note: we may need to pass the proto files, I don't know if reflection is not
