@@ -8,18 +8,35 @@ use onomy_test_lib::{
     Args, TIMEOUT,
 };
 
+pub const ONOMYD_VERSION: &str = "v1.1.2";
+pub const ONEXD_VERSION: &str = "v1.0.2-onex";
+pub const STANDALONE_ONEX_VERSION: &str = "v1.1.0";
+pub const STANDALONE_ONEX_FH_VERSION: &str = "v1.1.0-fh";
+
 #[rustfmt::skip]
-const DOWNLOAD_ONOMYD: &str = r#"ADD https://github.com/onomyprotocol/onomy/releases/download/$DAEMON_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/onomyd"#;
+pub const DOWNLOAD_ONOMYD: &str = r#"ADD https://github.com/onomyprotocol/onomy/releases/download/$DAEMON_VERSION/onomyd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/onomyd"#;
 
 pub fn dockerfile_onomyd() -> String {
-    onomy_std_cosmos_daemon_with_arbitrary("onomyd", ".onomy", "v1.1.2", DOWNLOAD_ONOMYD)
+    onomy_std_cosmos_daemon_with_arbitrary("onomyd", ".onomy", ONOMYD_VERSION, DOWNLOAD_ONOMYD)
 }
 
 #[rustfmt::skip]
-const DOWNLOAD_ONEXD: &str = r#"ADD https://github.com/onomyprotocol/multiverse/releases/download/$DAEMON_VERSION/onexd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/onexd"#;
+pub const DOWNLOAD_ONEXD: &str = r#"ADD https://github.com/onomyprotocol/multiverse/releases/download/$DAEMON_VERSION/onexd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/onexd"#;
 
 pub fn dockerfile_onexd() -> String {
-    onomy_std_cosmos_daemon_with_arbitrary("onexd", ".onomy_onex", "v1.0.2-onex", DOWNLOAD_ONEXD)
+    onomy_std_cosmos_daemon_with_arbitrary("onexd", ".onomy_onex", ONEXD_VERSION, DOWNLOAD_ONEXD)
+}
+
+#[rustfmt::skip]
+pub const DOWNLOAD_STANDALONE_ONEXD: &str = r#"ADD https://github.com/onomyprotocol/market/releases/download/$DAEMON_VERSION/marketd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/marketd"#;
+
+pub fn dockerfile_standalone_onexd() -> String {
+    onomy_std_cosmos_daemon_with_arbitrary(
+        "marketd",
+        ".market",
+        STANDALONE_ONEX_VERSION,
+        DOWNLOAD_STANDALONE_ONEXD,
+    )
 }
 
 /// Useful for running simple container networks that have a standard format and

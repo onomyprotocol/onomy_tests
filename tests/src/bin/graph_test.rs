@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use common::{dockerfile_standalone_onexd, DOWNLOAD_STANDALONE_ONEXD, STANDALONE_ONEX_FH_VERSION};
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -23,13 +24,12 @@ use onomy_test_lib::{
 };
 use tokio::time::sleep;
 
-// NOTE this will not work without the `-fh` patch, change the build to use the
-// `v1.1.0-fh` market repo version of the binary
+// we use a normal onexd for the validator full node, but use the `-fh` version
+// for the full node that indexes for firehose
 
 const CHAIN_ID: &str = "market";
 const BINARY_NAME: &str = "marketd";
 const BINARY_DIR: &str = ".market";
-const VERSION: &str = "0.0.0";
 
 const FIREHOSE_CONFIG_PATH: &str = "/firehose/firehose.yml";
 const FIREHOSE_CONFIG: &str = r#"start:
@@ -77,10 +77,10 @@ provider = [
 
 #[rustfmt::skip]
 fn standalone_dockerfile() -> String {
+    // use the fh version
+    let version = STANDALONE_ONEX_FH_VERSION;
     let daemon_name = BINARY_NAME;
     let daemon_dir_name = BINARY_DIR;
-    let version = VERSION;
-    let dockerfile_resource = BINARY_NAME;
     format!(
         r#"{ONOMY_STD}
 # postgres and protobuf dependencies
@@ -117,7 +117,7 @@ ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
 ENV DAEMON_VERSION={version}
 
-ADD ./dockerfile_resources/{dockerfile_resource} $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/{daemon_name}
+{DOWNLOAD_STANDALONE_ONEXD}
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/{daemon_name}
@@ -186,6 +186,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     ));
     let entrypoint = entrypoint.as_deref();
 
+    // we use a normal onexd for the validator full node, but use the `-fh` version
+    // for the full node that indexes for firehose
     let mut containers = vec![Container::new(
         "standalone",
         Dockerfile::Contents(standalone_dockerfile()),
@@ -194,7 +196,7 @@ async fn container_runner(args: &Args) -> Result<()> {
     )];
     containers.push(Container::new(
         "onex_node",
-        Dockerfile::Contents(standalone_dockerfile()),
+        Dockerfile::Contents(dockerfile_standalone_onexd()),
         entrypoint,
         &["--entry-name", "onex_node"],
     ));
