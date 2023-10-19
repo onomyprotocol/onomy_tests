@@ -6,7 +6,6 @@ use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, fast_block_times,
         get_self_peer_info, set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_dbg,
-        CosmovisorOptions,
     },
     dockerfiles::{COSMOVISOR, ONOMY_STD},
     market::{CoinPair, Market},
@@ -104,14 +103,15 @@ RUN chmod +x /usr/bin/firecosmos
 RUN git clone --depth 1 --branch v0.32.0 https://github.com/graphprotocol/graph-node
 RUN cd /graph-node && cargo build --release -p graph-node
 
-# our subgraph
-RUN git clone https://github.com/onomyprotocol/mgraph
-RUN cd /mgraph && npm install && npm run build
-
 # ipfs
 ADD https://dist.ipfs.tech/kubo/v0.23.0/kubo_v0.23.0_linux-amd64.tar.gz /tmp/kubo.tar.gz
 RUN cd /tmp && tar -xf /tmp/kubo.tar.gz && mv /tmp/kubo/ipfs /usr/bin/ipfs
 RUN ipfs init
+
+# our subgraph
+RUN git clone https://github.com/onomyprotocol/mgraph
+#ADD ./dockerfile_resources/mgraph /mgraph
+RUN cd /mgraph && npm install && npm run build
 
 ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
@@ -230,7 +230,6 @@ async fn container_runner(args: &Args) -> Result<()> {
 }
 
 async fn standalone_runner(args: &Args) -> Result<()> {
-    let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
 
     let mut nm_onex_node =
@@ -302,7 +301,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     let (genesis_s, peer_info) = nm_onex_node.recv::<(String, String)>().await.stack()?;
 
-    FileOptions::write_str(&format!("/firehose/config/genesis.json"), &genesis_s)
+    FileOptions::write_str("/firehose/config/genesis.json", &genesis_s)
         .await
         .stack()?;
     set_persistent_peers("/firehose", &[peer_info])
@@ -334,10 +333,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .stack()?;
 
     let mut firecosmos_runner = Command::new(
-        &format!(
-            "firecosmos start --config /firehose/firehose.yml --data-dir /firehose/fh-data \
-             --firehose-grpc-listen-addr 0.0.0.0:9030"
-        ),
+        "firecosmos start --config /firehose/firehose.yml --data-dir /firehose/fh-data \
+         --firehose-grpc-listen-addr 0.0.0.0:9030",
         &[],
     )
     .stderr_log(&firehose_err_log)
@@ -350,17 +347,14 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     //grpcurl -plaintext -max-time 1 localhost:9030 sf.firehose.v2.Stream/Blocks
 
     async fn firecosmos_health() -> Result<()> {
-        let comres = Command::new(
-            "curl -sL -w 200 http://localhost:9030 -o /dev/null",
-            &[],
-        )
-        .run_to_completion()
-        .await
-        .stack()?;
+        let comres = Command::new("curl -sL -w 200 http://localhost:9030 -o /dev/null", &[])
+            .run_to_completion()
+            .await
+            .stack()?;
         comres.assert_success().stack()?;
         Ok(())
     }
-    wait_for_ok(100, Duration::from_secs(1), || firecosmos_health())
+    wait_for_ok(100, Duration::from_secs(1), firecosmos_health)
         .await
         .stack()?;
     info!("firehose is up");
@@ -387,7 +381,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         comres.assert_success().stack()?;
         Ok(())
     }
-    wait_for_ok(100, Duration::from_secs(1), || graph_node_health())
+    wait_for_ok(100, Duration::from_secs(1), graph_node_health)
         .await
         .stack()?;
     info!("graph-node is up");
@@ -399,9 +393,9 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     comres.assert_success().stack()?;
-    /*let comres = Command::new(
-        "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 \
-         onomyprotocol/mgraph",
+    let comres = Command::new(
+        "graph deploy --version-label v0.0.0 --node http://localhost:8020/ \
+        --ipfs http://localhost:5001 onomyprotocol/mgraph",
         &[],
     )
     .cwd("/mgraph")
@@ -409,7 +403,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     .run_to_completion()
     .await
     .stack()?;
-    comres.assert_success().stack()?;*/
+    comres.assert_success().stack()?;
 
     // grpcurl -plaintext -max-time 2 localhost:9030 sf.firehose.v2.Stream/Blocks
     // note: we may need to pass the proto files, I don't know if reflection is not
