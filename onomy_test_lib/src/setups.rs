@@ -584,7 +584,7 @@ pub async fn marketd_setup(
     // we need some native token in the bank, and don't need gentx
     sh_cosmovisor("add-genesis-account", &[
         addr,
-        &format!("{TEST_AMOUNT}anative"),
+        &format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}anom"),
     ])
     .await
     .stack()?;

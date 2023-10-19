@@ -1,20 +1,24 @@
 use std::time::Duration;
 
-use common::{dockerfile_standalone_onexd, DOWNLOAD_STANDALONE_ONEXD, STANDALONE_ONEX_FH_VERSION};
+use common::{dockerfile_onexd, dockerfile_onomyd, DOWNLOAD_ONEXD, ONEXD_FH_VERSION};
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, fast_block_times,
-        get_self_peer_info, set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_dbg,
+        cosmovisor_get_addr, cosmovisor_start, fast_block_times, get_self_peer_info,
+        set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
     },
-    dockerfiles::{COSMOVISOR, ONOMY_STD},
+    dockerfiles::{dockerfile_hermes, COSMOVISOR, ONOMY_STD},
+    hermes::{hermes_start, sh_hermes, write_hermes_config, HermesChainConfig},
+    ibc::IbcPair,
     market::{CoinPair, Market},
     onomy_std_init,
-    setups::market_standalone_setup,
+    setups::{
+        cosmovisor_add_consumer, marketd_setup, onomyd_setup, test_proposal, CosmosSetupOptions,
+    },
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
-        sh,
+        remove_files_in_dir, sh,
         stacked_errors::{Error, Result, StackableErr},
         wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
     },
@@ -26,9 +30,9 @@ use tokio::time::sleep;
 // we use a normal onexd for the validator full node, but use the `-fh` version
 // for the full node that indexes for firehose
 
-const CHAIN_ID: &str = "market";
-const BINARY_NAME: &str = "marketd";
-const BINARY_DIR: &str = ".market";
+const CHAIN_ID: &str = "onex";
+const BINARY_NAME: &str = "onexd";
+const BINARY_DIR: &str = ".onomy_onex";
 
 const FIREHOSE_CONFIG_PATH: &str = "/firehose/firehose.yml";
 const FIREHOSE_CONFIG: &str = r#"start:
@@ -40,7 +44,7 @@ const FIREHOSE_CONFIG: &str = r#"start:
     flags:
         common-first-streamable-block: 1
         reader-mode: node
-        reader-node-path: /root/.market/cosmovisor/current/bin/marketd
+        reader-node-path: /root/.onomy_onex/cosmovisor/current/bin/onexd
         reader-node-args: start --x-crisis-skip-assert-invariants --home=/firehose
         reader-node-logs-filter: "module=(p2p|pex|consensus|x/bank|x/market)"
         relayer-max-source-latency: 99999h
@@ -77,7 +81,7 @@ provider = [
 #[rustfmt::skip]
 fn standalone_dockerfile() -> String {
     // use the fh version
-    let version = STANDALONE_ONEX_FH_VERSION;
+    let version = ONEXD_FH_VERSION;
     let daemon_name = BINARY_NAME;
     let daemon_dir_name = BINARY_DIR;
     format!(
@@ -117,7 +121,7 @@ ENV DAEMON_NAME="{daemon_name}"
 ENV DAEMON_HOME="/root/{daemon_dir_name}"
 ENV DAEMON_VERSION={version}
 
-{DOWNLOAD_STANDALONE_ONEXD}
+{DOWNLOAD_ONEXD}
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/{daemon_name}
@@ -140,8 +144,10 @@ async fn main() -> Result<()> {
 
     if let Some(ref s) = args.entry_name {
         match s.as_str() {
-            "standalone" => standalone_runner(&args).await,
+            "test_runner" => test_runner(&args).await,
             "onex_node" => onex_node(&args).await,
+            "onomyd" => onomyd_runner(&args).await,
+            "hermes" => hermes_runner().await,
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
@@ -164,6 +170,11 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
+    // prepare volumed resources
+    remove_files_in_dir("./tests/resources/keyring-test/", &[".address", ".info"])
+        .await
+        .stack()?;
+
     let entrypoint = Some(format!(
         "./target/{container_target}/release/{bin_entrypoint}"
     ));
@@ -172,17 +183,39 @@ async fn container_runner(args: &Args) -> Result<()> {
     // we use a normal onexd for the validator full node, but use the `-fh` version
     // for the full node that indexes for firehose
     let mut containers = vec![Container::new(
-        "standalone",
+        "test_runner",
         Dockerfile::Contents(standalone_dockerfile()),
         entrypoint,
-        &["--entry-name", "standalone"],
+        &["--entry-name", "test_runner"],
     )];
-    containers.push(Container::new(
-        "onex_node",
-        Dockerfile::Contents(dockerfile_standalone_onexd()),
-        entrypoint,
-        &["--entry-name", "onex_node"],
-    ));
+    containers.extend_from_slice(&[
+        Container::new(
+            "onex_node",
+            Dockerfile::Contents(dockerfile_onexd()),
+            entrypoint,
+            &["--entry-name", "onex_node"],
+        )
+        .volumes(&[(
+            "./tests/resources/keyring-test",
+            &format!("/root/{}/keyring-test", BINARY_DIR),
+        )]),
+        Container::new(
+            "hermes",
+            Dockerfile::Contents(dockerfile_hermes("__tmp_hermes_config.toml")),
+            entrypoint,
+            &["--entry-name", "hermes"],
+        ),
+        Container::new(
+            "onomyd",
+            Dockerfile::Contents(dockerfile_onomyd()),
+            entrypoint,
+            &["--entry-name", "onomyd"],
+        )
+        .volumes(&[(
+            "./tests/resources/keyring-test",
+            "/root/.onomy/keyring-test",
+        )]),
+    ]);
 
     let mut cn =
         ContainerNetwork::new("test", containers, Some(dockerfiles_dir), true, logs_dir).stack()?;
@@ -206,6 +239,31 @@ async fn container_runner(args: &Args) -> Result<()> {
     )
     .stack()?;
 
+    // prepare hermes config
+    write_hermes_config(
+        &[
+            HermesChainConfig::new(
+                "onomy",
+                &format!("onomyd_{uuid}"),
+                "onomy",
+                false,
+                "anom",
+                true,
+            ),
+            HermesChainConfig::new(
+                CHAIN_ID,
+                &format!("onex_node_{uuid}"),
+                "onomy",
+                true,
+                "anative",
+                true,
+            ),
+        ],
+        &format!("{dockerfiles_dir}/dockerfile_resources"),
+    )
+    .await
+    .stack()?;
+
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, Duration::from_secs(9999))
         .await
@@ -214,9 +272,13 @@ async fn container_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn standalone_runner(args: &Args) -> Result<()> {
+async fn test_runner(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
 
+    let mut nm_onomyd =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("onomyd_{uuid}:26000"))
+            .await
+            .stack()?;
     let mut nm_onex_node =
         NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("onex_node_{uuid}:26000"))
             .await
@@ -396,6 +458,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     sleep(Duration::from_secs(9999)).await;
 
+    nm_onomyd.send(&()).await.stack()?;
+
     sleep(Duration::ZERO).await;
     graph_runner.terminate().await.stack()?;
     firecosmos_runner.terminate().await.stack()?;
@@ -404,17 +468,176 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn onex_node(args: &Args) -> Result<()> {
-    let daemon_home = args.daemon_home.as_ref().stack()?;
+async fn hermes_runner() -> Result<()> {
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+        .await
+        .stack()?;
+
+    // get mnemonic from onomyd
+    let mnemonic: String = nm_onomyd.recv().await.stack()?;
+    // set keys for our chains
+    FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic)
+        .await
+        .stack()?;
+    sh_hermes(
+        "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
+        &[],
+    )
+    .await
+    .stack()?;
+    sh_hermes(
+        &format!("keys add --chain {CHAIN_ID} --mnemonic-file /root/.hermes/mnemonic.txt"),
+        &[],
+    )
+    .await
+    .stack()?;
+
+    // wait for setup
+    nm_onomyd.recv::<()>().await.stack()?;
+
+    let ibc_pair = IbcPair::hermes_setup_ics_pair(CHAIN_ID, "onomy")
+        .await
+        .stack()?;
+    let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log")
+        .await
+        .stack()?;
+    ibc_pair.hermes_check_acks().await.stack()?;
+
+    // tell that chains have been connected
+    nm_onomyd.send::<()>(&()).await.stack()?;
+
+    // termination signal
+    nm_onomyd.recv::<()>().await.stack()?;
+    hermes_runner.terminate(TIMEOUT).await.stack()?;
+    Ok(())
+}
+
+async fn onomyd_runner(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
+    let consumer_id = CHAIN_ID;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
     let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
+    let mut nm_hermes =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("hermes_{uuid}:26000"))
+            .await
+            .stack()?;
+    let mut nm_consumer =
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("onex_node_{uuid}:26001"))
+            .await
+            .stack()
+            .stack()?;
 
-    market_standalone_setup(daemon_home, CHAIN_ID)
+    let mut options = CosmosSetupOptions::new(daemon_home);
+    options.large_test_amount = true;
+    let mnemonic = onomyd_setup(options).await.stack()?;
+    // send mnemonic to hermes
+    nm_hermes.send::<String>(&mnemonic).await.stack()?;
+
+    // keep these here for local testing purposes
+    let _ = &cosmovisor_get_addr("validator").await.stack()?;
+    sleep(Duration::ZERO).await;
+
+    let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
+
+    let ccvconsumer_state = cosmovisor_add_consumer(
+        daemon_home,
+        consumer_id,
+        &test_proposal(consumer_id, "anative"),
+    )
+    .await
+    .stack()?;
+
+    // send to consumer
+    nm_consumer
+        .send::<String>(&ccvconsumer_state)
         .await
         .stack()?;
 
+    // send keys
+    nm_consumer
+        .send::<String>(
+            &FileOptions::read_to_string(&format!("{daemon_home}/config/node_key.json"))
+                .await
+                .stack()?,
+        )
+        .await
+        .stack()?;
+    nm_consumer
+        .send::<String>(
+            &FileOptions::read_to_string(&format!("{daemon_home}/config/priv_validator_key.json"))
+                .await
+                .stack()?,
+        )
+        .await
+        .stack()?;
+
+    // wait for consumer to be online
+    nm_consumer.recv::<()>().await.stack()?;
+
+    // notify hermes to connect the chains
+    nm_hermes.send::<()>(&()).await.stack()?;
+    // when hermes is done
+    nm_hermes.recv::<()>().await.stack()?;
+
+    // notify main runner that we should be ready
+    nm_test.send::<()>(&()).await.stack()?;
+    // notify onexd runner to make some test transactions
+    nm_consumer.send::<()>(&()).await.stack()?;
+
+    nm_test.recv::<()>().await.stack()?;
+
+    // signal to collectively terminate
+    nm_hermes.send::<()>(&()).await.stack()?;
+    nm_consumer.send::<()>(&()).await.stack()?;
+    cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
+
+    Ok(())
+}
+
+async fn onex_node(args: &Args) -> Result<()> {
+    let uuid = &args.uuid;
+    let daemon_home = args.daemon_home.as_ref().stack()?;
+    let chain_id = CHAIN_ID;
+    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+        .await
+        .stack()?;
+    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+        .await
+        .stack()?;
+    // we need the initial consumer state
+    let ccvconsumer_state_s: String = nm_onomyd.recv().await.stack()?;
+
+    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s)
+        .await
+        .stack()?;
+
+    // get keys
+    let node_key = nm_onomyd.recv::<String>().await.stack()?;
+    // we used same keys for consumer as producer, need to copy them over or else
+    // the node will not be a working validator for itself
+    FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key)
+        .await
+        .stack()?;
+
+    let priv_validator_key = nm_onomyd.recv::<String>().await.stack()?;
+    FileOptions::write_str(
+        &format!("{daemon_home}/config/priv_validator_key.json"),
+        &priv_validator_key,
+    )
+    .await
+    .stack()?;
+
+    let mut cosmovisor_runner =
+        cosmovisor_start(&format!("{chain_id}d_bootstrap_runner.log"), None)
+            .await
+            .stack()?;
+
+    // signal that we have started
+    nm_onomyd.send::<()>(&()).await.stack()?;
+
+    // do this after the final genesis is assembled
     let genesis_s = FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json"))
         .await
         .stack()?;
@@ -422,22 +645,20 @@ async fn onex_node(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    let mut cosmovisor_runner = cosmovisor_start(&format!("{CHAIN_ID}d_runner.log"), None).await?;
-
-    // send genesis file, self peer info, and indicate that we are started
+    // send genesis file, and self peer info to the test runner
     nm_test
         .send::<(String, String)>(&(genesis_s, peer_info))
         .await
         .stack()?;
 
+    nm_onomyd.recv::<()>().await.stack()?;
+
+    // wait for Hermes to be done
+    wait_for_num_blocks(5).await.stack()?;
+
+    let coin_pair = CoinPair::new("anative", "anom").stack()?;
     let mut market = Market::new("validator", "1000000anative");
     market.max_gas = Some(u256!(1000000));
-
-    let addr = &cosmovisor_get_addr("validator").await.stack()?;
-    info!("{:?}", cosmovisor_get_balances(addr).await.stack()?);
-    let coin_pair = CoinPair::new("afootoken", "anative").stack()?;
-
-    // test numerical limits
     market
         .create_pool(&coin_pair, Market::MAX_COIN, Market::MAX_COIN)
         .await
@@ -481,11 +702,9 @@ async fn onex_node(args: &Args) -> Result<()> {
         )
         .await
         .stack()?;
-    market.cancel_order(6).await.stack()?;
 
-    sleep(Duration::from_secs(9999)).await;
-
-    //http://192.168.208.3:8000/subgraphs/name/onomyprotocol/mgraph
+    // termination signal
+    nm_onomyd.recv::<()>().await.stack()?;
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 

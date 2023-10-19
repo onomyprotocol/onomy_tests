@@ -10,6 +10,7 @@ use onomy_test_lib::{
 
 pub const ONOMYD_VERSION: &str = "v1.1.2";
 pub const ONEXD_VERSION: &str = "v1.0.2-onex";
+pub const ONEXD_FH_VERSION: &str = "v1.0.2-onex-fh";
 pub const STANDALONE_ONEX_VERSION: &str = "v1.1.0";
 pub const STANDALONE_ONEX_FH_VERSION: &str = "v1.1.0-fh";
 
