@@ -57,7 +57,7 @@ const GRAPH_NODE_CONFIG_PATH: &str = "/graph_node_config.toml";
 const GRAPH_NODE_CONFIG: &str = r#"[deployment]
 [[deployment.rule]]
 shard = "primary"
-indexers = [ "onex_index_node" ]
+indexers = [ "index_node_cosmos_1" ]
 
 [store]
 [store.primary]
@@ -224,7 +224,9 @@ async fn container_runner(args: &Args) -> Result<()> {
     .stack()?;
 
     cn.run_all(true).await.stack()?;
-    cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
+    cn.wait_with_timeout_all(true, Duration::from_secs(9999))
+        .await
+        .stack()?;
     cn.terminate_all().await;
     Ok(())
 }
@@ -362,7 +364,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     let mut graph_runner = Command::new(
         &format!(
             "cargo run --release -p graph-node -- --config {GRAPH_NODE_CONFIG_PATH} --ipfs \
-             127.0.0.1:5001 --node-id market"
+             127.0.0.1:5001 --node-id index_node_cosmos_1"
         ),
         &[],
     )
@@ -409,7 +411,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     // note: we may need to pass the proto files, I don't know if reflection is not
     // working and that's why it has errors
 
-    sleep(TIMEOUT).await;
+    sleep(Duration::from_secs(9999)).await;
 
     sleep(Duration::ZERO).await;
     graph_runner.terminate().await.stack()?;
@@ -498,7 +500,9 @@ async fn onex_node(args: &Args) -> Result<()> {
         .stack()?;
     market.cancel_order(6).await.stack()?;
 
-    sleep(TIMEOUT).await;
+    sleep(Duration::from_secs(9999)).await;
+
+    //http://192.168.208.3:8000/subgraphs/name/onomyprotocol/mgraph
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
