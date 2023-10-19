@@ -145,23 +145,6 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        let comres = Command::new(&format!("go build ./cmd/{BINARY_NAME}"), &[])
-            .ci_mode(true)
-            .cwd("./../market/")
-            .run_to_completion()
-            .await
-            .stack()?;
-        comres.assert_success().stack()?;
-        // copy to dockerfile resources (docker cannot use files from outside cwd)
-        sh(
-            &format!(
-                "cp ./../market/{BINARY_NAME} \
-                 ./tests/dockerfiles/dockerfile_resources/{BINARY_NAME}"
-            ),
-            &[],
-        )
-        .await
-        .stack()?;
         container_runner(&args).await.stack()
     }
 }
