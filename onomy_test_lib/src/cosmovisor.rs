@@ -97,9 +97,7 @@ pub async fn force_chain_id_no_genesis(daemon_home: &str, chain_id: &str) -> Res
 /// e.x. pass "nothing" to turn off pruning
 pub async fn set_pruning(daemon_home: &str, pruning: &str) -> Result<()> {
     let app_file_path = format!("{daemon_home}/config/app.toml");
-    let app_s = FileOptions::read_to_string(&app_file_path)
-        .await
-        .stack()?;
+    let app_s = FileOptions::read_to_string(&app_file_path).await.stack()?;
     let mut app: toml::Value = toml::from_str(&app_s).stack()?;
     app["pruning"] = pruning.into();
     let app_s = toml::to_string_pretty(&app).stack()?;

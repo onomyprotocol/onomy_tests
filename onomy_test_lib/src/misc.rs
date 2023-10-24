@@ -85,6 +85,12 @@ pub struct Args {
     pub i: Option<u64>,
     #[arg(long)]
     pub test_type: Option<String>,
+    #[arg(long)]
+    pub genesis_path: Option<String>,
+    #[arg(long)]
+    pub peer_info: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub first_run: bool,
 }
 
 /// Calls [super_orchestrator::std_init] and returns the result of
