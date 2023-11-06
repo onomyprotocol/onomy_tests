@@ -12,7 +12,7 @@ use onomy_test_lib::{
     setups::gravity_standalone_setup,
     super_orchestrator::{
         sh,
-        stacked_errors::{Error, Result, StackableErr},
+        stacked_errors::{ensure_eq, Error, Result, StackableErr},
         FileOptions,
     },
     token18, yaml_str_to_json_value, Args, TIMEOUT,
@@ -105,11 +105,11 @@ async fn gravity_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     let exported = yaml_str_to_json_value(&exported)?;
-    assert_eq!(
+    ensure_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
         test_crisis_denom
     );
-    assert_eq!(
+    ensure_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["amount"],
         "1337"
     );

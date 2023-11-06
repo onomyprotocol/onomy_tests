@@ -23,7 +23,7 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
         remove_files_in_dir, sh,
-        stacked_errors::{Error, Result, StackableErr},
+        stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
         FileOptions,
     },
     token18,
@@ -320,7 +320,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // recieve round trip signal
     nm_consumer.recv::<()>().await.stack()?;
     // check that the IBC NOM converted back to regular NOM
-    assert_eq!(
+    ensure_eq!(
         cosmovisor_get_balances("onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3")
             .await
             .stack()?["anom"],
@@ -388,9 +388,9 @@ async fn consumer(args: &Args) -> Result<()> {
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
     let ibc_nom = &ibc_pair.a.get_ibc_denom("anom").await.stack()?;
-    assert_eq!(ibc_nom, ONOMY_IBC_NOM);
+    ensure_eq!(ibc_nom, ONOMY_IBC_NOM);
     let balances = cosmovisor_get_balances(addr).await.stack()?;
-    assert!(balances.contains_key(ibc_nom));
+    ensure!(balances.contains_key(ibc_nom));
 
     // we have IBC NOM, shut down, change gas in app.toml, restart
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
@@ -441,7 +441,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     info!("current version: {current_version}, upgrade version: {upgrade_version}");
 
-    assert_eq!(
+    ensure_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         current_version
     );
@@ -474,7 +474,7 @@ async fn consumer(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    assert_eq!(
+    ensure_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         upgrade_version
     );
@@ -488,7 +488,7 @@ async fn consumer(args: &Args) -> Result<()> {
     cosmovisor_bank_send(addr, dst_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    assert_eq!(
+    ensure_eq!(
         cosmovisor_get_balances(dst_addr).await.stack()?[ibc_nom],
         u256!(5000)
     );

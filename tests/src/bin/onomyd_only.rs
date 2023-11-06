@@ -12,7 +12,7 @@ use onomy_test_lib::{
     setups::{onomyd_setup, CosmosSetupOptions},
     super_orchestrator::{
         sh,
-        stacked_errors::{Error, Result, StackableErr},
+        stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
         FileOptions,
     },
     token18, yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
@@ -74,7 +74,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     let proposals = sh_cosmovisor("query gov proposals", &[]).await.stack()?;
-    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
+    ensure!(proposals.contains("PROPOSAL_STATUS_PASSED"));
 
     // get valcons bech32 and pub key
     // cosmovisor run query tendermint-validator-set
@@ -104,8 +104,8 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     wait_for_num_blocks(1).await.stack()?;
     let apr1 = get_apr_annual(valoper_addr, 6311520.0).await.stack()?;
     info!("APR: {apr1}");
-    assert!(apr1 < apr0);
-    assert!(apr1 < 0.14);
+    ensure!(apr1 < apr0);
+    ensure!(apr1 < 0.14);
 
     info!("{}", get_delegations_to(valoper_addr).await.stack()?);
     info!("{:?}", get_staking_pool().await.stack()?);
@@ -167,11 +167,11 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     let exported = yaml_str_to_json_value(&exported)?;
-    assert_eq!(
+    ensure_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["denom"],
         test_crisis_denom
     );
-    assert_eq!(
+    ensure_eq!(
         exported["app_state"]["crisis"]["constant_fee"]["amount"],
         "1337"
     );

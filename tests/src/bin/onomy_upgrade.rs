@@ -9,7 +9,7 @@ use onomy_test_lib::{
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
-        stacked_errors::{Error, Result, StackableErr},
+        stacked_errors::{ensure_eq, Error, Result, StackableErr},
     },
     Args, STD_DELAY, STD_TRIES, TIMEOUT,
 };
@@ -87,7 +87,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
-    assert_eq!(
+    ensure_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         current_version
     );
@@ -121,7 +121,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    assert_eq!(
+    ensure_eq!(
         sh_cosmovisor("version", &[]).await.stack()?.trim(),
         upgrade_version
     );
