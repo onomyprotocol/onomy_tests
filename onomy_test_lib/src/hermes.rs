@@ -3,7 +3,7 @@ use std::time::Duration;
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    sh, sh_no_dbg,
+    sh, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
     Command, CommandRunner, FileOptions,
 };
@@ -25,7 +25,7 @@ pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
 }
 
 pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    let stdout = sh_no_dbg(&format!("hermes --json {cmd_with_args}"), args)
+    let stdout = sh_no_debug(&format!("hermes --json {cmd_with_args}"), args)
         .await
         .stack()?;
     let res = stdout.lines().last().stack()?;
@@ -227,8 +227,7 @@ impl HermesRunner {
 pub async fn hermes_start(log_file: &str) -> Result<HermesRunner> {
     let hermes_log = FileOptions::write(log_file);
     let hermes_runner = Command::new("hermes start", &[])
-        .stderr_log(&hermes_log)
-        .stdout_log(&hermes_log)
+        .log(Some(hermes_log))
         .run()
         .await
         .stack()?;

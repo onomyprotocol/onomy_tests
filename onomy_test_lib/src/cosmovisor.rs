@@ -3,14 +3,14 @@ use std::{collections::BTreeMap, time::Duration};
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    get_separated_val, sh, sh_no_dbg,
+    get_separated_val, sh, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
-    wait_for_ok, Command, CommandRunner, FileOptions, STD_DELAY, STD_TRIES,
+    wait_for_ok, Command, CommandRunner, FileOptions,
 };
 use tokio::time::sleep;
 use u64_array_bigints::U256;
 
-use crate::{anom_to_nom, json_inner, yaml_str_to_json_value};
+use crate::{anom_to_nom, json_inner, yaml_str_to_json_value, STD_DELAY, STD_TRIES};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
 /// onto `cmd_with_args` and removes the first line of output (in order to
@@ -27,7 +27,7 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
 }
 
 pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let stdout = sh_no_dbg(&format!("cosmovisor run {cmd_with_args}"), args)
+    let stdout = sh_no_debug(&format!("cosmovisor run {cmd_with_args}"), args)
         .await
         .stack()?;
     Ok(stdout
@@ -492,7 +492,7 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
 }
 
 pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
-    let comres = sh_no_dbg("cosmovisor run version", &[]).await.stack()?;
+    let comres = sh_no_debug("cosmovisor run version", &[]).await.stack()?;
     let val = get_separated_val(
         comres.lines().next().stack()?,
         " ",
@@ -584,8 +584,7 @@ pub async fn cosmovisor_start(
     }
 
     let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &args)
-        .stderr_log(&cosmovisor_log)
-        .stdout_log(&cosmovisor_log)
+        .log(Some(cosmovisor_log))
         .run()
         .await
         .stack()?;

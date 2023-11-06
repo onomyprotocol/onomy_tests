@@ -16,10 +16,10 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
+        wait_for_ok, Command, FileOptions,
     },
     u64_array_bigints::{self, u256},
-    Args, TIMEOUT,
+    Args, STD_DELAY, STD_TRIES, TIMEOUT,
 };
 use tokio::time::sleep;
 
@@ -228,8 +228,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     let graph_log = FileOptions::write2("/logs", "graph.log");
 
     let mut ipfs_runner = Command::new("ipfs daemon", &[])
-        .stderr_log(&ipfs_log)
-        .stdout_log(&ipfs_log)
+        .log(Some(ipfs_log))
         .run()
         .await
         .stack()?;
@@ -322,8 +321,8 @@ async fn standalone_runner(args: &Args) -> Result<()> {
          --firehose-grpc-listen-addr 0.0.0.0:9030",
         &[],
     )
-    .stderr_log(&firehose_err_log)
-    .stdout_log(&firehose_std_log)
+    .stderr_log(Some(firehose_err_log))
+    .stdout_log(Some(firehose_std_log))
     .run()
     .await
     .stack()?;
@@ -352,8 +351,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         &[],
     )
     .cwd("/graph-node")
-    .stderr_log(&graph_log)
-    .stdout_log(&graph_log)
+    .log(Some(graph_log))
     .run()
     .await
     .stack()?;
@@ -373,7 +371,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 
     let comres = Command::new("npm run create-local", &[])
         .cwd("/mgraph")
-        .ci_mode(true)
+        .debug(true)
         .run_to_completion()
         .await
         .stack()?;
@@ -384,7 +382,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
         &[],
     )
     .cwd("/mgraph")
-    .ci_mode(true)
+    .debug(true)
     .run_to_completion()
     .await
     .stack()?;

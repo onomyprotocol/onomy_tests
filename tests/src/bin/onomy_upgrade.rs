@@ -10,9 +10,8 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        STD_DELAY, STD_TRIES,
     },
-    Args, TIMEOUT,
+    Args, STD_DELAY, STD_TRIES, TIMEOUT,
 };
 
 #[tokio::main]

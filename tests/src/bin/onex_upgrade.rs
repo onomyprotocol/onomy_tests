@@ -24,13 +24,13 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{Error, Result, StackableErr},
-        FileOptions, STD_DELAY, STD_TRIES,
+        FileOptions,
     },
     token18,
     u64_array_bigints::{
         u256, {self},
     },
-    Args, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
+    Args, ONOMY_IBC_NOM, STD_DELAY, STD_TRIES, TEST_AMOUNT, TIMEOUT,
 };
 use tokio::time::sleep;
 

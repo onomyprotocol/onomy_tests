@@ -10,6 +10,8 @@ use super_orchestrator::{
 use u64_array_bigints::{u256, U256};
 
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
+pub const STD_DELAY: Duration = Duration::from_millis(300);
+pub const STD_TRIES: u64 = 300;
 
 // the `json` macro does not support const
 

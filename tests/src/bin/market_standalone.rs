@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
         }
     } else {
         let comres = Command::new(&format!("go build ./cmd/{CHAIN_ID}d"), &[])
-            .ci_mode(true)
+            .debug(true)
             .cwd("./../market/")
             .run_to_completion()
             .await
