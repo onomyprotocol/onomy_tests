@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        let comres = Command::new(&format!("go build ./cmd/{CHAIN_ID}d"), &[])
+        let comres = Command::new(format!("go build ./cmd/{CHAIN_ID}d"))
             .debug(true)
             .cwd("./../market/")
             .run_to_completion()

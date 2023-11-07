@@ -268,13 +268,10 @@ pub async fn wait_for_num_blocks(num_blocks: u64) -> Result<()> {
 
 /// Returns the number of proposals
 pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
-    let comres = Command::new(
-        "cosmovisor run query gov proposals --count-total --limit 1",
-        &[],
-    )
-    .run_to_completion()
-    .await
-    .stack()?;
+    let comres = Command::new("cosmovisor run query gov proposals --count-total --limit 1")
+        .run_to_completion()
+        .await
+        .stack()?;
     if let Err(e) = comres.assert_success() {
         // work around bad zero casing design
         if comres
@@ -586,7 +583,8 @@ pub async fn cosmovisor_start(
         }
     }
 
-    let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1", &args)
+    let cosmovisor_runner = Command::new("cosmovisor run start --inv-check-period  1")
+        .args(args)
         .log(Some(cosmovisor_log))
         .run()
         .await

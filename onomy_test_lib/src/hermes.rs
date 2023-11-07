@@ -223,7 +223,7 @@ impl HermesRunner {
 
 pub async fn hermes_start(log_file: &str) -> Result<HermesRunner> {
     let hermes_log = FileOptions::write(log_file);
-    let hermes_runner = Command::new("hermes start", &[])
+    let hermes_runner = Command::new("hermes start")
         .log(Some(hermes_log))
         .run()
         .await

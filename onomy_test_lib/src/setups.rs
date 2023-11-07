@@ -117,10 +117,9 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
 
     let mnemonic = if let Some(mnemonic) = options.mnemonic {
-        let comres = Command::new(
-            &format!("{daemon_home}/cosmovisor/current/bin/onomyd keys add validator --recover"),
-            &[],
-        )
+        let comres = Command::new(format!(
+            "{daemon_home}/cosmovisor/current/bin/onomyd keys add validator --recover"
+        ))
         .run_with_input_to_completion(mnemonic.as_bytes())
         .await
         .stack()?;
@@ -128,7 +127,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         mnemonic
     } else {
         // we need the stderr to get the mnemonic
-        let comres = Command::new("cosmovisor run keys add validator", &[])
+        let comres = Command::new("cosmovisor run keys add validator")
             .run_to_completion()
             .await
             .stack()?;
@@ -242,7 +241,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         .stack()?;
 
     // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
+    let comres = Command::new("cosmovisor run keys add validator")
         .run_to_completion()
         .await
         .stack()?;
@@ -356,7 +355,7 @@ pub async fn gravity_standalone_setup(
         .stack()?;
 
     // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator", &[])
+    let comres = Command::new("cosmovisor run keys add validator")
         .run_to_completion()
         .await
         .stack()?;
@@ -571,8 +570,10 @@ pub async fn marketd_setup(
     *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["bond_denom"]) =
         ONOMY_IBC_NOM.into();
 
+    // TODO unify consumer setups
     // Set market burn token to IBC NOM
-    *stacked_get_mut!(genesis["app_state"]["market"]["params"]["burn_coin"]) = ONOMY_IBC_NOM.into();
+    //*stacked_get_mut!(genesis["app_state"]["market"]["params"]["burn_coin"])
+    // = ONOMY_IBC_NOM.into();
 
     // NOTE: do not under any circumstance make a mint denom an IBC token.
     // We will zero and reset inflation to anative just to make sure.
