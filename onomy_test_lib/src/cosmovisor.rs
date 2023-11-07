@@ -5,7 +5,7 @@ use serde_json::Value;
 use super_orchestrator::{
     get_separated_val, sh, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
-    wait_for_ok, Command, CommandRunner, FileOptions,
+    stacked_get, stacked_get_mut, wait_for_ok, Command, CommandRunner, FileOptions,
 };
 use tokio::time::sleep;
 use u64_array_bigints::U256;
@@ -50,12 +50,14 @@ pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serd
         .stack_err(|| "sh_cosmovisor_tx() initial command failed")?;
 
     let res = yaml_str_to_json_value(&res).stack_err(|| ())?;
-    if res["code"].as_u64().stack()? == 0 {
+    if stacked_get!(res["code"]).as_u64().stack()? == 0 {
         Ok(res)
     } else {
-        Err(Error::from(format!("raw_log: {}", res["raw_log"]))).stack_err(|| {
-            format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})")
-        })
+        Err(Error::from(format!(
+            "raw_log: {}",
+            stacked_get!(res["raw_log"])
+        )))
+        .stack_err(|| format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})"))
     }
 }
 
@@ -63,14 +65,14 @@ pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serd
 /// states, this overwrites the in the given genesis and client.toml
 pub async fn force_chain_id(daemon_home: &str, genesis: &mut Value, chain_id: &str) -> Result<()> {
     // genesis
-    genesis["chain_id"] = chain_id.into();
+    *stacked_get_mut!(genesis["chain_id"]) = chain_id.into();
     // client.toml
     let client_file_path = format!("{daemon_home}/config/client.toml");
     let client_s = FileOptions::read_to_string(&client_file_path)
         .await
         .stack()?;
     let mut client: toml::Value = toml::from_str(&client_s).stack()?;
-    client["chain-id"] = chain_id.into();
+    *stacked_get_mut!(client["chain-id"]) = chain_id.into();
     let client_s = toml::to_string_pretty(&client).stack()?;
     FileOptions::write_str(&client_file_path, &client_s)
         .await
@@ -86,7 +88,7 @@ pub async fn force_chain_id_no_genesis(daemon_home: &str, chain_id: &str) -> Res
         .await
         .stack()?;
     let mut client: toml::Value = toml::from_str(&client_s).stack()?;
-    client["chain-id"] = chain_id.into();
+    *stacked_get_mut!(client["chain-id"]) = chain_id.into();
     let client_s = toml::to_string_pretty(&client).stack()?;
     FileOptions::write_str(&client_file_path, &client_s)
         .await
@@ -99,7 +101,7 @@ pub async fn set_pruning(daemon_home: &str, pruning: &str) -> Result<()> {
     let app_file_path = format!("{daemon_home}/config/app.toml");
     let app_s = FileOptions::read_to_string(&app_file_path).await.stack()?;
     let mut app: toml::Value = toml::from_str(&app_s).stack()?;
-    app["pruning"] = pruning.into();
+    *stacked_get_mut!(app["pruning"]) = pruning.into();
     let app_s = toml::to_string_pretty(&app).stack()?;
     FileOptions::write_str(&app_file_path, &app_s)
         .await
@@ -133,13 +135,13 @@ pub async fn fast_block_times(daemon_home: &str) -> Result<()> {
     timeout_precommit_delta = "500ms"
     timeout_commit = "5s"
      */
-    config["consensus"]["timeout_propose"] = "600ms".into();
-    config["consensus"]["timeout_propose_delta"] = "100ms".into();
-    config["consensus"]["timeout_prevote"] = "200ms".into();
-    config["consensus"]["timeout_prevote_delta"] = "100ms".into();
-    config["consensus"]["timeout_precommit"] = "200ms".into();
-    config["consensus"]["timeout_precommit_delta"] = "100ms".into();
-    config["consensus"]["timeout_commit"] = "1000ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_propose"]) = "600ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_propose_delta"]) = "100ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_prevote"]) = "200ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_prevote_delta"]) = "100ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_precommit"]) = "200ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_precommit_delta"]) = "100ms".into();
+    *stacked_get_mut!(config["consensus"]["timeout_commit"]) = "1000ms".into();
     let config_s = toml::to_string_pretty(&config).stack()?;
     FileOptions::write_str(&config_file_path, &config_s)
         .await
@@ -151,7 +153,7 @@ pub async fn set_minimum_gas_price(daemon_home: &str, min_gas_price: &str) -> Re
     let app_toml_path = format!("{daemon_home}/config/app.toml");
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;
     let mut app_toml: toml::Value = toml::from_str(&app_toml_s).stack()?;
-    app_toml["minimum-gas-prices"] = min_gas_price.into();
+    *stacked_get_mut!(app_toml["minimum-gas-prices"]) = min_gas_price.into();
     let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
     FileOptions::write_str(&app_toml_path, &app_toml_s)
         .await
@@ -166,8 +168,8 @@ pub async fn enable_swagger_apis(daemon_home: &str) -> Result<()> {
     let app_toml_path = format!("{daemon_home}/config/app.toml");
     let app_toml_s = FileOptions::read_to_string(&app_toml_path).await.stack()?;
     let mut app_toml: toml::Value = toml::from_str(&app_toml_s).stack()?;
-    app_toml["api"]["enable"] = true.into();
-    app_toml["api"]["swagger"] = true.into();
+    *stacked_get_mut!(app_toml["api"]["enable"]) = true.into();
+    *stacked_get_mut!(app_toml["api"]["swagger"]) = true.into();
     let app_toml_s = toml::to_string_pretty(&app_toml).stack()?;
     FileOptions::write_str(&app_toml_path, &app_toml_s)
         .await
@@ -220,7 +222,7 @@ pub async fn set_persistent_peers(daemon_home: &str, persistent_peers: &[String]
             persistent_peers_s.push(',');
         }
     }
-    config["p2p"]["persistent_peers"] = persistent_peers_s.into();
+    *stacked_get_mut!(config["p2p"]["persistent_peers"]) = persistent_peers_s.into();
     let config_s = toml::to_string_pretty(&config).stack()?;
     FileOptions::write_str(&config_file_path, &config_s)
         .await
@@ -232,6 +234,7 @@ pub async fn set_persistent_peers(daemon_home: &str, persistent_peers: &[String]
 pub async fn get_block_height() -> Result<u64> {
     let block_s = sh_cosmovisor_no_dbg("query block", &[]).await.stack()?;
     let block: Value = serde_json::from_str(&block_s).stack()?;
+    // this is purposely indexed without `stacked_get`
     let height = &block["block"]["header"]["height"].to_string();
     Ok(height
         .to_string()
@@ -293,7 +296,7 @@ pub async fn cosmovisor_get_num_proposals() -> Result<u64> {
         .1;
 
     let v = yaml_str_to_json_value(stdout).stack()?;
-    let total = v["pagination"]["total"].as_str().stack()?;
+    let total = stacked_get!(v["pagination"]["total"]).as_str().stack()?;
     total.parse::<u64>().stack()
 }
 
@@ -643,7 +646,7 @@ pub async fn cosmovisor_start(
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
     let validator =
         yaml_str_to_json_value(&sh_cosmovisor("keys show", &[key_name]).await.stack()?).stack()?;
-    Ok(json_inner(&validator[0]["address"]))
+    Ok(json_inner(stacked_get!(validator[0]["address"])))
 }
 
 /// Returns a mapping of denoms to amounts
@@ -655,8 +658,8 @@ pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, U256
     let mut res = BTreeMap::new();
     for balance in balances["balances"].as_array().stack()? {
         res.insert(
-            json_inner(&balance["denom"]),
-            U256::from_dec_or_hex_str(&json_inner(&balance["amount"])).stack()?,
+            json_inner(stacked_get!(balance["denom"])),
+            U256::from_dec_or_hex_str(&json_inner(stacked_get!(balance["amount"]))).stack()?,
         );
     }
     Ok(res)
@@ -687,14 +690,13 @@ pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {
 }
 
 pub async fn get_treasury() -> Result<f64> {
-    let inner = json_inner(
-        &yaml_str_to_json_value(
-            &sh_cosmovisor("query dao show-treasury", &[])
-                .await
-                .stack()?,
-        )
-        .stack()?["treasury_balance"][0]["amount"],
-    );
+    let tmp = yaml_str_to_json_value(
+        &sh_cosmovisor("query dao show-treasury", &[])
+            .await
+            .stack()?,
+    )
+    .stack()?;
+    let inner = json_inner(stacked_get!(tmp["treasury_balance"][0]["amount"]));
     anom_to_nom(&inner).stack_err(|| format!("inner was: {inner}"))
 }
 
@@ -728,17 +730,15 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
 }
 
 pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
-    anom_to_nom(&json_inner(
-        &yaml_str_to_json_value(
-            &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
-                valoper_addr,
-            ])
-            .await
-            .stack()?,
-        )
-        .stack()?["rewards"][0]["amount"],
-    ))
-    .stack()
+    let tmp = yaml_str_to_json_value(
+        &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
+            valoper_addr,
+        ])
+        .await
+        .stack()?,
+    )
+    .stack()?;
+    anom_to_nom(&json_inner(stacked_get!(tmp["rewards"][0]["amount"]))).stack()
 }
 
 pub async fn get_validator_delegated() -> Result<f64> {
@@ -751,9 +751,10 @@ pub async fn get_validator_delegated() -> Result<f64> {
     let s = sh_cosmovisor("query staking delegations", &[&validator_addr])
         .await
         .stack()?;
-    anom_to_nom(&json_inner(
-        &yaml_str_to_json_value(&s).stack()?["delegation_responses"][0]["balance"]["amount"],
-    ))
+    let tmp = yaml_str_to_json_value(&s).stack()?;
+    anom_to_nom(&json_inner(stacked_get!(
+        tmp["delegation_responses"][0]["balance"]["amount"]
+    )))
     .stack()
 }
 

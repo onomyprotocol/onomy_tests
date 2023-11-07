@@ -13,7 +13,7 @@ use onomy_test_lib::{
     super_orchestrator::{
         sh,
         stacked_errors::{ensure_eq, Error, Result, StackableErr},
-        FileOptions,
+        stacked_get, FileOptions,
     },
     token18, yaml_str_to_json_value, Args, TIMEOUT,
 };
@@ -106,11 +106,11 @@ async fn gravity_runner(args: &Args) -> Result<()> {
         .stack()?;
     let exported = yaml_str_to_json_value(&exported)?;
     ensure_eq!(
-        exported["app_state"]["crisis"]["constant_fee"]["denom"],
+        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["denom"]),
         test_crisis_denom
     );
     ensure_eq!(
-        exported["app_state"]["crisis"]["constant_fee"]["amount"],
+        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["amount"]),
         "1337"
     );
 

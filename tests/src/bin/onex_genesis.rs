@@ -22,7 +22,7 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{ensure, Error, Result, StackableErr},
-        FileOptions, STD_DELAY, STD_TRIES,
+        stacked_get_mut, FileOptions, STD_DELAY, STD_TRIES,
     },
     token18,
     u64_array_bigints::{
@@ -71,7 +71,7 @@ pub async fn onexd_setup(
 
     let mut genesis: Value = serde_json::from_str(genesis_s).stack()?;
 
-    genesis["genesis_time"] = TIME.into();
+    *stacked_get_mut!(genesis["genesis_time"]) = TIME.into();
 
     // put some aONEX balance on our account so it can be bonded
     let mut array = genesis["app_state"]["bank"]["balances"]
@@ -88,13 +88,15 @@ pub async fn onexd_setup(
     }
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
+        gov_period.clone();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
+        gov_period;
 
     let genesis_s = genesis.to_string();
 
@@ -319,7 +321,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     //let proposal = onomy_test_lib::setups::test_proposal(consumer_id, "anom");
     let mut proposal: Value = serde_json::from_str(PROPOSAL).stack()?;
-    proposal["spawn_time"] = TIME.into();
+    stacked_get_mut!(proposal["spawn_time"]) = TIME.into();
     let proposal = &proposal.to_string();
     info!("PROPOSAL: {proposal}");
     let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id, proposal)
@@ -620,11 +622,11 @@ async fn consumer(args: &Args) -> Result<()> {
         .stack()?;
     let exported = yaml_str_to_json_value(&exported).stack()?;
     ensure_eq!(
-        exported["app_state"]["crisis"]["constant_fee"]["denom"],
+        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["denom"]),
         test_crisis_denom
     );
     ensure_eq!(
-        exported["app_state"]["crisis"]["constant_fee"]["amount"],
+        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["amount"]),
         "1337"
     );
 

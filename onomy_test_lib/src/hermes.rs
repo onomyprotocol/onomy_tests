@@ -5,7 +5,7 @@ use serde_json::Value;
 use super_orchestrator::{
     sh, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
-    Command, CommandRunner, FileOptions,
+    stacked_get, stacked_get_mut, Command, CommandRunner, FileOptions,
 };
 
 use crate::json_inner;
@@ -43,7 +43,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
     let clients = clients.as_array().stack()?;
     let mut client_id = None;
     for client in clients {
-        if json_inner(&client["chain_id"]) == reference_chain {
+        if json_inner(stacked_get!(client["chain_id"])) == reference_chain {
             if client_id.is_some() {
                 // we have already seen this, we don't want to need to handle ambiguity
                 return Err(Error::from(format!(
@@ -51,7 +51,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
                      reference_chain {reference_chain}"
                 )))
             }
-            client_id = Some(json_inner(&client["client_id"]));
+            client_id = Some(json_inner(stacked_get!(client["client_id"])));
         }
     }
     client_id.stack_err(|| {
@@ -70,8 +70,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
 /// Note: for ICS pairs a client is created automatically by the process of
 /// setting up ICS.
 pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String, String)> {
-    // avoid creating redundant clients, for which there shouldn't be any use, and
-    // because it is almost certainly a cause for bugs
+    // note: in case of frozen clients there may be a reason to create a new client
     if get_client(a_chain, b_chain).await.is_ok() {
         return Err(Error::from(format!(
             "a client already exists between {a_chain} and {b_chain}"
@@ -82,24 +81,22 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
             "a client already exists between {b_chain} and {a_chain}"
         )))
     }
-    let client0 = json_inner(
-        &sh_hermes("create client --host-chain", &[
-            a_chain,
-            "--reference-chain",
-            b_chain,
-        ])
-        .await
-        .stack()?["CreateClient"]["client_id"],
-    );
-    let client1 = json_inner(
-        &sh_hermes("create client --host-chain", &[
-            b_chain,
-            "--reference-chain",
-            a_chain,
-        ])
-        .await
-        .stack()?["CreateClient"]["client_id"],
-    );
+    let tmp = sh_hermes("create client --host-chain", &[
+        a_chain,
+        "--reference-chain",
+        b_chain,
+    ])
+    .await
+    .stack()?;
+    let client0 = json_inner(stacked_get!(tmp["CreateClient"]["client_id"]));
+    let tmp = sh_hermes("create client --host-chain", &[
+        b_chain,
+        "--reference-chain",
+        a_chain,
+    ])
+    .await
+    .stack()?;
+    let client1 = json_inner(stacked_get!(tmp["CreateClient"]["client_id"]));
     Ok((client0, client1))
 }
 
@@ -123,8 +120,8 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
     .await
     .stack()?;
     Ok((
-        json_inner(&res["a_side"]["connection_id"]),
-        json_inner(&res["b_side"]["connection_id"]),
+        json_inner(stacked_get!(res["a_side"]["connection_id"])),
+        json_inner(stacked_get!(res["b_side"]["connection_id"])),
     ))
 }
 
@@ -165,8 +162,8 @@ pub async fn create_channel_pair(
     .await
     .stack()?;
     Ok((
-        json_inner(&res["a_side"]["channel_id"]),
-        json_inner(&res["b_side"]["channel_id"]),
+        json_inner(stacked_get!(res["a_side"]["channel_id"])),
+        json_inner(stacked_get!(res["b_side"]["channel_id"])),
     ))
 }
 
@@ -247,14 +244,14 @@ pub async fn hermes_set_gas_price_denom(
         "gas-price = {{ price = 1.0, denom = '{gas_price_denom}' }}"
     ))
     .unwrap();
-    let inner_table = outer_table["gas-price"].clone();
+    let inner_table = stacked_get!(outer_table["gas-price"]).clone();
 
     let config_path = format!("{hermes_home}/config.toml");
     let config_s = FileOptions::read_to_string(&config_path).await.stack()?;
     let mut config: toml::Value = toml::from_str(&config_s).stack()?;
-    for chain in config["chains"].as_array_mut().stack()? {
-        if chain["id"].as_str().stack()? == chain_id {
-            chain["gas_price"] = inner_table;
+    for chain in stacked_get_mut!(config["chains"]).as_array_mut().stack()? {
+        if stacked_get!(chain["id"]).as_str().stack()? == chain_id {
+            *stacked_get_mut!(chain["gas_price"]) = inner_table;
             break
         }
     }

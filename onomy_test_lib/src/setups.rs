@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use super_orchestrator::{
     get_separated_val,
     stacked_errors::{Result, StackableErr},
-    Command, FileOptions,
+    stacked_get, stacked_get_mut, Command, FileOptions,
 };
 use tokio::time::sleep;
 
@@ -84,25 +84,27 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
 
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+    *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = denom_metadata;
 
     // init DAO balance
     let amount = token18(100.0e6, "");
     let treasury_balance = json!([{"denom": "anom", "amount": amount}]);
-    genesis["app_state"]["dao"]["treasury_balance"] = treasury_balance;
+    *stacked_get_mut!(genesis["app_state"]["dao"]["treasury_balance"]) = treasury_balance;
 
     // disable community_tax
-    genesis["app_state"]["distribution"]["params"]["community_tax"] = json!("0");
+    *stacked_get_mut!(genesis["app_state"]["distribution"]["params"]["community_tax"]) = json!("0");
 
     // min_global_self_delegation
-    genesis["app_state"]["staking"]["params"]["min_global_self_delegation"] =
+    *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["min_global_self_delegation"]) =
         global_min_self_delegation.to_owned().into();
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
+        gov_period.clone();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
+        gov_period;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
@@ -215,13 +217,15 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
         .await
         .stack()?;
 
-    genesis["app_state"]["bank"]["denom_metadata"] = native_denom();
+    *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = native_denom();
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
+        gov_period.clone();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
+        gov_period;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
@@ -304,10 +308,10 @@ pub async fn gravity_standalone_setup(
         .stack()?;
 
     let denom_metadata = arc_test_denoms();
-    genesis["app_state"]["bank"]["denom_metadata"] = denom_metadata;
+    *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = denom_metadata;
 
     // for airdrop tests
-    genesis["app_state"]["distribution"]["fee_pool"]["community_pool"] = json!(
+    *stacked_get_mut!(genesis["app_state"]["distribution"]["fee_pool"]["community_pool"]) = json!(
         [{"denom": "stake", "amount": "10000000000.0"}]
     );
     // SHA256 hash of distribution.ModuleName
@@ -316,18 +320,18 @@ pub async fn gravity_standalone_setup(
         address_prefix,
     )
     .unwrap();
-    genesis["app_state"]["auth"]["accounts"]
+    stacked_get_mut!(genesis["app_state"]["auth"]["accounts"])
         .as_array_mut()
-        .unwrap()
+        .stack()?
         .push(json!(
             [{"@type": "/cosmos.auth.v1beta1.ModuleAccount",
             "base_account": { "account_number": "0", "address": distribution_addr,
             "pub_key": null,"sequence": "0"},
             "name": "distribution", "permissions": ["basic"]}]
         ));
-    genesis["app_state"]["bank"]["balances"]
+    stacked_get_mut!(genesis["app_state"]["bank"]["balances"])
         .as_array_mut()
-        .unwrap()
+        .stack()?
         .push(json!(
             [{"address": distribution_addr, "coins": [{"amount": "10000000000", "denom": "stake"}]}]
         ));
@@ -335,8 +339,10 @@ pub async fn gravity_standalone_setup(
     // decrease the governing period for fast tests
     let gov_period = "10s";
     let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
+        gov_period.clone();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
+        gov_period;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
@@ -507,9 +513,11 @@ pub async fn cosmovisor_add_consumer(
 
     // fix missing fields TODO when we update canonical versions we should be able
     // to remove this
-    state["params"]["soft_opt_out_threshold"] = "0.0".into();
-    state["params"]["provider_reward_denoms"] = proposal["provider_reward_denoms"].clone();
-    state["params"]["reward_denoms"] = proposal["reward_denoms"].clone();
+    stacked_get_mut!(state["params"])["soft_opt_out_threshold"] = "0.0".into();
+    stacked_get_mut!(state["params"])["provider_reward_denoms"] =
+        stacked_get!(proposal["provider_reward_denoms"]).clone();
+    stacked_get_mut!(state["params"])["reward_denoms"] =
+        stacked_get!(proposal["reward_denoms"]).clone();
 
     let ccvconsumer_state = serde_json::to_string(&state).stack()?;
 
@@ -545,30 +553,35 @@ pub async fn marketd_setup(
         .stack()?;
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
     let gov_period: Value = gov_period.into();
-    genesis["app_state"]["gov"]["voting_params"]["voting_period"] = gov_period.clone();
-    genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"] = gov_period;
+    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
+        gov_period.clone();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
+        gov_period;
 
     // Set governance token (for param changes and upgrades) to IBC NOM
-    genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"] =
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"]) =
         token18(500.0, "").into();
-    genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"] = ONOMY_IBC_NOM.into();
-    genesis["app_state"]["staking"]["params"]["bond_denom"] = ONOMY_IBC_NOM.into();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"]) =
+        ONOMY_IBC_NOM.into();
+    *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["bond_denom"]) =
+        ONOMY_IBC_NOM.into();
 
     // Set market burn token to IBC NOM
-    genesis["app_state"]["market"]["params"]["burn_coin"] = ONOMY_IBC_NOM.into();
+    *stacked_get_mut!(genesis["app_state"]["market"]["params"]["burn_coin"]) = ONOMY_IBC_NOM.into();
 
     // NOTE: do not under any circumstance make a mint denom an IBC token.
     // We will zero and reset inflation to anative just to make sure.
-    genesis["app_state"]["mint"]["minter"]["inflation"] = "0.0".into();
-    genesis["app_state"]["mint"]["params"]["mint_denom"] = "anative".into();
-    genesis["app_state"]["mint"]["params"]["inflation_min"] = "0.0".into();
-    genesis["app_state"]["mint"]["params"]["inflation_max"] = "0.0".into();
-    genesis["app_state"]["mint"]["params"]["inflation_rate_change"] = "0.0".into();
+    *stacked_get_mut!(genesis["app_state"]["mint"]["minter"]["inflation"]) = "0.0".into();
+    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["mint_denom"]) = "anative".into();
+    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_min"]) = "0.0".into();
+    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_max"]) = "0.0".into();
+    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_rate_change"]) =
+        "0.0".into();
 
     let genesis_s = genesis.to_string();
 
@@ -635,7 +648,7 @@ pub async fn arc_consumer_setup(
         .stack()?;
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
-    genesis["app_state"]["ccvconsumer"] = ccvconsumer_state;
+    *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
 
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
@@ -676,7 +689,7 @@ pub async fn arc_consumer_setup(
         .await
         .stack()?;
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-    genesis["app_state"]["genutil"]["gen_txs"][0]["body"]["messages"]
+    stacked_get_mut!(genesis["app_state"]["genutil"]["gen_txs"][0]["body"]["messages"])
         .as_array_mut()
         .unwrap()
         .remove(0);
