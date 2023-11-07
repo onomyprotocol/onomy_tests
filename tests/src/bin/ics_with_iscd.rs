@@ -5,7 +5,7 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
@@ -342,7 +342,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     FileOptions::write_str(
         "/logs/onomyd_export.json",
-        &sh_cosmovisor_no_dbg("export", &[]).await.stack()?,
+        &sh_cosmovisor_no_debug("export", &[]).await.stack()?,
     )
     .await
     .stack()?;
@@ -516,7 +516,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
-    let exported = sh_cosmovisor_no_dbg("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;

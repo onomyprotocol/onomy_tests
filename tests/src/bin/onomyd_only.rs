@@ -6,7 +6,7 @@ use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, cosmovisor_start, get_apr_annual,
         get_delegations_to, get_staking_pool, get_treasury, get_treasury_inflation_annual,
-        sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx, wait_for_num_blocks,
+        sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_num_blocks,
     },
     onomy_std_init, reprefix_bech32,
     setups::{onomyd_setup, CosmosSetupOptions},
@@ -162,7 +162,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     // test that exporting works
-    let exported = sh_cosmovisor_no_dbg("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
     FileOptions::write_str("/logs/onomyd_export.json", &exported)
         .await
         .stack()?;

@@ -4,7 +4,7 @@ use common::container_runner;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, sh_cosmovisor_no_dbg,
+        cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, sh_cosmovisor_no_debug,
     },
     dockerfiles::onomy_std_cosmos_daemon,
     market::{CoinPair, Market},
@@ -125,7 +125,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     // test that exporting works
-    let exported = sh_cosmovisor_no_dbg("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{CHAIN_ID}d_export.json"), &exported)
         .await
         .stack()?;

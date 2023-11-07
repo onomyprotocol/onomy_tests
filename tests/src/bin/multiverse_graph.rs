@@ -5,7 +5,7 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_start, fast_block_times, get_self_peer_info,
-        set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_dbg, wait_for_num_blocks,
+        set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_debug, wait_for_num_blocks,
     },
     dockerfiles::{dockerfile_hermes, COSMOVISOR, ONOMY_STD},
     hermes::{hermes_start, sh_hermes, write_hermes_config, HermesChainConfig},
@@ -338,7 +338,7 @@ async fn test_runner(args: &Args) -> Result<()> {
     sh_cosmovisor("config keyring-backend test --home /firehose", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite --home /firehose", &[CHAIN_ID])
+    sh_cosmovisor_no_debug("init --overwrite --home /firehose", &[CHAIN_ID])
         .await
         .stack()?;
     // TODO only for validators?

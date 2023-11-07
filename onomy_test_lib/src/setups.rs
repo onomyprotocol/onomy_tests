@@ -10,7 +10,7 @@ use crate::{
     arc_test_denoms,
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_dbg, sh_cosmovisor_tx,
+        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
     native_denom, nom, nom_denom, reprefix_bech32, token18, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
@@ -65,7 +65,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     sh_cosmovisor("config keyring-backend test", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
         .await
         .stack()?;
 
@@ -178,7 +178,9 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     .await
     .stack()?;
 
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
+    sh_cosmovisor_no_debug("collect-gentxs", &[])
+        .await
+        .stack()?;
 
     FileOptions::write_str(
         "/logs/genesis.json",
@@ -199,7 +201,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     sh_cosmovisor("config keyring-backend test", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
         .await
         .stack()?;
 
@@ -272,7 +274,9 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     ])
     .await
     .stack()?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
+    sh_cosmovisor_no_debug("collect-gentxs", &[])
+        .await
+        .stack()?;
 
     Ok(mnemonic)
 }
@@ -291,7 +295,7 @@ pub async fn gravity_standalone_setup(
     sh_cosmovisor("config keyring-backend test", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
         .await
         .stack()?;
 
@@ -415,7 +419,9 @@ pub async fn gravity_standalone_setup(
         .await
         .stack()?;
     }
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
+    sh_cosmovisor_no_debug("collect-gentxs", &[])
+        .await
+        .stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
@@ -500,7 +506,7 @@ pub async fn cosmovisor_add_consumer(
 
     // It appears we do not have to wait any blocks
 
-    let ccvconsumer_state = sh_cosmovisor_no_dbg("query provider consumer-genesis", &[
+    let ccvconsumer_state = sh_cosmovisor_no_debug("query provider consumer-genesis", &[
         consumer_id,
         "-o",
         "json",
@@ -534,7 +540,7 @@ pub async fn marketd_setup(
     sh_cosmovisor("config keyring-backend test", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
         .await
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
@@ -631,7 +637,7 @@ pub async fn arc_consumer_setup(
     sh_cosmovisor("config keyring-backend test", &[])
         .await
         .stack()?;
-    sh_cosmovisor_no_dbg("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
         .await
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
@@ -682,7 +688,9 @@ pub async fn arc_consumer_setup(
     ])
     .await
     .stack()?;
-    sh_cosmovisor_no_dbg("collect-gentxs", &[]).await.stack()?;
+    sh_cosmovisor_no_debug("collect-gentxs", &[])
+        .await
+        .stack()?;
 
     // TODO it seems that this works, shouldn't it fail because of the signature?
     // Arc only: remove `MsgCreateValidator`

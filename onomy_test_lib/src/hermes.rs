@@ -24,7 +24,7 @@ pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     Ok(res)
 }
 
-pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
+pub async fn sh_hermes_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     let stdout = sh_no_debug(&format!("hermes --json {cmd_with_args}"), args)
         .await
         .stack()?;
@@ -37,7 +37,7 @@ pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Valu
 /// Returns a single client if it exists. Returns an error if two redundant
 /// clients were found.
 pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = sh_hermes_no_dbg("query clients --host-chain", &[host_chain])
+    let clients = sh_hermes_no_debug("query clients --host-chain", &[host_chain])
         .await
         .stack_err(|| "failed to query for host chain")?;
     let clients = clients.as_array().stack()?;
@@ -170,7 +170,7 @@ pub async fn create_channel_pair(
 impl IbcPair {
     pub async fn hermes_check_acks(&self) -> Result<()> {
         // check all channels on both sides
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug("query packet acks --chain", &[
             &self.b.chain_id,
             "--port",
             "transfer",
@@ -179,7 +179,7 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug("query packet acks --chain", &[
             &self.a.chain_id,
             "--port",
             "transfer",
@@ -188,7 +188,7 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug("query packet acks --chain", &[
             &self.b.chain_id,
             "--port",
             "provider",
@@ -197,7 +197,7 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug("query packet acks --chain", &[
             &self.a.chain_id,
             "--port",
             "consumer",

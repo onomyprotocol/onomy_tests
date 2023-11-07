@@ -4,7 +4,7 @@ pub use super_orchestrator::stacked_errors::Result;
 use super_orchestrator::{get_separated_val, stacked_errors::StackableErr};
 
 use crate::{
-    cosmovisor::{sh_cosmovisor_no_dbg, sh_cosmovisor_tx},
+    cosmovisor::{sh_cosmovisor_no_debug, sh_cosmovisor_tx},
     hermes::{create_channel_pair, create_connection_pair, sh_hermes},
 };
 
@@ -79,7 +79,7 @@ impl IbcSide {
     }
 
     pub async fn get_ibc_denom(&self, leaf_denom: &str) -> Result<String> {
-        let hash = sh_cosmovisor_no_dbg("query ibc-transfer denom-hash", &[&format!(
+        let hash = sh_cosmovisor_no_debug("query ibc-transfer denom-hash", &[&format!(
             "transfer/{}/{}",
             self.transfer_channel, leaf_denom
         )])

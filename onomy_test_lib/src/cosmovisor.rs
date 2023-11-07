@@ -26,7 +26,7 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
         .to_owned())
 }
 
-pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<String> {
+pub async fn sh_cosmovisor_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<String> {
     let stdout = sh_no_debug(&format!("cosmovisor run {cmd_with_args}"), args)
         .await
         .stack()?;
@@ -45,7 +45,7 @@ pub async fn sh_cosmovisor_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<
 /// NOTE: You need to pass the argument `-y` to confirm without needing piped
 /// input, and the arguments `-b block` for the error handling to work properly
 pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
-    let res = sh_cosmovisor_no_dbg(&format!("tx {cmd_with_args}"), args)
+    let res = sh_cosmovisor_no_debug(&format!("tx {cmd_with_args}"), args)
         .await
         .stack_err(|| "sh_cosmovisor_tx() initial command failed")?;
 
@@ -196,7 +196,7 @@ pub async fn get_self_ip(hostname_of_self: &str) -> Result<String> {
 }
 
 pub async fn get_self_peer_info(hostname_of_self: &str, port: &str) -> Result<String> {
-    let node_id = sh_cosmovisor_no_dbg("tendermint show-node-id", &[])
+    let node_id = sh_cosmovisor_no_debug("tendermint show-node-id", &[])
         .await
         .stack()?;
     let node_id = node_id.trim();
@@ -232,7 +232,7 @@ pub async fn set_persistent_peers(daemon_home: &str, persistent_peers: &[String]
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
-    let block_s = sh_cosmovisor_no_dbg("query block", &[]).await.stack()?;
+    let block_s = sh_cosmovisor_no_debug("query block", &[]).await.stack()?;
     let block: Value = serde_json::from_str(&block_s).stack()?;
     // this is purposely indexed without `stacked_get`
     let height = &block["block"]["header"]["height"].to_string();
@@ -649,7 +649,7 @@ pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
 
 /// Returns a mapping of denoms to amounts
 pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, U256>> {
-    let balances = sh_cosmovisor_no_dbg("query bank balances", &[addr])
+    let balances = sh_cosmovisor_no_debug("query bank balances", &[addr])
         .await
         .stack()?;
     let balances = yaml_str_to_json_value(&balances).stack()?;
