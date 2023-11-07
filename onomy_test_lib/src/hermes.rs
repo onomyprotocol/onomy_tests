@@ -15,9 +15,9 @@ pub use crate::{hermes_config::*, ibc::IbcPair};
 /// last line is parsed as a `Value` and the inner "result" is returned.
 pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
     info!("running hermes({cmd_with_args}, {args:?})");
-    let stdout = sh(&format!("hermes --json {cmd_with_args}"), args)
-        .await
-        .stack()?;
+    let mut tmp = vec![format!("hermes --json {cmd_with_args}")];
+    tmp.extend(args.iter().map(|s| s.to_string()));
+    let stdout = sh(tmp).await.stack()?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
@@ -25,9 +25,9 @@ pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
 }
 
 pub async fn sh_hermes_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    let stdout = sh_no_debug(&format!("hermes --json {cmd_with_args}"), args)
-        .await
-        .stack()?;
+    let mut tmp = vec![format!("hermes --json {cmd_with_args}")];
+    tmp.extend(args.iter().map(|s| s.to_string()));
+    let stdout = sh_no_debug(tmp).await.stack()?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();

@@ -42,7 +42,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     let container_target = "x86_64-unknown-linux-gnu";
 
     // build internal runner
-    sh("cargo build --release --bin", &[
+    sh([
+        "cargo build --release --bin",
         bin_entrypoint,
         "--target",
         container_target,

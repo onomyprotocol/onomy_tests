@@ -16,9 +16,9 @@ use crate::{anom_to_nom, json_inner, yaml_str_to_json_value, STD_DELAY, STD_TRIE
 /// onto `cmd_with_args` and removes the first line of output (in order to
 /// remove the INF line that always shows with cosmovisor runs)
 pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let stdout = sh(&format!("cosmovisor run {cmd_with_args}"), args)
-        .await
-        .stack()?;
+    let mut tmp = vec![format!("cosmovisor run {cmd_with_args}")];
+    tmp.extend(args.iter().map(|s| s.to_string()));
+    let stdout = sh(tmp).await.stack()?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -27,9 +27,9 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
 }
 
 pub async fn sh_cosmovisor_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let stdout = sh_no_debug(&format!("cosmovisor run {cmd_with_args}"), args)
-        .await
-        .stack()?;
+    let mut tmp = vec![format!("cosmovisor run {cmd_with_args}")];
+    tmp.extend(args.iter().map(|s| s.to_string()));
+    let stdout = sh_no_debug(tmp).await.stack()?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -492,7 +492,7 @@ pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
 }
 
 pub async fn get_cosmovisor_subprocess_path() -> Result<String> {
-    let comres = sh_no_debug("cosmovisor run version", &[]).await.stack()?;
+    let comres = sh_no_debug(["cosmovisor run version"]).await.stack()?;
     let val = get_separated_val(
         comres.lines().next().stack()?,
         " ",

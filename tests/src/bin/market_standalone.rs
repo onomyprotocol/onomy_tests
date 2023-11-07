@@ -40,12 +40,9 @@ async fn main() -> Result<()> {
             .stack()?;
         comres.assert_success().stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
-        sh(
-            &format!(
-                "cp ./../market/{CHAIN_ID}d ./tests/dockerfiles/dockerfile_resources/{CHAIN_ID}d"
-            ),
-            &[],
-        )
+        sh([format!(
+            "cp ./../market/{CHAIN_ID}d ./tests/dockerfiles/dockerfile_resources/{CHAIN_ID}d"
+        )])
         .await
         .stack()?;
         container_runner(&args, &[(

@@ -30,16 +30,11 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        sh("make --directory ./../onomy/ build", &[])
+        sh(["make --directory ./../onomy/ build"]).await.stack()?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(["cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd"])
             .await
             .stack()?;
-        // copy to dockerfile resources (docker cannot use files from outside cwd)
-        sh(
-            "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
-            &[],
-        )
-        .await
-        .stack()?;
         container_runner(&args, &[("onomyd", &dockerfile_onomyd())])
             .await
             .stack()
@@ -112,13 +107,10 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     info!("{}", get_treasury().await.stack()?);
     info!("{}", get_treasury_inflation_annual().await.stack()?);
 
-    sh(
-        &format!(
-            "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m \
-             1337anom --fees 1000000anom -y -b block"
-        ),
-        &[],
-    )
+    sh([format!(
+        "cosmovisor run tx bank send {addr} onomy1a69w3hfjqere4crkgyee79x2mxq0w2pfj9tu2m 1337anom \
+         --fees 1000000anom -y -b block"
+    )])
     .await
     .stack()?;
 

@@ -29,18 +29,15 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        sh("make --directory ./../arc/module clean", &[])
+        sh(["make --directory ./../arc/module clean"])
             .await
             .stack()?;
-        sh("make --directory ./../arc/module build", &[])
+        sh(["make --directory ./../arc/module build"])
             .await
             .stack()?;
-        sh(
-            "cp ./../arc/module/build/gravity ./tests/dockerfiles/dockerfile_resources/gravity",
-            &[],
-        )
-        .await
-        .stack()?;
+        sh(["cp ./../arc/module/build/gravity ./tests/dockerfiles/dockerfile_resources/gravity"])
+            .await
+            .stack()?;
         container_runner(&args, &[(
             "gravity",
             &onomy_std_cosmos_daemon("gravity", ".gravity", "v0.1.0", "gravity"),
