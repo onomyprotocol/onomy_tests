@@ -89,7 +89,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     ensure_eq!(
-        sh_cosmovisor("version", &[]).await.stack()?.trim(),
+        sh_cosmovisor(["version"]).await.stack()?.trim(),
         current_version
     );
 
@@ -123,7 +123,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .stack()?;
 
     ensure_eq!(
-        sh_cosmovisor("version", &[]).await.stack()?.trim(),
+        sh_cosmovisor(["version"]).await.stack()?.trim(),
         upgrade_version
     );
 

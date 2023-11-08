@@ -93,23 +93,34 @@ impl Market {
     }
 
     /// Adds on "-y", "-b", "block", "--from", self.account, "--fees", self.fees
-    pub async fn configured_tx(&self, cmd_with_args: &str, args: &[&str]) -> Result<()> {
-        let mut args = args.to_owned();
-        args.extend(&[
-            "-y",
-            "-b",
-            "block",
-            "--from",
-            &self.account,
-            "--fees",
-            &self.fees,
-        ]);
+    pub async fn configured_tx<I, S>(&self, program_with_args: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut args: Vec<String> = program_with_args
+            .into_iter()
+            .map(|s| s.as_ref().to_string())
+            .collect();
+        args.extend(
+            [
+                "-y",
+                "-b",
+                "block",
+                "--from",
+                &self.account,
+                "--fees",
+                &self.fees,
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
         let max_gas = self.max_gas.map(|x| format!("{x}"));
         if let Some(ref max_gas) = max_gas {
-            args.push("--gas");
-            args.push(max_gas);
+            args.push("--gas".to_string());
+            args.push(max_gas.clone());
         }
-        sh_cosmovisor_tx(cmd_with_args, &args)
+        sh_cosmovisor_tx(args)
             .await
             .stack_err(|| "market module transaction error")?;
         Ok(())
@@ -122,7 +133,8 @@ impl Market {
         coin_a_amount: U256,
         coin_b_amount: U256,
     ) -> Result<()> {
-        self.configured_tx("market create-pool", &[
+        self.configured_tx([
+            "market create-pool",
             &coin_pair.coin_a_amount(coin_a_amount),
             &coin_pair.coin_b_amount(coin_b_amount),
         ])
@@ -132,19 +144,21 @@ impl Market {
     }
 
     pub async fn show_pool(&self, coin_pair: &CoinPair) -> Result<String> {
-        sh_cosmovisor("query market pool", &[&coin_pair.paired()])
+        sh_cosmovisor(["query market pool", &coin_pair.paired()])
             .await
             .stack()
     }
 
     pub async fn show_members(&self, coin_pair: &CoinPair) -> Result<(String, String)> {
-        let member_a = sh_cosmovisor("query market show-member", &[
+        let member_a = sh_cosmovisor([
+            "query market show-member",
             coin_pair.coin_a(),
             coin_pair.coin_b(),
         ])
         .await
         .stack()?;
-        let member_b = sh_cosmovisor("query market show-member", &[
+        let member_b = sh_cosmovisor([
+            "query market show-member",
             coin_pair.coin_b(),
             coin_pair.coin_a(),
         ])
@@ -154,7 +168,8 @@ impl Market {
     }
 
     pub async fn create_drop(&self, coin_pair: &CoinPair, drops: U256) -> Result<()> {
-        self.configured_tx("market create-drop", &[
+        self.configured_tx([
+            "market create-drop",
             &coin_pair.paired(),
             &format!("{}", drops),
         ])
@@ -164,7 +179,7 @@ impl Market {
     }
 
     pub async fn redeem_drop(&self, uid: u64) -> Result<()> {
-        self.configured_tx("market redeem-drop", &[&format!("{}", uid)])
+        self.configured_tx(["market redeem-drop", &format!("{}", uid)])
             .await
             .stack()?;
         Ok(())
@@ -178,7 +193,8 @@ impl Market {
         amount_bid: U256,
         slippage: u16,
     ) -> Result<()> {
-        self.configured_tx("market market-order", &[
+        self.configured_tx([
+            "market market-order",
             coin_ask,
             &format!("{}", amount_ask),
             coin_bid,
@@ -199,7 +215,8 @@ impl Market {
         rate: (u64, u64),
         prev_next: (u64, u64),
     ) -> Result<()> {
-        self.configured_tx("market create-order", &[
+        self.configured_tx([
+            "market create-order",
             coin_ask,
             coin_bid,
             order_type,
@@ -214,7 +231,7 @@ impl Market {
     }
 
     pub async fn cancel_order(&self, uid: u64) -> Result<()> {
-        self.configured_tx("market cancel-order", &[&format!("{}", uid)])
+        self.configured_tx(["market cancel-order", &format!("{}", uid)])
             .await
             .stack()?;
         Ok(())

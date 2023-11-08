@@ -34,12 +34,14 @@ impl IbcSide {
         // tx ibc-transfer transfer transfer [channel to right chain]
         // [target cosmos addr] [coins to send] [gas flags] --from [source key name]
 
-        sh_cosmovisor_tx(
+        let mut args = vec![
             "ibc-transfer transfer transfer",
-            &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
-        )
-        .await
-        .stack()?;
+            &self.transfer_channel,
+            target_addr,
+            coins_to_send,
+        ];
+        args.extend(flags);
+        sh_cosmovisor_tx(args).await.stack()?;
 
         Ok(())
     }
@@ -56,7 +58,8 @@ impl IbcSide {
     ) -> Result<()> {
         let coins_to_send = format!("{amount}{denom}");
         let base = format!("1{denom}");
-        sh_cosmovisor_tx("ibc-transfer transfer transfer", &[
+        sh_cosmovisor_tx([
+            "ibc-transfer transfer transfer",
             &self.transfer_channel,
             target_addr,
             &coins_to_send,
@@ -79,10 +82,10 @@ impl IbcSide {
     }
 
     pub async fn get_ibc_denom(&self, leaf_denom: &str) -> Result<String> {
-        let hash = sh_cosmovisor_no_debug("query ibc-transfer denom-hash", &[&format!(
-            "transfer/{}/{}",
-            self.transfer_channel, leaf_denom
-        )])
+        let hash = sh_cosmovisor_no_debug([
+            "query ibc-transfer denom-hash",
+            &format!("transfer/{}/{}", self.transfer_channel, leaf_denom),
+        ])
         .await
         .stack()?;
         let hash = get_separated_val(&hash, "\n", "hash", ":").stack()?;

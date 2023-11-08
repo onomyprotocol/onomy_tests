@@ -338,7 +338,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     FileOptions::write_str(
         "/logs/onomyd_export.json",
-        &sh_cosmovisor_no_debug("export", &[]).await.stack()?,
+        &sh_cosmovisor_no_debug(["export"]).await.stack()?,
     )
     .await
     .stack()?;
@@ -439,11 +439,10 @@ async fn consumer(args: &Args) -> Result<()> {
         .stack()?;
     wait_for_num_blocks(5).await.stack()?;
 
-    let pubkey = sh_cosmovisor("tendermint show-validator", &[])
-        .await
-        .stack()?;
+    let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let pubkey = pubkey.trim();
-    sh_cosmovisor_tx("staking", &[
+    sh_cosmovisor_tx([
+        "staking",
         "create-validator",
         "--commission-max-change-rate",
         "0.01",
@@ -512,7 +511,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
-    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug(["export"]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;

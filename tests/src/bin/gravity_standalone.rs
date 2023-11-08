@@ -89,7 +89,7 @@ async fn gravity_runner(args: &Args) -> Result<()> {
     wait_for_num_blocks(1).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor("query params subspace crisis ConstantFee", &[])
+    sh_cosmovisor(["query params subspace crisis ConstantFee"])
         .await
         .stack()?;
 
@@ -97,7 +97,7 @@ async fn gravity_runner(args: &Args) -> Result<()> {
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     // test that exporting works
-    let exported = sh_cosmovisor("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor(["export"]).await.stack()?;
     FileOptions::write_str("/logs/gravity_export.json", &exported)
         .await
         .stack()?;

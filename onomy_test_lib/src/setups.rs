@@ -59,13 +59,11 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     let daemon_home = &options.daemon_home;
     let chain_id = &options.chain_id;
     let global_min_self_delegation = &token18(225.0e3, "");
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
 
@@ -154,7 +152,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     } else {
         nom(2.0e6)
     };
-    sh_cosmovisor("add-genesis-account validator", &[&amount])
+    sh_cosmovisor(["add-genesis-account validator", &amount])
         .await
         .stack()?;
 
@@ -168,7 +166,8 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         nom(1.0e6)
     };
 
-    sh_cosmovisor("gentx validator", &[
+    sh_cosmovisor([
+        "gentx validator",
         &self_delegate,
         "--chain-id",
         chain_id,
@@ -178,9 +177,7 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     .await
     .stack()?;
 
-    sh_cosmovisor_no_debug("collect-gentxs", &[])
-        .await
-        .stack()?;
+    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
 
     FileOptions::write_str(
         "/logs/genesis.json",
@@ -195,13 +192,11 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
 }
 
 pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Result<String> {
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
 
@@ -262,10 +257,11 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     // "afootoken");
     let gen_coins = format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}afootoken");
     let stake_coin = token18(1.0e6, "anative");
-    sh_cosmovisor("add-genesis-account validator", &[&gen_coins])
+    sh_cosmovisor(["add-genesis-account validator", &gen_coins])
         .await
         .stack()?;
-    sh_cosmovisor("gentx validator", &[
+    sh_cosmovisor([
+        "gentx validator",
         &stake_coin,
         "--chain-id",
         chain_id,
@@ -274,9 +270,7 @@ pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Resul
     ])
     .await
     .stack()?;
-    sh_cosmovisor_no_debug("collect-gentxs", &[])
-        .await
-        .stack()?;
+    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
 
     Ok(mnemonic)
 }
@@ -289,13 +283,11 @@ pub async fn gravity_standalone_setup(
 ) -> Result<String> {
     let chain_id = "gravity";
     let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
 
@@ -375,25 +367,26 @@ pub async fn gravity_standalone_setup(
         .to_owned();
     // TODO for unknown reasons, add-genesis-account cannot find the keys
     let addr = cosmovisor_get_addr("validator").await.stack()?;
-    sh_cosmovisor("add-genesis-account", &[&addr, &nom(2.0e6)])
+    sh_cosmovisor(["add-genesis-account", &addr, &nom(2.0e6)])
         .await
         .stack()?;
 
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
+    let eth_keys = sh_cosmovisor(["eth_keys add"]).await.stack()?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
 
-    let consaddr = sh_cosmovisor("tendermint show-address", &[]).await?;
+    let consaddr = sh_cosmovisor(["tendermint show-address"]).await?;
     let consaddr = consaddr.trim();
 
     if use_old_gentx {
         // unconditionally needed for some Arc tests
-        sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
+        sh_cosmovisor(["keys add orchestrator"]).await.stack()?;
         let orch_addr = cosmovisor_get_addr("orchestrator").await.stack()?;
-        sh_cosmovisor("add-genesis-account", &[&orch_addr, &nom(1.0e6)])
+        sh_cosmovisor(["add-genesis-account", &orch_addr, &nom(1.0e6)])
             .await
             .stack()?;
 
-        sh_cosmovisor("gentx", &[
+        sh_cosmovisor([
+            "gentx",
             "validator",
             &nom(1.0e6),
             eth_addr,
@@ -406,7 +399,8 @@ pub async fn gravity_standalone_setup(
         .await
         .stack()?;
     } else {
-        sh_cosmovisor("gentx", &[
+        sh_cosmovisor([
+            "gentx",
             &nom(1.0e6),
             consaddr,
             eth_addr,
@@ -419,9 +413,7 @@ pub async fn gravity_standalone_setup(
         .await
         .stack()?;
     }
-    sh_cosmovisor_no_debug("collect-gentxs", &[])
-        .await
-        .stack()?;
+    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
@@ -474,9 +466,7 @@ pub async fn cosmovisor_add_consumer(
 ) -> Result<String> {
     let proposal: Value = serde_json::from_str(proposal_s).stack()?;
 
-    let tendermint_key = sh_cosmovisor("tendermint show-validator", &[])
-        .await
-        .stack()?;
+    let tendermint_key = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let tendermint_key = tendermint_key.trim();
 
     cosmovisor_gov_file_proposal(daemon_home, Some("consumer-addition"), proposal_s, "1anom")
@@ -485,7 +475,8 @@ pub async fn cosmovisor_add_consumer(
     wait_for_num_blocks(1).await.stack()?;
 
     // do this before getting the consumer-genesis
-    sh_cosmovisor_tx("provider assign-consensus-key", &[
+    sh_cosmovisor_tx([
+        "provider assign-consensus-key",
         consumer_id,
         tendermint_key,
         // TODO for unknown reasons, `onomyd` with nonzero gas fee breaks non `--fees` usage
@@ -506,13 +497,10 @@ pub async fn cosmovisor_add_consumer(
 
     // It appears we do not have to wait any blocks
 
-    let ccvconsumer_state = sh_cosmovisor_no_debug("query provider consumer-genesis", &[
-        consumer_id,
-        "-o",
-        "json",
-    ])
-    .await
-    .stack()?;
+    let ccvconsumer_state =
+        sh_cosmovisor_no_debug(["query provider consumer-genesis", consumer_id, "-o", "json"])
+            .await
+            .stack()?;
 
     let mut state: Value = serde_json::from_str(&ccvconsumer_state).stack()?;
 
@@ -534,13 +522,11 @@ pub async fn marketd_setup(
     chain_id: &str,
     ccvconsumer_state_s: &str,
 ) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
@@ -602,7 +588,8 @@ pub async fn marketd_setup(
     let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[
+    sh_cosmovisor([
+        "add-genesis-account",
         addr,
         &format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}anom"),
     ])
@@ -631,13 +618,11 @@ pub async fn arc_consumer_setup(
     chain_id: &str,
     ccvconsumer_state_s: &str,
 ) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
@@ -666,17 +651,18 @@ pub async fn arc_consumer_setup(
     let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
 
     // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor("add-genesis-account", &[addr, &token18(2.0e6, "anative")])
+    sh_cosmovisor(["add-genesis-account", addr, &token18(2.0e6, "anative")])
         .await
         .stack()?;
 
-    let consaddr = sh_cosmovisor("tendermint show-address", &[]).await?;
+    let consaddr = sh_cosmovisor(["tendermint show-address"]).await?;
     let consaddr = consaddr.trim();
 
-    let eth_keys = sh_cosmovisor("eth_keys add", &[]).await.stack()?;
+    let eth_keys = sh_cosmovisor(["eth_keys add"]).await.stack()?;
     let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
     let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor("gentx", &[
+    sh_cosmovisor([
+        "gentx",
         &token18(1.0e6, "anative"),
         consaddr,
         eth_addr,
@@ -688,9 +674,7 @@ pub async fn arc_consumer_setup(
     ])
     .await
     .stack()?;
-    sh_cosmovisor_no_debug("collect-gentxs", &[])
-        .await
-        .stack()?;
+    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
 
     // TODO it seems that this works, shouldn't it fail because of the signature?
     // Arc only: remove `MsgCreateValidator`

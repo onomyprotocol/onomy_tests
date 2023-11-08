@@ -122,7 +122,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     // test that exporting works
-    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug(["export"]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{CHAIN_ID}d_export.json"), &exported)
         .await
         .stack()?;

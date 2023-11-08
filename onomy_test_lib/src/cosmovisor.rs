@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, time::Duration};
 use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    get_separated_val, sh, sh_no_debug,
+    get_separated_val, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
     stacked_get, stacked_get_mut, wait_for_ok, Command, CommandRunner, FileOptions,
 };
@@ -13,12 +13,32 @@ use u64_array_bigints::U256;
 use crate::{anom_to_nom, json_inner, yaml_str_to_json_value, STD_DELAY, STD_TRIES};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "cosmovisor run"
-/// onto `cmd_with_args` and removes the first line of output (in order to
+/// onto `program_with_args` and removes the first line of output (in order to
 /// remove the INF line that always shows with cosmovisor runs)
-pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let mut tmp = vec![format!("cosmovisor run {cmd_with_args}")];
-    tmp.extend(args.iter().map(|s| s.to_string()));
-    let stdout = sh(tmp).await.stack()?;
+pub async fn sh_cosmovisor<I, S>(program_with_args: I) -> Result<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("cosmovisor run {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_cosmovisor` called with an empty iterator")?
+        .debug(true)
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -26,10 +46,29 @@ pub async fn sh_cosmovisor(cmd_with_args: &str, args: &[&str]) -> Result<String>
         .to_owned())
 }
 
-pub async fn sh_cosmovisor_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<String> {
-    let mut tmp = vec![format!("cosmovisor run {cmd_with_args}")];
-    tmp.extend(args.iter().map(|s| s.to_string()));
-    let stdout = sh_no_debug(tmp).await.stack()?;
+pub async fn sh_cosmovisor_no_debug<I, S>(program_with_args: I) -> Result<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("cosmovisor run {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_cosmovisor_no_debug` called with an empty iterator")?
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     Ok(stdout
         .split_once('\n')
         .stack_err(|| "cosmovisor run command did not have expected info line")?
@@ -44,12 +83,36 @@ pub async fn sh_cosmovisor_no_debug(cmd_with_args: &str, args: &[&str]) -> Resul
 ///
 /// NOTE: You need to pass the argument `-y` to confirm without needing piped
 /// input, and the arguments `-b block` for the error handling to work properly
-pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serde_json::Value> {
-    let res = sh_cosmovisor_no_debug(&format!("tx {cmd_with_args}"), args)
-        .await
-        .stack_err(|| "sh_cosmovisor_tx() initial command failed")?;
+pub async fn sh_cosmovisor_tx<I, S>(program_with_args: I) -> Result<serde_json::Value>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("cosmovisor run tx {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_cosmovisor_no_debug` called with an empty iterator")?
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
+    let res = stdout
+        .split_once('\n')
+        .stack_err(|| "cosmovisor run command did not have expected info line")?
+        .1
+        .to_owned();
 
-    let res = yaml_str_to_json_value(&res).stack_err(|| ())?;
+    let res = yaml_str_to_json_value(&res).stack_err(|| "failed to convert json value")?;
     if stacked_get!(res["code"]).as_u64().stack()? == 0 {
         Ok(res)
     } else {
@@ -57,7 +120,7 @@ pub async fn sh_cosmovisor_tx(cmd_with_args: &str, args: &[&str]) -> Result<serd
             "raw_log: {}",
             stacked_get!(res["raw_log"])
         )))
-        .stack_err(|| format!("sh_cosmovisor_tx(cmd_with_args: {cmd_with_args}, args: {args:?})"))
+        .stack_err(|| format!("sh_cosmovisor_tx command {comres:?}"))
     }
 }
 
@@ -196,7 +259,7 @@ pub async fn get_self_ip(hostname_of_self: &str) -> Result<String> {
 }
 
 pub async fn get_self_peer_info(hostname_of_self: &str, port: &str) -> Result<String> {
-    let node_id = sh_cosmovisor_no_debug("tendermint show-node-id", &[])
+    let node_id = sh_cosmovisor_no_debug(["tendermint show-node-id"])
         .await
         .stack()?;
     let node_id = node_id.trim();
@@ -232,7 +295,7 @@ pub async fn set_persistent_peers(daemon_home: &str, persistent_peers: &[String]
 
 /// Note that this interprets "null" height as 0
 pub async fn get_block_height() -> Result<u64> {
-    let block_s = sh_cosmovisor_no_debug("query block", &[]).await.stack()?;
+    let block_s = sh_cosmovisor_no_debug(["query block"]).await.stack()?;
     let block: Value = serde_json::from_str(&block_s).stack()?;
     // this is purposely indexed without `stacked_get`
     let height = &block["block"]["header"]["height"].to_string();
@@ -333,7 +396,8 @@ pub async fn cosmovisor_submit_gov_file_proposal(
         .await
         .stack()?;
     if let Some(proposal_type) = proposal_type {
-        sh_cosmovisor_tx("gov submit-proposal", &[
+        sh_cosmovisor_tx([
+            "gov submit-proposal",
             proposal_type,
             &proposal_file_path,
             "--gas",
@@ -350,7 +414,8 @@ pub async fn cosmovisor_submit_gov_file_proposal(
         ])
         .await
     } else {
-        sh_cosmovisor_tx("gov submit-proposal", &[
+        sh_cosmovisor_tx([
+            "gov submit-proposal",
             "--proposal",
             &proposal_file_path,
             "--gas",
@@ -387,7 +452,8 @@ pub async fn cosmovisor_gov_file_proposal(
         .stack()?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await.stack()?);
     // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor_tx("gov vote", &[
+    sh_cosmovisor_tx([
+        "gov vote",
         &proposal_id,
         "yes",
         "--gas",
@@ -413,7 +479,7 @@ pub async fn cosmovisor_submit_gov_proposal(
     proposal_args: &[&str],
     base_fee: &str,
 ) -> Result<()> {
-    let mut args = vec![];
+    let mut args = vec!["gov submit-proposal"];
     args.push(proposal_type);
     args.extend(proposal_args);
     args.extend([
@@ -429,9 +495,7 @@ pub async fn cosmovisor_submit_gov_proposal(
         "--from",
         "validator",
     ]);
-    sh_cosmovisor_tx("gov submit-proposal", &args)
-        .await
-        .stack()?;
+    sh_cosmovisor_tx(args).await.stack()?;
     Ok(())
 }
 
@@ -445,7 +509,8 @@ pub async fn cosmovisor_gov_proposal(
         .await
         .stack()?;
     let proposal_id = format!("{}", cosmovisor_get_num_proposals().await.stack()?);
-    sh_cosmovisor_tx("gov deposit", &[
+    sh_cosmovisor_tx([
+        "gov deposit",
         &proposal_id,
         deposit,
         "--gas",
@@ -463,7 +528,8 @@ pub async fn cosmovisor_gov_proposal(
     .await
     .stack()?;
     // the deposit is done as part of the chain addition proposal
-    sh_cosmovisor_tx("gov vote", &[
+    sh_cosmovisor_tx([
+        "gov vote",
         &proposal_id,
         "yes",
         "--gas",
@@ -484,9 +550,7 @@ pub async fn cosmovisor_gov_proposal(
 }
 
 pub async fn get_persistent_peer_info(hostname: &str) -> Result<String> {
-    let s = sh_cosmovisor("tendermint show-node-id", &[])
-        .await
-        .stack()?;
+    let s = sh_cosmovisor(["tendermint show-node-id"]).await.stack()?;
     let tendermint_id = s.trim();
     Ok(format!("{tendermint_id}@{hostname}:26656"))
 }
@@ -597,7 +661,7 @@ pub async fn cosmovisor_start(
         info!("waiting for daemon to run");
         // avoid the initial debug failure
         sleep(Duration::from_millis(300)).await;
-        wait_for_ok(10, STD_DELAY, || sh_cosmovisor("status", &[]))
+        wait_for_ok(10, STD_DELAY, || sh_cosmovisor(["status"]))
             .await
             .stack()?;
         if !options.as_ref().is_some_and(|o| o.wait_for_status_only) {
@@ -643,13 +707,13 @@ pub async fn cosmovisor_start(
 
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
     let validator =
-        yaml_str_to_json_value(&sh_cosmovisor("keys show", &[key_name]).await.stack()?).stack()?;
+        yaml_str_to_json_value(&sh_cosmovisor(["keys show", key_name]).await.stack()?).stack()?;
     Ok(json_inner(stacked_get!(validator[0]["address"])))
 }
 
 /// Returns a mapping of denoms to amounts
 pub async fn cosmovisor_get_balances(addr: &str) -> Result<BTreeMap<String, U256>> {
-    let balances = sh_cosmovisor_no_debug("query bank balances", &[addr])
+    let balances = sh_cosmovisor_no_debug(["query bank balances", addr])
         .await
         .stack()?;
     let balances = yaml_str_to_json_value(&balances).stack()?;
@@ -671,29 +735,22 @@ pub async fn cosmovisor_bank_send(
     amount: &str,
     denom: &str,
 ) -> Result<()> {
-    sh_cosmovisor_tx(
-        &format!(
-            "bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto \
-             --gas-adjustment 1.3 --gas-prices 1{denom}"
-        ),
-        &[],
-    )
+    sh_cosmovisor_tx([format!(
+        "bank send {src_addr} {dst_addr} {amount}{denom} -y -b block --gas auto --gas-adjustment \
+         1.3 --gas-prices 1{denom}"
+    )])
     .await
     .stack_err(|| "cosmovisor_bank_send")?;
     Ok(())
 }
 
 pub async fn get_delegations_to(valoper_addr: &str) -> Result<String> {
-    sh_cosmovisor("query staking delegations-to", &[valoper_addr]).await
+    sh_cosmovisor(["query staking delegations-to", valoper_addr]).await
 }
 
 pub async fn get_treasury() -> Result<f64> {
-    let tmp = yaml_str_to_json_value(
-        &sh_cosmovisor("query dao show-treasury", &[])
-            .await
-            .stack()?,
-    )
-    .stack()?;
+    let tmp = yaml_str_to_json_value(&sh_cosmovisor(["query dao show-treasury"]).await.stack()?)
+        .stack()?;
     let inner = json_inner(stacked_get!(tmp["treasury_balance"][0]["amount"]));
     anom_to_nom(&inner).stack_err(|| format!("inner was: {inner}"))
 }
@@ -714,7 +771,7 @@ pub struct DbgStakingPool {
 }
 
 pub async fn get_staking_pool() -> Result<DbgStakingPool> {
-    let pool = sh_cosmovisor("query staking pool", &[]).await.stack()?;
+    let pool = sh_cosmovisor(["query staking pool"]).await.stack()?;
     let bonded_tokens = get_separated_val(&pool, "\n", "bonded_tokens", ":").stack()?;
     let bonded_tokens = bonded_tokens.trim_matches('"');
     let bonded_tokens = anom_to_nom(bonded_tokens).stack()?;
@@ -729,7 +786,8 @@ pub async fn get_staking_pool() -> Result<DbgStakingPool> {
 
 pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
     let tmp = yaml_str_to_json_value(
-        &sh_cosmovisor("query distribution validator-outstanding-rewards", &[
+        &sh_cosmovisor([
+            "query distribution validator-outstanding-rewards",
             valoper_addr,
         ])
         .await
@@ -741,12 +799,12 @@ pub async fn get_outstanding_rewards(valoper_addr: &str) -> Result<f64> {
 
 pub async fn get_validator_delegated() -> Result<f64> {
     let validator_addr = get_separated_val(
-        &sh_cosmovisor("keys show validator", &[]).await.stack()?,
+        &sh_cosmovisor(["keys show validator"]).await.stack()?,
         "\n",
         "address",
         ":",
     )?;
-    let s = sh_cosmovisor("query staking delegations", &[&validator_addr])
+    let s = sh_cosmovisor(["query staking delegations", &validator_addr])
         .await
         .stack()?;
     let tmp = yaml_str_to_json_value(&s).stack()?;

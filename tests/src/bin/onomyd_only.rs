@@ -50,9 +50,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     let addr = &cosmovisor_get_addr("validator").await.stack()?;
     let valoper_addr = &reprefix_bech32(addr, "onomyvaloper").stack()?;
-    let tmp = sh_cosmovisor("tendermint show-address", &[])
-        .await
-        .stack()?;
+    let tmp = sh_cosmovisor(["tendermint show-address"]).await.stack()?;
     let valcons_addr = tmp.trim();
     info!("address: {addr}");
     info!("valoper address: {valoper_addr}");
@@ -68,12 +66,12 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     cosmovisor_gov_file_proposal(daemon_home, None, &proposal.to_string(), "1anom")
         .await
         .stack()?;
-    let proposals = sh_cosmovisor("query gov proposals", &[]).await.stack()?;
+    let proposals = sh_cosmovisor(["query gov proposals"]).await.stack()?;
     ensure!(proposals.contains("PROPOSAL_STATUS_PASSED"));
 
     // get valcons bech32 and pub key
     // cosmovisor run query tendermint-validator-set
-    let valcons_set = sh_cosmovisor("query tendermint-validator-set", &[])
+    let valcons_set = sh_cosmovisor(["query tendermint-validator-set"])
         .await
         .stack()?;
     info!("{valcons_set}");
@@ -81,18 +79,13 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     // get mapping of cons pub keys and valoper addr
     // cosmovisor run query staking validators
 
-    sh_cosmovisor_tx(
-        &format!(
-            "staking delegate {valoper_addr} 1000000000000000000000anom --fees 1000000anom -y -b \
-             block --from validator"
-        ),
-        &[],
-    )
+    sh_cosmovisor_tx([format!(
+        "staking delegate {valoper_addr} 1000000000000000000000anom --fees 1000000anom -y -b \
+         block --from validator"
+    )])
     .await
     .stack()?;
-    sh_cosmovisor("query staking validators", &[])
-        .await
-        .stack()?;
+    sh_cosmovisor(["query staking validators"]).await.stack()?;
 
     let apr0 = get_apr_annual(valoper_addr, 6311520.0).await.stack()?;
     info!("APR: {apr0}");
@@ -147,14 +140,14 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     wait_for_num_blocks(1).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor("query params subspace crisis ConstantFee", &[])
+    sh_cosmovisor(["query params subspace crisis ConstantFee"])
         .await
         .stack()?;
 
     sleep(Duration::ZERO).await;
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
     // test that exporting works
-    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug(["export"]).await.stack()?;
     FileOptions::write_str("/logs/onomyd_export.json", &exported)
         .await
         .stack()?;
