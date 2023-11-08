@@ -1,9 +1,7 @@
 use std::time::Duration;
 
-use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    sh, sh_no_debug,
     stacked_errors::{Error, Result, StackableErr},
     stacked_get, stacked_get_mut, Command, CommandRunner, FileOptions,
 };
@@ -13,21 +11,59 @@ pub use crate::{hermes_config::*, ibc::IbcPair};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
 /// last line is parsed as a `Value` and the inner "result" is returned.
-pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    info!("running hermes({cmd_with_args}, {args:?})");
-    let mut tmp = vec![format!("hermes --json {cmd_with_args}")];
-    tmp.extend(args.iter().map(|s| s.to_string()));
-    let stdout = sh(tmp).await.stack()?;
+pub async fn sh_hermes<I, S>(program_with_args: I) -> Result<Value>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("hermes --json {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_hermes` called with an empty iterator")?
+        .debug(true)
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
     Ok(res)
 }
 
-pub async fn sh_hermes_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    let mut tmp = vec![format!("hermes --json {cmd_with_args}")];
-    tmp.extend(args.iter().map(|s| s.to_string()));
-    let stdout = sh_no_debug(tmp).await.stack()?;
+pub async fn sh_hermes_no_debug<I, S>(program_with_args: I) -> Result<Value>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("hermes --json {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_hermes_no_debug` called with an empty iterator")?
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
@@ -37,7 +73,7 @@ pub async fn sh_hermes_no_debug(cmd_with_args: &str, args: &[&str]) -> Result<Va
 /// Returns a single client if it exists. Returns an error if two redundant
 /// clients were found.
 pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = sh_hermes_no_debug("query clients --host-chain", &[host_chain])
+    let clients = sh_hermes_no_debug(["query clients --host-chain", host_chain])
         .await
         .stack_err(|| "failed to query for host chain")?;
     let clients = clients.as_array().stack()?;
@@ -81,7 +117,8 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
             "a client already exists between {b_chain} and {a_chain}"
         )))
     }
-    let tmp = sh_hermes("create client --host-chain", &[
+    let tmp = sh_hermes([
+        "create client --host-chain",
         a_chain,
         "--reference-chain",
         b_chain,
@@ -89,7 +126,8 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
     .await
     .stack()?;
     let client0 = json_inner(stacked_get!(tmp["CreateClient"]["client_id"]));
-    let tmp = sh_hermes("create client --host-chain", &[
+    let tmp = sh_hermes([
+        "create client --host-chain",
         b_chain,
         "--reference-chain",
         a_chain,
@@ -110,7 +148,8 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
         format!("client hosted by {b_chain} not created before `create_connection_pair` was called")
     })?;
 
-    let res = &sh_hermes("create connection --a-chain", &[
+    let res = &sh_hermes([
+        "create connection --a-chain",
         a_chain,
         "--a-client",
         &a_client,
@@ -138,29 +177,20 @@ pub async fn create_channel_pair(
     b_port: &str,
     ordered: bool,
 ) -> Result<(String, String)> {
-    let order: &[&str] = if ordered {
-        &["--order", "ordered"]
-    } else {
-        &[]
-    };
-    let res = &sh_hermes(
+    let mut args = vec![
         "create channel --a-chain",
-        &[
-            &[
-                a_chain,
-                "--a-connection",
-                a_connection,
-                "--a-port",
-                a_port,
-                "--b-port",
-                b_port,
-            ],
-            order,
-        ]
-        .concat(),
-    )
-    .await
-    .stack()?;
+        a_chain,
+        "--a-connection",
+        a_connection,
+        "--a-port",
+        a_port,
+        "--b-port",
+        b_port,
+    ];
+    if ordered {
+        args.extend(&["--order", "ordered"])
+    }
+    let res = &sh_hermes(args).await.stack()?;
     Ok((
         json_inner(stacked_get!(res["a_side"]["channel_id"])),
         json_inner(stacked_get!(res["b_side"]["channel_id"])),
@@ -170,7 +200,8 @@ pub async fn create_channel_pair(
 impl IbcPair {
     pub async fn hermes_check_acks(&self) -> Result<()> {
         // check all channels on both sides
-        sh_hermes_no_debug("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.b.chain_id,
             "--port",
             "transfer",
@@ -179,7 +210,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_debug("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.a.chain_id,
             "--port",
             "transfer",
@@ -188,7 +220,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_debug("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.b.chain_id,
             "--port",
             "provider",
@@ -197,7 +230,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_debug("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.a.chain_id,
             "--port",
             "consumer",

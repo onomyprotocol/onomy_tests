@@ -174,16 +174,12 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic)
         .await
         .stack()?;
-    sh_hermes(
-        "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
-        &[],
-    )
-    .await
-    .stack()?;
-    sh_hermes(
-        &format!("keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"),
-        &[],
-    )
+    sh_hermes(["keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt"])
+        .await
+        .stack()?;
+    sh_hermes([format!(
+        "keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"
+    )])
     .await
     .stack()?;
 
