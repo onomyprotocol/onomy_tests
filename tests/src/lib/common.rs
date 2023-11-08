@@ -58,22 +58,21 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
     .await
     .stack()?;
 
-    let mut cn = ContainerNetwork::new(
-        "test",
-        name_and_contents
-            .iter()
-            .map(|(name, contents)| {
-                Container::new(name, Dockerfile::contents(contents)).entrypoint(
+    let mut containers = vec![];
+    for (name, contents) in name_and_contents {
+        containers.push(
+            Container::new(name, Dockerfile::contents(contents))
+                .external_entrypoint(
                     format!("./target/{container_target}/release/{bin_entrypoint}"),
                     ["--entry-name", name],
                 )
-            })
-            .collect(),
-        Some(dockerfiles_dir),
-        true,
-        logs_dir,
-    )
-    .stack()?;
+                .await
+                .stack()?,
+        );
+    }
+
+    let mut cn =
+        ContainerNetwork::new("test", containers, Some(dockerfiles_dir), true, logs_dir).stack()?;
     cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
     cn.add_common_entrypoint_args(["--uuid", &uuid]);

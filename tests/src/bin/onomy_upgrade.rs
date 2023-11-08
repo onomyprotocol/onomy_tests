@@ -57,10 +57,12 @@ async fn container_runner(args: &Args) -> Result<()> {
             "onomyd",
             Dockerfile::path(format!("{dockerfiles_dir}/chain_upgrade.dockerfile")),
         )
-        .entrypoint(
+        .external_entrypoint(
             format!("./target/{container_target}/release/{bin_entrypoint}"),
             ["--entry-name", "onomyd"],
-        )],
+        )
+        .await
+        .stack()?],
         None,
         true,
         logs_dir,

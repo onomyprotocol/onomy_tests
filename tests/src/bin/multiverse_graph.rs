@@ -183,11 +183,15 @@ async fn container_runner(args: &Args) -> Result<()> {
     let mut containers =
         vec![
             Container::new("test_runner", Dockerfile::contents(standalone_dockerfile()))
-                .entrypoint(entrypoint, ["--entry-name", "test_runner"]),
+                .external_entrypoint(entrypoint, ["--entry-name", "test_runner"])
+                .await
+                .stack()?,
         ];
     containers.extend_from_slice(&[
         Container::new("onex_node", Dockerfile::contents(dockerfile_onexd()))
-            .entrypoint(entrypoint, ["--entry-name", "onex_node"])
+            .external_entrypoint(entrypoint, ["--entry-name", "onex_node"])
+            .await
+            .stack()?
             .volume(
                 "./tests/resources/keyring-test",
                 format!("/root/{}/keyring-test", BINARY_DIR),
@@ -196,9 +200,13 @@ async fn container_runner(args: &Args) -> Result<()> {
             "hermes",
             Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
         )
-        .entrypoint(entrypoint, ["--entry-name", "hermes"]),
+        .external_entrypoint(entrypoint, ["--entry-name", "hermes"])
+        .await
+        .stack()?,
         Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
-            .entrypoint(entrypoint, ["--entry-name", "onomyd"])
+            .external_entrypoint(entrypoint, ["--entry-name", "onomyd"])
+            .await
+            .stack()?
             .volume(
                 "./tests/resources/keyring-test",
                 "/root/.onomy/keyring-test",

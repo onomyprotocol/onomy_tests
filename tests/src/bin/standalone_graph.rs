@@ -172,14 +172,18 @@ async fn container_runner(args: &Args) -> Result<()> {
     let mut containers =
         vec![
             Container::new("standalone", Dockerfile::contents(standalone_dockerfile()))
-                .entrypoint(entrypoint, ["--entry-name", "standalone"]),
+                .external_entrypoint(entrypoint, ["--entry-name", "standalone"])
+                .await
+                .stack()?,
         ];
     containers.push(
         Container::new(
             "onex_node",
             Dockerfile::contents(dockerfile_standalone_onexd()),
         )
-        .entrypoint(entrypoint, ["--entry-name", "onex_node"]),
+        .external_entrypoint(entrypoint, ["--entry-name", "onex_node"])
+        .await
+        .stack()?,
     );
 
     let mut cn =

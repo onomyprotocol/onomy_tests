@@ -104,9 +104,13 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "hermes",
                 Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
             )
-            .entrypoint(entrypoint, ["--entry-name", "hermes"]),
+            .external_entrypoint(entrypoint, ["--entry-name", "hermes"])
+            .await
+            .stack()?,
             Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
-                .entrypoint(entrypoint, ["--entry-name", "onomyd"])
+                .external_entrypoint(entrypoint, ["--entry-name", "onomyd"])
+                .await
+                .stack()?
                 .volume(
                     "./tests/resources/keyring-test",
                     "/root/.onomy/keyring-test",
@@ -120,7 +124,9 @@ async fn container_runner(args: &Args) -> Result<()> {
                     INTERCHAIN_SECURTY_CDD,
                 )),
             )
-            .entrypoint(entrypoint, ["--entry-name", "consumer"])
+            .external_entrypoint(entrypoint, ["--entry-name", "consumer"])
+            .await
+            .stack()?
             .volume(
                 "./tests/resources/keyring-test",
                 format!("/root/{}/keyring-test", consumer_directory()),
