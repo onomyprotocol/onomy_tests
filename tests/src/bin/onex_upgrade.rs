@@ -96,49 +96,40 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    let entrypoint = Some(format!(
-        "./target/{container_target}/release/{bin_entrypoint}"
-    ));
-    let entrypoint = entrypoint.as_deref();
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "hermes",
-                Dockerfile::Contents(dockerfile_hermes("__tmp_hermes_config.toml")),
-                entrypoint,
-                &["--entry-name", "hermes"],
-            ),
-            Container::new(
-                "onomyd",
-                Dockerfile::Contents(dockerfile_onomyd()),
-                entrypoint,
-                &["--entry-name", "onomyd"],
+                Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
             )
-            .volumes(&[(
-                "./tests/resources/keyring-test",
-                "/root/.onomy/keyring-test",
-            )]),
+            .entrypoint(entrypoint, ["--entry-name", "hermes"]),
+            Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
+                .entrypoint(entrypoint, ["--entry-name", "onomyd"])
+                .volume(
+                    "./tests/resources/keyring-test",
+                    "/root/.onomy/keyring-test",
+                ),
             Container::new(
                 &consumer_binary_name(),
-                Dockerfile::Path(format!("{dockerfiles_dir}/onex_upgrade.dockerfile")),
-                entrypoint,
-                &["--entry-name", "consumer"],
+                Dockerfile::path(format!("{dockerfiles_dir}/onex_upgrade.dockerfile")),
             )
-            .volumes(&[(
+            .entrypoint(entrypoint, ["--entry-name", "consumer"])
+            .volume(
                 "./tests/resources/keyring-test",
-                &format!("/root/{}/keyring-test", consumer_directory()),
-            )]),
+                format!("/root/{}/keyring-test", consumer_directory()),
+            ),
         ],
         Some(dockerfiles_dir),
         true,
         logs_dir,
     )
     .stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
 
     // prepare hermes config
     write_hermes_config(

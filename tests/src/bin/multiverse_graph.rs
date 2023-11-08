@@ -176,67 +176,49 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    let entrypoint = Some(format!(
-        "./target/{container_target}/release/{bin_entrypoint}"
-    ));
-    let entrypoint = entrypoint.as_deref();
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     // we use a normal onexd for the validator full node, but use the `-fh` version
     // for the full node that indexes for firehose
-    let mut containers = vec![Container::new(
-        "test_runner",
-        Dockerfile::Contents(standalone_dockerfile()),
-        entrypoint,
-        &["--entry-name", "test_runner"],
-    )];
+    let mut containers =
+        vec![
+            Container::new("test_runner", Dockerfile::contents(standalone_dockerfile()))
+                .entrypoint(entrypoint, ["--entry-name", "test_runner"]),
+        ];
     containers.extend_from_slice(&[
-        Container::new(
-            "onex_node",
-            Dockerfile::Contents(dockerfile_onexd()),
-            entrypoint,
-            &["--entry-name", "onex_node"],
-        )
-        .volumes(&[(
-            "./tests/resources/keyring-test",
-            &format!("/root/{}/keyring-test", BINARY_DIR),
-        )]),
+        Container::new("onex_node", Dockerfile::contents(dockerfile_onexd()))
+            .entrypoint(entrypoint, ["--entry-name", "onex_node"])
+            .volume(
+                "./tests/resources/keyring-test",
+                format!("/root/{}/keyring-test", BINARY_DIR),
+            ),
         Container::new(
             "hermes",
-            Dockerfile::Contents(dockerfile_hermes("__tmp_hermes_config.toml")),
-            entrypoint,
-            &["--entry-name", "hermes"],
-        ),
-        Container::new(
-            "onomyd",
-            Dockerfile::Contents(dockerfile_onomyd()),
-            entrypoint,
-            &["--entry-name", "onomyd"],
+            Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
         )
-        .volumes(&[(
-            "./tests/resources/keyring-test",
-            "/root/.onomy/keyring-test",
-        )]),
+        .entrypoint(entrypoint, ["--entry-name", "hermes"]),
+        Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
+            .entrypoint(entrypoint, ["--entry-name", "onomyd"])
+            .volume(
+                "./tests/resources/keyring-test",
+                "/root/.onomy/keyring-test",
+            ),
     ]);
 
     let mut cn =
         ContainerNetwork::new("test", containers, Some(dockerfiles_dir), true, logs_dir).stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
     cn.add_container(
-        Container::new(
-            "postgres",
-            Dockerfile::NameTag("postgres:16".to_owned()),
-            None,
-            &[],
-        )
-        .environment_vars(&[
-            ("POSTGRES_PASSWORD", "root"),
-            ("POSTGRES_USER", "postgres"),
-            ("POSTGRES_DB", "graph-node"),
-            ("POSTGRES_INITDB_ARGS", "-E UTF8 --locale=C"),
-        ])
-        .no_uuid_for_host_name(),
+        Container::new("postgres", Dockerfile::name_tag("postgres:16"))
+            .environment_vars([
+                ("POSTGRES_PASSWORD", "root"),
+                ("POSTGRES_USER", "postgres"),
+                ("POSTGRES_DB", "graph-node"),
+                ("POSTGRES_INITDB_ARGS", "-E UTF8 --locale=C"),
+            ])
+            .no_uuid_for_host_name(),
     )
     .stack()?;
 

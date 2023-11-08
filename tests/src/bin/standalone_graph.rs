@@ -165,45 +165,37 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
-    let entrypoint = Some(format!(
-        "./target/{container_target}/release/{bin_entrypoint}"
-    ));
-    let entrypoint = entrypoint.as_deref();
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     // we use a normal onexd for the validator full node, but use the `-fh` version
     // for the full node that indexes for firehose
-    let mut containers = vec![Container::new(
-        "standalone",
-        Dockerfile::Contents(standalone_dockerfile()),
-        entrypoint,
-        &["--entry-name", "standalone"],
-    )];
-    containers.push(Container::new(
-        "onex_node",
-        Dockerfile::Contents(dockerfile_standalone_onexd()),
-        entrypoint,
-        &["--entry-name", "onex_node"],
-    ));
+    let mut containers =
+        vec![
+            Container::new("standalone", Dockerfile::contents(standalone_dockerfile()))
+                .entrypoint(entrypoint, ["--entry-name", "standalone"]),
+        ];
+    containers.push(
+        Container::new(
+            "onex_node",
+            Dockerfile::contents(dockerfile_standalone_onexd()),
+        )
+        .entrypoint(entrypoint, ["--entry-name", "onex_node"]),
+    );
 
     let mut cn =
         ContainerNetwork::new("test", containers, Some(dockerfiles_dir), true, logs_dir).stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
     cn.add_container(
-        Container::new(
-            "postgres",
-            Dockerfile::NameTag("postgres:16".to_owned()),
-            None,
-            &[],
-        )
-        .environment_vars(&[
-            ("POSTGRES_PASSWORD", "root"),
-            ("POSTGRES_USER", "postgres"),
-            ("POSTGRES_DB", "graph-node"),
-            ("POSTGRES_INITDB_ARGS", "-E UTF8 --locale=C"),
-        ])
-        .no_uuid_for_host_name(),
+        Container::new("postgres", Dockerfile::name_tag("postgres:16"))
+            .environment_vars([
+                ("POSTGRES_PASSWORD", "root"),
+                ("POSTGRES_USER", "postgres"),
+                ("POSTGRES_DB", "graph-node"),
+                ("POSTGRES_INITDB_ARGS", "-E UTF8 --locale=C"),
+            ])
+            .no_uuid_for_host_name(),
     )
     .stack()?;
 

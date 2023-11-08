@@ -63,13 +63,9 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
         name_and_contents
             .iter()
             .map(|(name, contents)| {
-                Container::new(
-                    name,
-                    Dockerfile::Contents(contents.to_string()),
-                    Some(&format!(
-                        "./target/{container_target}/release/{bin_entrypoint}"
-                    )),
-                    &["--entry-name", name],
+                Container::new(name, Dockerfile::contents(contents)).entrypoint(
+                    format!("./target/{container_target}/release/{bin_entrypoint}"),
+                    ["--entry-name", name],
                 )
             })
             .collect(),
@@ -78,9 +74,9 @@ pub async fn container_runner(args: &Args, name_and_contents: &[(&str, &str)]) -
         logs_dir,
     )
     .stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     cn.terminate_all().await;
