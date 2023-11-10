@@ -55,13 +55,11 @@ pub async fn onexd_setup(
     chain_id: &str,
     ccvconsumer_state_s: &str,
 ) -> Result<()> {
-    sh_cosmovisor("config chain-id", &[chain_id])
+    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
+    sh_cosmovisor(["config keyring-backend test"])
         .await
         .stack()?;
-    sh_cosmovisor("config keyring-backend test", &[])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug("init --overwrite", &[chain_id])
+    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
         .await
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
@@ -145,7 +143,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     let container_target = "x86_64-unknown-linux-gnu";
 
     // build internal runner with `--release`
-    sh("cargo build --release --bin", &[
+    sh([
+        "cargo build --release --bin",
         bin_entrypoint,
         "--target",
         container_target,
@@ -160,26 +159,19 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    let entrypoint = Some(format!(
-        "./target/{container_target}/release/{bin_entrypoint}"
-    ));
-    let entrypoint = entrypoint.as_deref();
+    let entrypoint = format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
             Container::new(
                 "hermes",
-                Dockerfile::Contents(dockerfile_hermes("__tmp_hermes_config.toml")),
-                entrypoint,
-                &["--entry-name", "hermes"],
-            ),
+                Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
+            ).entrypoint(entrypoint, ["--entry-name", "hermes"]),
             Container::new(
                 "onomyd",
-                Dockerfile::Contents(dockerfile_onomyd()),
-                entrypoint,
-                &["--entry-name", "onomyd"],
-            )
+                Dockerfile::contents(dockerfile_onomyd()),
+            ).entrypoint(entrypoint, ["--entry-name", "onomyd"]),
             .volumes(&[
                 (
                     "./tests/resources/keyring-test",
@@ -240,7 +232,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 
 async fn hermes_runner(args: &Args) -> Result<()> {
     let hermes_home = args.hermes_home.as_ref().stack()?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
@@ -250,16 +242,12 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     FileOptions::write_str("/root/.hermes/mnemonic.txt", &mnemonic)
         .await
         .stack()?;
-    sh_hermes(
-        "keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt",
-        &[],
-    )
-    .await
-    .stack()?;
-    sh_hermes(
-        &format!("keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"),
-        &[],
-    )
+    sh_hermes(["keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt"])
+        .await
+        .stack()?;
+    sh_hermes([format!(
+        "keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"
+    )])
     .await
     .stack()?;
 
@@ -399,7 +387,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     FileOptions::write_str(
         "/logs/onomyd_export.json",
-        &sh_cosmovisor_no_debug("export", &[]).await.stack()?,
+        &sh_cosmovisor_no_debug(["export"]).await.stack()?,
     )
     .await
     .stack()?;
@@ -410,7 +398,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
         .stack()?;
     // we need the initial consumer state
@@ -544,11 +532,10 @@ async fn consumer(args: &Args) -> Result<()> {
         .stack()?;
     //market.cancel_order(6).await.stack()?;
 
-    let pubkey = sh_cosmovisor("tendermint show-validator", &[])
-        .await
-        .stack()?;
+    let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let pubkey = pubkey.trim();
-    sh_cosmovisor_tx("staking", &[
+    sh_cosmovisor_tx([
+        "staking",
         "create-validator",
         "--commission-max-change-rate",
         "0.01",
@@ -610,13 +597,13 @@ async fn consumer(args: &Args) -> Result<()> {
     wait_for_num_blocks(5).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor("query params subspace crisis ConstantFee", &[])
+    sh_cosmovisor(["query params subspace crisis ConstantFee"])
         .await
         .stack()?;
 
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
-    let exported = sh_cosmovisor_no_debug("export", &[]).await.stack()?;
+    let exported = sh_cosmovisor_no_debug(["export"]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;

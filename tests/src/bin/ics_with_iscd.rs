@@ -174,7 +174,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 
 async fn hermes_runner(args: &Args) -> Result<()> {
     let hermes_home = args.hermes_home.as_ref().stack()?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
@@ -342,7 +342,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
         .stack()?;
     // we need the initial consumer state
@@ -430,7 +430,7 @@ async fn consumer(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    wait_for_num_blocks(5).await.stack()?;
+    wait_for_num_blocks(6).await.stack()?;
 
     let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let pubkey = pubkey.trim();

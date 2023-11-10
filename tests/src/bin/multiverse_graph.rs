@@ -452,7 +452,7 @@ async fn test_runner(args: &Args) -> Result<()> {
 }
 
 async fn hermes_runner() -> Result<()> {
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
@@ -495,7 +495,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
     let consumer_id = CHAIN_ID;
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_test = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
     let mut nm_hermes =
@@ -579,10 +579,10 @@ async fn onex_node(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let chain_id = CHAIN_ID;
-    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_test = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
         .stack()?;
     // we need the initial consumer state

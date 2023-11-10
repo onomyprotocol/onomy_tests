@@ -170,7 +170,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 
 async fn hermes_runner(args: &Args) -> Result<()> {
     let hermes_home = args.hermes_home.as_ref().stack()?;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
@@ -341,7 +341,7 @@ async fn consumer(args: &Args) -> Result<()> {
     let current_version = args.current_version.as_ref().stack()?;
     let upgrade_version = args.upgrade_version.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
-    let mut nm_onomyd = NetMessenger::listen_single_connect("0.0.0.0:26001", TIMEOUT)
+    let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
         .stack()?;
     // we need the initial consumer state

@@ -396,7 +396,7 @@ async fn standalone_runner(args: &Args) -> Result<()> {
 async fn onex_node(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let uuid = &args.uuid;
-    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_test = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
