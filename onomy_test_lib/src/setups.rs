@@ -115,13 +115,14 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
 
     let mnemonic = if let Some(mnemonic) = options.mnemonic {
-        let comres = Command::new(format!(
+        Command::new(format!(
             "{daemon_home}/cosmovisor/current/bin/onomyd keys add validator --recover"
         ))
         .run_with_input_to_completion(mnemonic.as_bytes())
         .await
+        .stack()?
+        .assert_success()
         .stack()?;
-        comres.assert_success().stack()?;
         mnemonic
     } else {
         // we need the stderr to get the mnemonic
