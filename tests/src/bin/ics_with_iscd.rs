@@ -120,7 +120,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 ),
             Container::new(
                 &consumer_binary_name(),
-                Dockerfile::contents(onomy_std_cosmos_daemon_with_arbitrary(
+                Dockerfile::Contents(onomy_std_cosmos_daemon(
                     &consumer_binary_name(),
                     &consumer_directory(),
                     CONSUMER_VERSION,
@@ -301,7 +301,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            &token18(1.0e3, ""),
+            &token18(2.0e3, ""),
             "anom",
         )
         .await
@@ -471,13 +471,34 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // interchain-security-cd does not support this proposal
     /*
+    wait_for_num_blocks(1).await.stack()?;
+
+    // test a simple text proposal
+    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
+    let proposal = json!({
+        "title": "Text Proposal",
+        "description": "a text proposal",
+        "type": "Text",
+        "deposit": test_deposit
+    });
+    cosmovisor_gov_file_proposal(
+        daemon_home,
+        None,
+        &proposal.to_string(),
+        &format!("1{ibc_nom}"),
+    )
+    .await
+    .stack()?;
+    let proposals = sh_cosmovisor(["query gov proposals"]).await.stack()?;
+    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
+
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ONOMY_IBC_NOM;
-    let test_deposit = token18(2000.0, ONOMY_IBC_NOM);
+    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
-        "param-change",
+        Some("param-change"),
         &format!(
             r#"
     {{
@@ -501,7 +522,7 @@ async fn consumer(args: &Args) -> Result<()> {
     wait_for_num_blocks(5).await.stack()?;
     // just running this for debug, param querying is weird because it is json
     // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor("query params subspace crisis ConstantFee", &[])
+    sh_cosmovisor(["query params subspace crisis ConstantFee"])
         .await
         .stack()?;*/
 
