@@ -1,3 +1,5 @@
+//! uses ./tests/dockerfiles/onomy_upgrade in testing onomy upgrading
+
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{

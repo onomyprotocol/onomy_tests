@@ -1,3 +1,5 @@
+//! uses ./tests/dockerfiles/onex_upgrade in testing ONEX upgrading
+
 use std::time::Duration;
 
 use common::dockerfile_onomyd;

@@ -1,3 +1,6 @@
+//! runs onomyd from a onomy directory in the same directory as onomy_tests (add
+//! `sleep(TIMEOUT).await` somewhere if you want to `auto_exec` into it)
+
 use std::time::Duration;
 
 use common::{container_runner, dockerfile_onomyd};

@@ -1,6 +1,8 @@
 # Onomy Tests
 
-`onomy_test_lib` is the main crate for common test functionality. `tests` is mainly for local manual tests.
+`onomy_test_lib` is the main crate for common test functionality. `tests` is mainly for local semimanual tests.
+
+update onomyd and onexd versions through the constants in `common.rs`.
 
 for faster compilation, add this to `./cargo/config.toml`:
 ```
