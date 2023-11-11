@@ -1,3 +1,5 @@
+//! example that we keep around for bridges
+
 use std::{str::FromStr, time::Duration};
 
 use clarity::Address;
@@ -10,9 +12,9 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
+        wait_for_ok, Command, FileOptions,
     },
-    Args, TIMEOUT,
+    Args, STD_DELAY, STD_TRIES, TIMEOUT,
 };
 use web30::client::Web3;
 
@@ -62,9 +64,13 @@ async fn container_runner(args: &Args) -> Result<()> {
         "test",
         vec![
             Container::new("geth", Dockerfile::contents(format!("{ONOMY_STD} {GETH}")))
-                .external_entrypoint(entrypoint, ["--entry-name", "geth"]),
+                .external_entrypoint(entrypoint, ["--entry-name", "geth"])
+                .await
+                .stack()?,
             Container::new("test", Dockerfile::contents(ONOMY_STD.to_owned()))
-                .external_entrypoint(entrypoint, ["--entry-name", "test"]),
+                .external_entrypoint(entrypoint, ["--entry-name", "test"])
+                .await
+                .stack()?,
             /*Container::new(
                 "prometheus",
                 Dockerfile::NameTag("prom/prometheus:v2.44.0".to_owned()),
@@ -209,33 +215,33 @@ async fn geth_runner() -> Result<()> {
     .stack()?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
-    let mut geth_runner = Command::new([
-        "geth",
-        "--nodiscover",
-        "--allow-insecure-unlock",
-        "--unlock",
-        "0xBf660843528035a5A4921534E156a27e64B231fE",
-        "--password",
-        test_password_path,
-        "--mine",
-        "--miner.etherbase",
-        "0xBf660843528035a5A4921534E156a27e64B231fE",
-        "--http",
-        "--http.addr",
-        "0.0.0.0",
-        "--http.vhosts",
-        "*",
-        "--http.corsdomain",
-        "*",
-        "--nousb",
-        "--verbosity",
-        "4",
-        // TODO --metrics.
-    ])
-    .log(Some(geth_log))
-    .run()
-    .await
-    .stack()?;
+    let mut geth_runner = Command::new("geth")
+        .args([
+            "--nodiscover",
+            "--allow-insecure-unlock",
+            "--unlock",
+            "0xBf660843528035a5A4921534E156a27e64B231fE",
+            "--password",
+            test_password_path,
+            "--mine",
+            "--miner.etherbase",
+            "0xBf660843528035a5A4921534E156a27e64B231fE",
+            "--http",
+            "--http.addr",
+            "0.0.0.0",
+            "--http.vhosts",
+            "*",
+            "--http.corsdomain",
+            "*",
+            "--nousb",
+            "--verbosity",
+            "4",
+            // TODO --metrics.
+        ])
+        .log(Some(geth_log))
+        .run()
+        .await
+        .stack()?;
 
     // terminate
     nm_test.recv::<()>().await.stack()?;

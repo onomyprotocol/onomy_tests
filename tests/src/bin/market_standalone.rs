@@ -1,3 +1,6 @@
+//! assuming the market repo is in the same directory as onomy_tests. This
+//! builds the standalone binary from that repo for testing
+
 use std::time::Duration;
 
 use common::container_runner;

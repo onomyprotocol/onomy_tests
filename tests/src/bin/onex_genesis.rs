@@ -1,3 +1,5 @@
+//! used to verify that
+
 use std::time::Duration;
 
 use common::{dockerfile_onexd, dockerfile_onomyd};
@@ -5,9 +7,8 @@ use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
-        cosmovisor_gov_file_proposal, cosmovisor_gov_proposal, cosmovisor_start, fast_block_times,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
-        wait_for_num_blocks,
+        cosmovisor_gov_file_proposal, cosmovisor_start, fast_block_times, set_minimum_gas_price,
+        sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_num_blocks,
     },
     dockerfiles::dockerfile_hermes,
     hermes::{
@@ -21,14 +22,14 @@ use onomy_test_lib::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
         remove_files_in_dir, sh,
-        stacked_errors::{ensure, Error, Result, StackableErr},
-        stacked_get_mut, FileOptions, STD_DELAY, STD_TRIES,
+        stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
+        stacked_get, stacked_get_mut, FileOptions,
     },
     token18,
     u64_array_bigints::{
         u256, {self},
     },
-    yaml_str_to_json_value, Args, ONOMY_IBC_NOM, TIMEOUT,
+    yaml_str_to_json_value, Args, ONOMY_IBC_NOM, STD_DELAY, STD_TRIES, TIMEOUT,
 };
 use serde_json::{json, Value};
 use tokio::time::sleep;
@@ -40,10 +41,6 @@ const PROPOSAL: &str =
     include_str!("./../../../../environments/testnet/onex-testnet-3/genesis-proposal.json");
 const PARTIAL_GENESIS: &str =
     include_str!("./../../../../environments/testnet/onex-testnet-3/partial-genesis.json");
-// NOTE: this sets spawn and genesis times to this for testing purposes, this
-// needs to be in the past but not more than 28 days ago, otherwise the consumer
-// will not start on time or the test will not be able to query some things
-const TIME: &str = "2023-10-06T15:00:00.000Z";
 const MNEMONIC: &str = include_str!("./../../../../testnet_dealer_mnemonic.txt");
 // NOTE: for the final genesis you should check disabling the line that
 // overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
@@ -69,12 +66,13 @@ pub async fn onexd_setup(
 
     let mut genesis: Value = serde_json::from_str(genesis_s).stack()?;
 
-    *stacked_get_mut!(genesis["genesis_time"]) = TIME.into();
+    let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    *stacked_get_mut!(genesis["genesis_time"]) = time.into();
 
     // put some aONEX balance on our account so it can be bonded
-    let mut array = genesis["app_state"]["bank"]["balances"]
+    let array = genesis["app_state"]["bank"]["balances"]
         .as_array_mut()
-        .unwrap();
+        .stack()?;
     for balance in array {
         if balance["address"].as_str().unwrap() == "onomy1yks83spz6lvrrys8kh0untt22399tskk6jafcv" {
             balance["coins"].as_array_mut().unwrap().insert(
@@ -159,7 +157,7 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    let entrypoint = format!("./target/{container_target}/release/{bin_entrypoint}");
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
         "test",
@@ -167,37 +165,38 @@ async fn container_runner(args: &Args) -> Result<()> {
             Container::new(
                 "hermes",
                 Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
-            ).entrypoint(entrypoint, ["--entry-name", "hermes"]),
-            Container::new(
-                "onomyd",
-                Dockerfile::contents(dockerfile_onomyd()),
-            ).entrypoint(entrypoint, ["--entry-name", "onomyd"]),
-            .volumes(&[
-                (
-                    "./tests/resources/keyring-test",
-                    "/root/.onomy/keyring-test",
-                ),
-                ("./tests/resources/", "/resources/"),
-            ]),
-            Container::new(
-                "consumer",
-                Dockerfile::Contents(dockerfile_onexd()),
-                entrypoint,
-                &["--entry-name", "consumer"],
             )
-            .volumes(&[(
-                "./tests/resources/keyring-test",
-                "/root/.onomy_onex/keyring-test",
-            )]),
+            .external_entrypoint(entrypoint, ["--entry-name", "hermes"])
+            .await
+            .stack()?,
+            Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
+                .external_entrypoint(entrypoint, ["--entry-name", "onomyd"])
+                .await
+                .stack()?
+                .volumes([
+                    (
+                        "./tests/resources/keyring-test",
+                        "/root/.onomy/keyring-test",
+                    ),
+                    ("./tests/resources/", "/resources/"),
+                ]),
+            Container::new("consumer", Dockerfile::Contents(dockerfile_onexd()))
+                .external_entrypoint(entrypoint, ["--entry-name", "consumer"])
+                .await
+                .stack()?
+                .volume(
+                    "./tests/resources/keyring-test",
+                    "/root/.onomy_onex/keyring-test",
+                ),
         ],
         Some(dockerfiles_dir),
         true,
         logs_dir,
     )
     .stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
 
     // prepare hermes config
     write_hermes_config(
@@ -309,7 +308,9 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
     //let proposal = onomy_test_lib::setups::test_proposal(consumer_id, "anom");
     let mut proposal: Value = serde_json::from_str(PROPOSAL).stack()?;
-    stacked_get_mut!(proposal["spawn_time"]) = TIME.into();
+
+    let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    *stacked_get_mut!(proposal["spawn_time"]) = time.into();
     let proposal = &proposal.to_string();
     info!("PROPOSAL: {proposal}");
     let ccvconsumer_state = cosmovisor_add_consumer(daemon_home, consumer_id, proposal)

@@ -13,11 +13,8 @@ name = "geth_test"
 # we want to avoid bringing in a ton of dependencies unless we want to run this
 required-features = ["geth"]
 
-[[bin]]
-name = "onex_genesis"
-required-features = ["onex_genesis"]
-
 [dependencies]
+chrono = "0.4.31"
 clap = { version = "4", features = ["derive"] }
 clarity = { git = "https://github.com/onomyprotocol/clarity.git", rev = "3e875b608a2d9302c8b23dd40dc8705901db230c", optional = true }
 deep_space = { git = "https://github.com/onomyprotocol/deep_space.git", rev = "36aa611a1ccfd4a48e1248d029a11cb026106254", optional = true }

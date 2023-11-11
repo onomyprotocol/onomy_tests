@@ -1,4 +1,4 @@
-// for temporary tests
+//! cleans out all log files and resources that aren't permanent
 
 use onomy_test_lib::super_orchestrator::{remove_files_in_dir, stacked_errors::Result, std_init};
 

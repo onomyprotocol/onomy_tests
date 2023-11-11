@@ -1,3 +1,6 @@
+//! the onomy repo should be in the same directory as onomy_tests, this is used
+//! in development and synced with the test in onomy_tests
+
 use std::time::Duration;
 
 use common::dockerfile_onomyd;
