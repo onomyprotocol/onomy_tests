@@ -1,4 +1,20 @@
-//! used to verify that
+//! Used to verify that an ONEX genesis proposal and genesis file do not have
+//! problems.
+//!
+//!
+//!
+//! NOTE: for the final final genesis you should check disabling the line that
+//! overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
+//! that the bootstrap runner has OK logs, says "this node is not a validator",
+//! and sleeps until genesis time
+
+#[rustfmt::skip]
+/*
+e.x.
+
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-3/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-3/partial-genesis.json
+
+*/
 
 use std::time::Duration;
 
@@ -37,15 +53,7 @@ use tokio::time::sleep;
 const CONSUMER_ID: &str = "onex-testnet-3";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
-const PROPOSAL: &str =
-    include_str!("./../../../../environments/testnet/onex-testnet-3/genesis-proposal.json");
-const PARTIAL_GENESIS: &str =
-    include_str!("./../../../../environments/testnet/onex-testnet-3/partial-genesis.json");
 const MNEMONIC: &str = include_str!("./../../../../testnet_dealer_mnemonic.txt");
-// NOTE: for the final genesis you should check disabling the line that
-// overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
-// that the bootstrap runner has OK logs, says "this node is not a validator",
-// and sleeps until genesis time
 
 pub async fn onexd_setup(
     daemon_home: &str,
@@ -62,9 +70,11 @@ pub async fn onexd_setup(
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
     // add `ccvconsumer_state` to genesis
-    let genesis_s = PARTIAL_GENESIS;
+    let genesis_s = FileOptions::read_to_string("/resources/tmp/genesis.json")
+        .await
+        .stack()?;
 
-    let mut genesis: Value = serde_json::from_str(genesis_s).stack()?;
+    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
     let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     *stacked_get_mut!(genesis["genesis_time"]) = time.into();
@@ -157,6 +167,24 @@ async fn container_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
+    // put in the genesis files
+    FileOptions::copy(
+        args.genesis_path
+            .as_deref()
+            .stack_err(|| "need to pass --genesis-path")?,
+        "./tests/resources/tmp/genesis.json",
+    )
+    .await
+    .stack()?;
+    FileOptions::copy(
+        args.proposal_path
+            .as_deref()
+            .stack_err(|| "need to pass --proposal-path")?,
+        "./tests/resources/tmp/proposal.json",
+    )
+    .await
+    .stack()?;
+
     let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
@@ -178,16 +206,19 @@ async fn container_runner(args: &Args) -> Result<()> {
                         "./tests/resources/keyring-test",
                         "/root/.onomy/keyring-test",
                     ),
-                    ("./tests/resources/", "/resources/"),
+                    ("./tests/resources/tmp", "/resources/tmp"),
                 ]),
             Container::new("consumer", Dockerfile::Contents(dockerfile_onexd()))
                 .external_entrypoint(entrypoint, ["--entry-name", "consumer"])
                 .await
                 .stack()?
-                .volume(
-                    "./tests/resources/keyring-test",
-                    "/root/.onomy_onex/keyring-test",
-                ),
+                .volumes([
+                    (
+                        "./tests/resources/keyring-test",
+                        "/root/.onomy_onex/keyring-test",
+                    ),
+                    ("./tests/resources/tmp", "/resources/tmp"),
+                ]),
         ],
         Some(dockerfiles_dir),
         true,
@@ -307,7 +338,10 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     //let proposal = onomy_test_lib::setups::test_proposal(consumer_id, "anom");
-    let mut proposal: Value = serde_json::from_str(PROPOSAL).stack()?;
+    let proposal = FileOptions::read_to_string("/resources/tmp/proposal.json")
+        .await
+        .stack()?;
+    let mut proposal: Value = serde_json::from_str(&proposal).stack()?;
 
     let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     *stacked_get_mut!(proposal["spawn_time"]) = time.into();

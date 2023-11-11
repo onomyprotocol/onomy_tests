@@ -706,8 +706,8 @@ pub async fn cosmovisor_start(
 }
 
 pub async fn cosmovisor_get_addr(key_name: &str) -> Result<String> {
-    let validator =
-        yaml_str_to_json_value(&sh_cosmovisor(["keys show", key_name]).await.stack()?).stack()?;
+    let yaml = sh_cosmovisor(["keys show", key_name]).await.stack()?;
+    let validator = yaml_str_to_json_value(&yaml).stack()?;
     Ok(json_inner(stacked_get!(validator[0]["address"])))
 }
 
