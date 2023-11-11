@@ -92,7 +92,11 @@ pub struct Args {
     #[arg(long)]
     pub proposal_path: Option<String>,
     #[arg(long)]
+    pub mnemonic_path: Option<String>,
+    #[arg(long)]
     pub peer_info: Option<String>,
+    #[arg(long)]
+    pub consumer_id: Option<String>,
 }
 
 /// Calls [super_orchestrator::std_init] and returns the result of

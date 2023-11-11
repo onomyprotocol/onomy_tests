@@ -1,7 +1,9 @@
 //! Used to verify that an ONEX genesis proposal and genesis file do not have
 //! problems.
 //!
-//!
+//! needs --proposal-path to the consumer addition proposal, --genesis-path to
+//! the partial genesis, and --mnemonic to some account that has funds for the
+//! hermes thing to work
 //!
 //! NOTE: for the final final genesis you should check disabling the line that
 //! overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
@@ -12,7 +14,7 @@
 /*
 e.x.
 
-cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-3/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-3/partial-genesis.json
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-3/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-3/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
 */
 
@@ -50,10 +52,8 @@ use onomy_test_lib::{
 use serde_json::{json, Value};
 use tokio::time::sleep;
 
-const CONSUMER_ID: &str = "onex-testnet-3";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
-const MNEMONIC: &str = include_str!("./../../../../testnet_dealer_mnemonic.txt");
 
 pub async fn onexd_setup(
     daemon_home: &str,
@@ -185,6 +185,23 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
+    let proposal = FileOptions::read_to_string(args.genesis_path.as_deref().stack()?)
+        .await
+        .stack()?;
+    let proposal: Value = serde_json::from_str(&proposal).stack()?;
+    let consumer_id = stacked_get!(proposal["chain_id"])
+        .as_str()
+        .stack()?
+        .to_owned();
+
+    let mut onomyd_args = vec!["--entry-name", "onomyd", "--consumer-id", &consumer_id];
+    if let Some(mnemonic_path) = args.mnemonic_path.as_deref() {
+        FileOptions::copy(mnemonic_path, "./tests/resources/tmp/mnemonic.txt")
+            .await
+            .stack()?;
+        onomyd_args.extend(["--mnemonic-path", "/resources/tmp/mnemonic.txt"])
+    }
+
     let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
@@ -194,11 +211,16 @@ async fn container_runner(args: &Args) -> Result<()> {
                 "hermes",
                 Dockerfile::contents(dockerfile_hermes("__tmp_hermes_config.toml")),
             )
-            .external_entrypoint(entrypoint, ["--entry-name", "hermes"])
+            .external_entrypoint(entrypoint, [
+                "--entry-name",
+                "hermes",
+                "--consumer-id",
+                &consumer_id,
+            ])
             .await
             .stack()?,
             Container::new("onomyd", Dockerfile::contents(dockerfile_onomyd()))
-                .external_entrypoint(entrypoint, ["--entry-name", "onomyd"])
+                .external_entrypoint(entrypoint, onomyd_args)
                 .await
                 .stack()?
                 .volumes([
@@ -209,7 +231,12 @@ async fn container_runner(args: &Args) -> Result<()> {
                     ("./tests/resources/tmp", "/resources/tmp"),
                 ]),
             Container::new("consumer", Dockerfile::Contents(dockerfile_onexd()))
-                .external_entrypoint(entrypoint, ["--entry-name", "consumer"])
+                .external_entrypoint(entrypoint, [
+                    "--entry-name",
+                    "consumer",
+                    "--consumer-id",
+                    &consumer_id,
+                ])
                 .await
                 .stack()?
                 .volumes([
@@ -241,7 +268,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 true,
             ),
             HermesChainConfig::new(
-                CONSUMER_ID,
+                &consumer_id,
                 &format!("consumer_{uuid}"),
                 CONSUMER_ACCOUNT_PREFIX,
                 true,
@@ -262,6 +289,7 @@ async fn container_runner(args: &Args) -> Result<()> {
 
 async fn hermes_runner(args: &Args) -> Result<()> {
     let hermes_home = args.hermes_home.as_ref().stack()?;
+    let consumer_id = args.consumer_id.as_deref().stack()?;
     let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
@@ -276,7 +304,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     sh_hermes([format!(
-        "keys add --chain {CONSUMER_ID} --mnemonic-file /root/.hermes/mnemonic.txt"
+        "keys add --chain {consumer_id} --mnemonic-file /root/.hermes/mnemonic.txt"
     )])
     .await
     .stack()?;
@@ -284,7 +312,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await.stack()?;
 
-    let ibc_pair = IbcPair::hermes_setup_ics_pair(CONSUMER_ID, "onomy")
+    let ibc_pair = IbcPair::hermes_setup_ics_pair(consumer_id, "onomy")
         .await
         .stack()?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log")
@@ -298,7 +326,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // signal to update gas denom
     let ibc_nom = nm_onomyd.recv::<String>().await.stack()?;
     hermes_runner.terminate(TIMEOUT).await.stack()?;
-    hermes_set_gas_price_denom(hermes_home, CONSUMER_ID, &ibc_nom)
+    hermes_set_gas_price_denom(hermes_home, consumer_id, &ibc_nom)
         .await
         .stack()?;
 
@@ -314,7 +342,7 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let uuid = &args.uuid;
-    let consumer_id = CONSUMER_ID;
+    let consumer_id = args.consumer_id.as_deref().stack()?;
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let mut nm_hermes =
         NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("hermes_{uuid}:26000"))
@@ -326,7 +354,10 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
             .stack()?;
 
     let mut options = CosmosSetupOptions::new(daemon_home);
-    options.mnemonic = Some(MNEMONIC.to_owned());
+    if let Some(ref mnemonic_path) = args.mnemonic_path {
+        let mnemonic = FileOptions::read_to_string(mnemonic_path).await.stack()?;
+        options.mnemonic = Some(mnemonic);
+    }
     let mnemonic = onomyd_setup(options).await.stack()?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await.stack()?;
@@ -432,7 +463,8 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
 async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    let chain_id = CONSUMER_ID;
+    let consumer_id = args.consumer_id.as_deref().stack()?;
+    let chain_id = consumer_id;
     let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
         .stack()?;
