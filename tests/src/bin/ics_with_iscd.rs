@@ -1,5 +1,5 @@
 //! the onomy repo should be in the same directory as onomy_tests, this is used
-//! in development and synced with the test in onomy_tests
+//! in development and synced with the test in onomy_tests and multiverse.
 
 use std::time::Duration;
 

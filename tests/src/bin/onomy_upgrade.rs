@@ -26,11 +26,10 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        /*sh("make --directory ./../onomy/ build", &[]).await.stack()?;
+        /*sh(["make --directory ./../onomy/ build"]).await.stack()?;
         // copy to dockerfile resources (docker cannot use files from outside cwd)
         sh(
-            "cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd",
-            &[],
+            ["cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd"],
         )
         .await.stack()?;*/
         container_runner(&args).await
