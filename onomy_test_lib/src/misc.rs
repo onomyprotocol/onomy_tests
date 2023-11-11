@@ -10,6 +10,8 @@ use super_orchestrator::{
 use u64_array_bigints::{u256, U256};
 
 pub const TIMEOUT: Duration = Duration::from_secs(1000);
+pub const STD_DELAY: Duration = Duration::from_millis(300);
+pub const STD_TRIES: u64 = 300;
 
 // the `json` macro does not support const
 
@@ -53,7 +55,7 @@ pub const ONOMY_IBC_NOM: &str =
 pub const TEST_AMOUNT: U256 =
     u256!(57896044618658097711785492504343953926634992332820282019728792003956564819967);
 
-/// Runs the given entrypoint
+/// Common arguments we run across our runners
 #[derive(Parser, Debug, Clone)]
 #[command(about)]
 pub struct Args {
@@ -64,6 +66,7 @@ pub struct Args {
     /// specifies the entry_name to run
     #[arg(long)]
     pub entry_name: Option<String>,
+    /// The `ContainerNetwork` UUID
     #[arg(long, default_value_t = String::new())]
     pub uuid: String,
     /// Used by Cosmovisor for the name of the Daemon (e.x. `onomyd`)
@@ -75,13 +78,25 @@ pub struct Args {
     #[arg(long, env)]
     pub hermes_home: Option<String>,
     #[arg(long, env)]
-    pub onomy_current_version: Option<String>,
+    pub current_version: Option<String>,
     #[arg(long, env)]
-    pub onomy_upgrade_version: Option<String>,
+    pub upgrade_version: Option<String>,
     #[arg(long, default_value_t = false)]
     pub skip_npm: bool,
     #[arg(long)]
     pub i: Option<u64>,
+    #[arg(long)]
+    pub test_type: Option<String>,
+    #[arg(long)]
+    pub genesis_path: Option<String>,
+    #[arg(long)]
+    pub proposal_path: Option<String>,
+    #[arg(long)]
+    pub mnemonic_path: Option<String>,
+    #[arg(long)]
+    pub peer_info: Option<String>,
+    #[arg(long)]
+    pub consumer_id: Option<String>,
 }
 
 /// Calls [super_orchestrator::std_init] and returns the result of

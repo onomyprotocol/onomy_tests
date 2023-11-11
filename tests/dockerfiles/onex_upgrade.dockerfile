@@ -3,15 +3,15 @@ RUN dnf install -y git make cmake gcc gcc-c++ which iproute iputils procps-ng vi
 RUN go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@latest
 ENV PATH=$PATH:/root/go/bin
 
-ENV DAEMON_NAME="onomyd"
-ENV DAEMON_HOME="/root/.onomy"
-ENV CURRENT_VERSION=v1.1.2
-ENV UPGRADE_VERSION=v1.1.3
-ENV REPO="onomyprotocol/onomy"
+ENV DAEMON_NAME="onexd"
+ENV DAEMON_HOME="/root/.onomy_onex"
+ENV CURRENT_VERSION=v0.1.1-onex
+ENV UPGRADE_VERSION=v1.0.1-onex-testnet
+ENV REPO="onomyprotocol/multiverse"
 
 ADD https://github.com/$REPO/releases/download/$CURRENT_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME
 ADD https://github.com/$REPO/releases/download/$UPGRADE_VERSION/$DAEMON_NAME $DAEMON_HOME/cosmovisor/upgrades/$UPGRADE_VERSION/bin/$DAEMON_NAME
-#ADD https://github.com/$REPO/releases/download/$UPGRADE_VERSION/$DAEMON_NAME /tmp/$DAEMON_NAME
+#ADD ./dockerfile_resources/onexd $DAEMON_HOME/cosmovisor/upgrades/$UPGRADE_VERSION/bin/$DAEMON_NAME
 
 # for manual testing
 RUN chmod +x $DAEMON_HOME/cosmovisor/genesis/$CURRENT_VERSION/bin/$DAEMON_NAME

@@ -1,11 +1,9 @@
 use std::time::Duration;
 
-use log::info;
 use serde_json::Value;
 use super_orchestrator::{
-    sh, sh_no_dbg,
     stacked_errors::{Error, Result, StackableErr},
-    Command, CommandRunner, FileOptions,
+    stacked_get, stacked_get_mut, Command, CommandRunner, FileOptions,
 };
 
 use crate::json_inner;
@@ -13,21 +11,59 @@ pub use crate::{hermes_config::*, ibc::IbcPair};
 
 /// A wrapper around `super_orchestrator::sh` that prefixes "hermes --json". The
 /// last line is parsed as a `Value` and the inner "result" is returned.
-pub async fn sh_hermes(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    info!("running hermes({cmd_with_args}, {args:?})");
-    let stdout = sh(&format!("hermes --json {cmd_with_args}"), args)
-        .await
-        .stack()?;
+pub async fn sh_hermes<I, S>(program_with_args: I) -> Result<Value>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("hermes --json {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_hermes` called with an empty iterator")?
+        .debug(true)
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
     Ok(res)
 }
 
-pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Value> {
-    let stdout = sh_no_dbg(&format!("hermes --json {cmd_with_args}"), args)
-        .await
-        .stack()?;
+pub async fn sh_hermes_no_debug<I, S>(program_with_args: I) -> Result<Value>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut command = None;
+    for (i, part) in program_with_args.into_iter().enumerate() {
+        if i == 0 {
+            let s = format!("hermes --json {}", part.as_ref());
+            command = Some(Command::new(s));
+        } else {
+            command = Some(command.unwrap().arg(part.as_ref()));
+        }
+    }
+    let comres = command
+        .stack_err(|| "`sh_hermes_no_debug` called with an empty iterator")?
+        .run_to_completion()
+        .await?;
+    comres.assert_success()?;
+    let stdout = comres
+        .stdout_as_utf8()
+        .map(|s| s.to_owned())
+        .stack_err_locationless(|| "`Command` output was not UTF-8")?;
     let res = stdout.lines().last().stack()?;
     let res: Value = serde_json::from_str(res).stack()?;
     let res = res.get("result").stack()?.to_owned();
@@ -37,13 +73,13 @@ pub async fn sh_hermes_no_dbg(cmd_with_args: &str, args: &[&str]) -> Result<Valu
 /// Returns a single client if it exists. Returns an error if two redundant
 /// clients were found.
 pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = sh_hermes_no_dbg("query clients --host-chain", &[host_chain])
+    let clients = sh_hermes_no_debug(["query clients --host-chain", host_chain])
         .await
         .stack_err(|| "failed to query for host chain")?;
     let clients = clients.as_array().stack()?;
     let mut client_id = None;
     for client in clients {
-        if json_inner(&client["chain_id"]) == reference_chain {
+        if json_inner(stacked_get!(client["chain_id"])) == reference_chain {
             if client_id.is_some() {
                 // we have already seen this, we don't want to need to handle ambiguity
                 return Err(Error::from(format!(
@@ -51,7 +87,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
                      reference_chain {reference_chain}"
                 )))
             }
-            client_id = Some(json_inner(&client["client_id"]));
+            client_id = Some(json_inner(stacked_get!(client["client_id"])));
         }
     }
     client_id.stack_err(|| {
@@ -70,8 +106,7 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
 /// Note: for ICS pairs a client is created automatically by the process of
 /// setting up ICS.
 pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String, String)> {
-    // avoid creating redundant clients, for which there shouldn't be any use, and
-    // because it is almost certainly a cause for bugs
+    // note: in case of frozen clients there may be a reason to create a new client
     if get_client(a_chain, b_chain).await.is_ok() {
         return Err(Error::from(format!(
             "a client already exists between {a_chain} and {b_chain}"
@@ -82,24 +117,24 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
             "a client already exists between {b_chain} and {a_chain}"
         )))
     }
-    let client0 = json_inner(
-        &sh_hermes("create client --host-chain", &[
-            a_chain,
-            "--reference-chain",
-            b_chain,
-        ])
-        .await
-        .stack()?["CreateClient"]["client_id"],
-    );
-    let client1 = json_inner(
-        &sh_hermes("create client --host-chain", &[
-            b_chain,
-            "--reference-chain",
-            a_chain,
-        ])
-        .await
-        .stack()?["CreateClient"]["client_id"],
-    );
+    let tmp = sh_hermes([
+        "create client --host-chain",
+        a_chain,
+        "--reference-chain",
+        b_chain,
+    ])
+    .await
+    .stack()?;
+    let client0 = json_inner(stacked_get!(tmp["CreateClient"]["client_id"]));
+    let tmp = sh_hermes([
+        "create client --host-chain",
+        b_chain,
+        "--reference-chain",
+        a_chain,
+    ])
+    .await
+    .stack()?;
+    let client1 = json_inner(stacked_get!(tmp["CreateClient"]["client_id"]));
     Ok((client0, client1))
 }
 
@@ -113,7 +148,8 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
         format!("client hosted by {b_chain} not created before `create_connection_pair` was called")
     })?;
 
-    let res = &sh_hermes("create connection --a-chain", &[
+    let res = &sh_hermes([
+        "create connection --a-chain",
         a_chain,
         "--a-client",
         &a_client,
@@ -123,8 +159,8 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
     .await
     .stack()?;
     Ok((
-        json_inner(&res["a_side"]["connection_id"]),
-        json_inner(&res["b_side"]["connection_id"]),
+        json_inner(stacked_get!(res["a_side"]["connection_id"])),
+        json_inner(stacked_get!(res["b_side"]["connection_id"])),
     ))
 }
 
@@ -133,7 +169,7 @@ pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(Str
 ///
 /// Note: For ICS, there is a point where a handshake must be initiated by the
 /// consumer chain, so we must make the consumer chain the "a-chain" and the
-/// producer chain the "b-chain"
+/// provider chain the "b-chain"
 pub async fn create_channel_pair(
     a_chain: &str,
     a_connection: &str,
@@ -141,39 +177,31 @@ pub async fn create_channel_pair(
     b_port: &str,
     ordered: bool,
 ) -> Result<(String, String)> {
-    let order: &[&str] = if ordered {
-        &["--order", "ordered"]
-    } else {
-        &[]
-    };
-    let res = &sh_hermes(
+    let mut args = vec![
         "create channel --a-chain",
-        &[
-            &[
-                a_chain,
-                "--a-connection",
-                a_connection,
-                "--a-port",
-                a_port,
-                "--b-port",
-                b_port,
-            ],
-            order,
-        ]
-        .concat(),
-    )
-    .await
-    .stack()?;
+        a_chain,
+        "--a-connection",
+        a_connection,
+        "--a-port",
+        a_port,
+        "--b-port",
+        b_port,
+    ];
+    if ordered {
+        args.extend(&["--order", "ordered"])
+    }
+    let res = &sh_hermes(args).await.stack()?;
     Ok((
-        json_inner(&res["a_side"]["channel_id"]),
-        json_inner(&res["b_side"]["channel_id"]),
+        json_inner(stacked_get!(res["a_side"]["channel_id"])),
+        json_inner(stacked_get!(res["b_side"]["channel_id"])),
     ))
 }
 
 impl IbcPair {
     pub async fn hermes_check_acks(&self) -> Result<()> {
         // check all channels on both sides
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.b.chain_id,
             "--port",
             "transfer",
@@ -182,7 +210,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.a.chain_id,
             "--port",
             "transfer",
@@ -191,7 +220,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.b.chain_id,
             "--port",
             "provider",
@@ -200,7 +230,8 @@ impl IbcPair {
         ])
         .await
         .stack()?;
-        sh_hermes_no_dbg("query packet acks --chain", &[
+        sh_hermes_no_debug([
+            "query packet acks --chain",
             &self.a.chain_id,
             "--port",
             "consumer",
@@ -226,9 +257,8 @@ impl HermesRunner {
 
 pub async fn hermes_start(log_file: &str) -> Result<HermesRunner> {
     let hermes_log = FileOptions::write(log_file);
-    let hermes_runner = Command::new("hermes start", &[])
-        .stderr_log(&hermes_log)
-        .stdout_log(&hermes_log)
+    let hermes_runner = Command::new("hermes start")
+        .log(Some(hermes_log))
         .run()
         .await
         .stack()?;
@@ -248,14 +278,14 @@ pub async fn hermes_set_gas_price_denom(
         "gas-price = {{ price = 1.0, denom = '{gas_price_denom}' }}"
     ))
     .unwrap();
-    let inner_table = outer_table["gas-price"].clone();
+    let inner_table = stacked_get!(outer_table["gas-price"]).clone();
 
     let config_path = format!("{hermes_home}/config.toml");
     let config_s = FileOptions::read_to_string(&config_path).await.stack()?;
     let mut config: toml::Value = toml::from_str(&config_s).stack()?;
-    for chain in config["chains"].as_array_mut().stack()? {
-        if chain["id"].as_str().stack()? == chain_id {
-            chain["gas_price"] = inner_table;
+    for chain in stacked_get_mut!(config["chains"]).as_array_mut().stack()? {
+        if stacked_get!(chain["id"]).as_str().stack()? == chain_id {
+            *stacked_get_mut!(chain["gas_price"]) = inner_table;
             break
         }
     }

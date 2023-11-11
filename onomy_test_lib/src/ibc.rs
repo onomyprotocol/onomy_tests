@@ -4,7 +4,7 @@ pub use super_orchestrator::stacked_errors::Result;
 use super_orchestrator::{get_separated_val, stacked_errors::StackableErr};
 
 use crate::{
-    cosmovisor::{sh_cosmovisor_no_dbg, sh_cosmovisor_tx},
+    cosmovisor::{sh_cosmovisor_no_debug, sh_cosmovisor_tx},
     hermes::{create_channel_pair, create_connection_pair, sh_hermes},
 };
 
@@ -34,12 +34,14 @@ impl IbcSide {
         // tx ibc-transfer transfer transfer [channel to right chain]
         // [target cosmos addr] [coins to send] [gas flags] --from [source key name]
 
-        sh_cosmovisor_tx(
+        let mut args = vec![
             "ibc-transfer transfer transfer",
-            &[&[&self.transfer_channel, target_addr, coins_to_send], flags].concat(),
-        )
-        .await
-        .stack()?;
+            &self.transfer_channel,
+            target_addr,
+            coins_to_send,
+        ];
+        args.extend(flags);
+        sh_cosmovisor_tx(args).await.stack()?;
 
         Ok(())
     }
@@ -56,7 +58,8 @@ impl IbcSide {
     ) -> Result<()> {
         let coins_to_send = format!("{amount}{denom}");
         let base = format!("1{denom}");
-        sh_cosmovisor_tx("ibc-transfer transfer transfer", &[
+        sh_cosmovisor_tx([
+            "ibc-transfer transfer transfer",
             &self.transfer_channel,
             target_addr,
             &coins_to_send,
@@ -79,10 +82,10 @@ impl IbcSide {
     }
 
     pub async fn get_ibc_denom(&self, leaf_denom: &str) -> Result<String> {
-        let hash = sh_cosmovisor_no_dbg("query ibc-transfer denom-hash", &[&format!(
-            "transfer/{}/{}",
-            self.transfer_channel, leaf_denom
-        )])
+        let hash = sh_cosmovisor_no_debug([
+            "query ibc-transfer denom-hash",
+            &format!("transfer/{}/{}", self.transfer_channel, leaf_denom),
+        ])
         .await
         .stack()?;
         let hash = get_separated_val(&hash, "\n", "hash", ":").stack()?;
@@ -104,7 +107,7 @@ impl IbcPair {
 
         // Note: For ICS, there is a point where a handshake must be initiated by the
         // consumer chain, so we must make the consumer chain the "a-chain" and the
-        // producer chain the "b-chain"
+        // provider chain the "b-chain"
         let a_chain = consumer.to_owned();
         let b_chain = provider.to_owned();
 
@@ -128,33 +131,24 @@ impl IbcPair {
 
         // FIXME this is hard coded
         let transfer_channel_pair = ("channel-1".to_string(), "channel-1".to_string());
-        sh_hermes(
-            &format!(
-                "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection \
-                 connection-0 --dst-port transfer --src-port transfer --src-channel channel-1"
-            ),
-            &[],
-        )
+        sh_hermes([format!(
+            "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection \
+             connection-0 --dst-port transfer --src-port transfer --src-channel channel-1"
+        )])
         .await
         .stack()?;
-        sh_hermes(
-            &format!(
-                "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
-                 connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
-                 --src-channel channel-1"
-            ),
-            &[],
-        )
+        sh_hermes([format!(
+            "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
+             connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
+             --src-channel channel-1"
+        )])
         .await
         .stack()?;
-        sh_hermes(
-            &format!(
-                "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} \
-                 --dst-connection connection-0 --dst-port transfer --src-port transfer \
-                 --dst-channel channel-1 --src-channel channel-1"
-            ),
-            &[],
-        )
+        sh_hermes([format!(
+            "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} --dst-connection \
+             connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
+             --src-channel channel-1"
+        )])
         .await
         .stack()?;
 

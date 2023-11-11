@@ -1,3 +1,5 @@
+//! example that we keep around for bridges
+
 use std::{str::FromStr, time::Duration};
 
 use clarity::Address;
@@ -10,9 +12,9 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         sh,
         stacked_errors::{Error, Result, StackableErr},
-        wait_for_ok, Command, FileOptions, STD_DELAY, STD_TRIES,
+        wait_for_ok, Command, FileOptions,
     },
-    Args, TIMEOUT,
+    Args, STD_DELAY, STD_TRIES, TIMEOUT,
 };
 use web30::client::Web3;
 
@@ -45,7 +47,8 @@ async fn container_runner(args: &Args) -> Result<()> {
     let container_target = "x86_64-unknown-linux-gnu";
 
     // build internal runner with `--release`
-    sh("cargo build --release --bin", &[
+    sh([
+        "cargo build --release --bin",
         bin_entrypoint,
         "--target",
         container_target,
@@ -55,31 +58,22 @@ async fn container_runner(args: &Args) -> Result<()> {
     .await
     .stack()?;
 
-    let entrypoint = Some(format!(
-        "./target/{container_target}/release/{bin_entrypoint}"
-    ));
-    let entrypoint = entrypoint.as_deref();
+    let entrypoint = &format!("./target/{container_target}/release/{bin_entrypoint}");
 
     let mut cn = ContainerNetwork::new(
         "test",
         vec![
-            Container::new(
-                "geth",
-                Dockerfile::Contents(format!("{ONOMY_STD} {GETH}")),
-                entrypoint,
-                &["--entry-name", "geth"],
-            ),
-            Container::new(
-                "test",
-                Dockerfile::Contents(ONOMY_STD.to_owned()),
-                entrypoint,
-                &["--entry-name", "test"],
-            ),
+            Container::new("geth", Dockerfile::contents(format!("{ONOMY_STD} {GETH}")))
+                .external_entrypoint(entrypoint, ["--entry-name", "geth"])
+                .await
+                .stack()?,
+            Container::new("test", Dockerfile::contents(ONOMY_STD.to_owned()))
+                .external_entrypoint(entrypoint, ["--entry-name", "test"])
+                .await
+                .stack()?,
             /*Container::new(
                 "prometheus",
                 Dockerfile::NameTag("prom/prometheus:v2.44.0".to_owned()),
-                None,
-                &[],
             )
             .create_args(&["-p", "9090:9090"]),*/
         ],
@@ -88,9 +82,9 @@ async fn container_runner(args: &Args) -> Result<()> {
         logs_dir,
     )
     .stack()?;
-    cn.add_common_volumes(&[(logs_dir, "/logs")]);
+    cn.add_common_volumes([(logs_dir, "/logs")]);
     let uuid = cn.uuid_as_string();
-    cn.add_common_entrypoint_args(&["--uuid", &uuid]);
+    cn.add_common_entrypoint_args(["--uuid", &uuid]);
     cn.run_all(true).await.stack()?;
     cn.wait_with_timeout_all(true, TIMEOUT).await.stack()?;
     cn.terminate_all().await;
@@ -184,7 +178,7 @@ const ETH_GENESIS: &str = r#"
 "#;
 
 async fn geth_runner() -> Result<()> {
-    let mut nm_test = NetMessenger::listen_single_connect("0.0.0.0:26000", TIMEOUT)
+    let mut nm_test = NetMessenger::listen("0.0.0.0:26000", TIMEOUT)
         .await
         .stack()?;
 
@@ -205,47 +199,49 @@ async fn geth_runner() -> Result<()> {
         .await
         .stack()?;
 
-    sh("geth account import --password", &[
+    sh([
+        "geth account import --password",
         test_password_path,
         private_key_path,
     ])
     .await
     .stack()?;
 
-    sh("geth --identity \"testnet\" --networkid 15 init", &[
+    sh([
+        "geth --identity \"testnet\" --networkid 15 init",
         genesis_file,
     ])
     .await
     .stack()?;
 
     let geth_log = FileOptions::write2("/logs", "geth_runner.log");
-    let mut geth_runner = Command::new("geth", &[
-        "--nodiscover",
-        "--allow-insecure-unlock",
-        "--unlock",
-        "0xBf660843528035a5A4921534E156a27e64B231fE",
-        "--password",
-        test_password_path,
-        "--mine",
-        "--miner.etherbase",
-        "0xBf660843528035a5A4921534E156a27e64B231fE",
-        "--http",
-        "--http.addr",
-        "0.0.0.0",
-        "--http.vhosts",
-        "*",
-        "--http.corsdomain",
-        "*",
-        "--nousb",
-        "--verbosity",
-        "4",
-        // TODO --metrics.
-    ])
-    .stderr_log(&geth_log)
-    .stdout_log(&geth_log)
-    .run()
-    .await
-    .stack()?;
+    let mut geth_runner = Command::new("geth")
+        .args([
+            "--nodiscover",
+            "--allow-insecure-unlock",
+            "--unlock",
+            "0xBf660843528035a5A4921534E156a27e64B231fE",
+            "--password",
+            test_password_path,
+            "--mine",
+            "--miner.etherbase",
+            "0xBf660843528035a5A4921534E156a27e64B231fE",
+            "--http",
+            "--http.addr",
+            "0.0.0.0",
+            "--http.vhosts",
+            "*",
+            "--http.corsdomain",
+            "*",
+            "--nousb",
+            "--verbosity",
+            "4",
+            // TODO --metrics.
+        ])
+        .log(Some(geth_log))
+        .run()
+        .await
+        .stack()?;
 
     // terminate
     nm_test.recv::<()>().await.stack()?;

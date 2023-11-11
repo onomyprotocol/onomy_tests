@@ -1,5 +1,4 @@
-//! the onomy repo should be in the same directory as onomy_tests, this is used
-//! in development and synced with the test in onomy_tests and multiverse.
+//! uses ./tests/dockerfiles/onex_upgrade in testing ONEX upgrading
 
 use std::time::Duration;
 
@@ -7,15 +6,17 @@ use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
-        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
+        cosmovisor_bank_send, cosmovisor_get_addr, cosmovisor_get_balances,
+        cosmovisor_gov_proposal, cosmovisor_start, get_block_height, set_minimum_gas_price,
+        sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_height,
         wait_for_num_blocks,
     },
-    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
+    dockerfiles::dockerfile_hermes,
     hermes::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,
     },
+    market::{CoinPair, Market},
     onomy_std_init, reprefix_bech32,
     setups::{
         cosmovisor_add_consumer, marketd_setup, onomyd_setup, test_proposal, CosmosSetupOptions,
@@ -27,34 +28,26 @@ use onomy_test_lib::{
         stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
         FileOptions,
     },
-    token18, u64_array_bigints,
-    u64_array_bigints::u256,
-    Args, ONOMY_IBC_NOM, STD_DELAY, STD_TRIES, TIMEOUT,
+    token18,
+    u64_array_bigints::{
+        u256, {self},
+    },
+    Args, ONOMY_IBC_NOM, STD_DELAY, STD_TRIES, TEST_AMOUNT, TIMEOUT,
 };
 use tokio::time::sleep;
 
-const CONSUMER_ID: &str = "interchain-security-cd";
-const CONSUMER_VERSION: &str = "v07-Theta";
+const CONSUMER_ID: &str = "onex";
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
-const CONSUMER_ACCOUNT_PREFIX: &str = "cosmos";
+const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 
 fn consumer_binary_name() -> String {
     format!("{CONSUMER_ID}d")
 }
 
 fn consumer_directory() -> String {
-    format!(".{CONSUMER_ID}")
-    //format!(".onomy_{CONSUMER_ID}")
+    //format!(".{CONSUMER_ID}")
+    format!(".onomy_{CONSUMER_ID}")
 }
-
-#[rustfmt::skip]
-const INTERCHAIN_SECURTY_CDD: &str = r#"ENV ICS_VERSION=1.2.0-multiden
-ADD https://github.com/cosmos/interchain-security/archive/refs/tags/v$ICS_VERSION.tar.gz /root/v$ICS_VERSION.tar.gz
-RUN cd /root && tar -xvf ./v$ICS_VERSION.tar.gz
-RUN cd /root/interchain-security-$ICS_VERSION && go build ./cmd/interchain-security-cdd
-RUN mkdir -p $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/
-RUN mv /root/interchain-security-$ICS_VERSION/interchain-security-cdd $DAEMON_HOME/cosmovisor/genesis/$DAEMON_VERSION/bin/$DAEMON_NAME
-"#;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -68,11 +61,18 @@ async fn main() -> Result<()> {
             _ => Err(Error::from(format!("entry_name \"{s}\" is not recognized"))),
         }
     } else {
-        sh(["make --directory ./../onomy/ build"]).await.stack()?;
-        // copy to dockerfile resources (docker cannot use files from outside cwd)
-        sh(["cp ./../onomy/onomyd ./tests/dockerfiles/dockerfile_resources/onomyd"])
+        /*
+        sh("make --directory ./../multiverse/ build", &[])
             .await
             .stack()?;
+        // copy to dockerfile resources (docker cannot use files from outside cwd)
+        sh(
+            "mv ./../multiverse/onexd ./tests/dockerfiles/dockerfile_resources/onexd",
+            &[],
+        )
+        .await
+        .stack()?;
+        */
         container_runner(&args).await.stack()
     }
 }
@@ -120,12 +120,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 ),
             Container::new(
                 &consumer_binary_name(),
-                Dockerfile::Contents(onomy_std_cosmos_daemon_with_arbitrary(
-                    &consumer_binary_name(),
-                    &consumer_directory(),
-                    CONSUMER_VERSION,
-                    INTERCHAIN_SECURTY_CDD,
-                )),
+                Dockerfile::path(format!("{dockerfiles_dir}/onex_upgrade.dockerfile")),
             )
             .external_entrypoint(entrypoint, ["--entry-name", "consumer"])
             .await
@@ -228,24 +223,25 @@ async fn hermes_runner(args: &Args) -> Result<()> {
 }
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
+    let uuid = &args.uuid;
     let consumer_id = CONSUMER_ID;
     let daemon_home = args.daemon_home.as_ref().stack()?;
     let mut nm_hermes =
-        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("hermes_{}:26000", args.uuid))
+        NetMessenger::connect(STD_TRIES, STD_DELAY, &format!("hermes_{uuid}:26000"))
             .await
             .stack()?;
     let mut nm_consumer = NetMessenger::connect(
         STD_TRIES,
         STD_DELAY,
-        &format!("{}_{}:26001", consumer_binary_name(), args.uuid),
+        &format!("{}_{}:26001", consumer_binary_name(), uuid),
     )
     .await
     .stack()
     .stack()?;
 
-    let mnemonic = onomyd_setup(CosmosSetupOptions::new(daemon_home))
-        .await
-        .stack()?;
+    let mut options = CosmosSetupOptions::new(daemon_home);
+    options.large_test_amount = true;
+    let mnemonic = onomyd_setup(options).await.stack()?;
     // send mnemonic to hermes
     nm_hermes.send::<String>(&mnemonic).await.stack()?;
 
@@ -301,7 +297,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            &token18(2.0e3, ""),
+            &TEST_AMOUNT.checked_short_divide(5).unwrap().0.to_string(),
             "anom",
         )
         .await
@@ -344,6 +340,8 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
 
 async fn consumer(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
+    let current_version = args.current_version.as_ref().stack()?;
+    let upgrade_version = args.upgrade_version.as_ref().stack()?;
     let chain_id = CONSUMER_ID;
     let mut nm_onomyd = NetMessenger::listen("0.0.0.0:26001", TIMEOUT)
         .await
@@ -357,7 +355,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await.stack()?;
-    // we used same keys for consumer as provider, need to copy them over or else
+    // we used same keys for consumer as producer, need to copy them over or else
     // the node will not be a working validator for itself
     FileOptions::write_str(&format!("{daemon_home}/config/node_key.json"), &node_key)
         .await
@@ -381,7 +379,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // signal that we have started
     nm_onomyd.send::<()>(&()).await.stack()?;
 
-    // wait for provider to send us stuff
+    // wait for producer to send us stuff
     let ibc_pair = nm_onomyd.recv::<IbcPair>().await.stack()?;
     // get the name of the IBC NOM. Note that we can't do this on the onomyd side,
     // it has to be with respect to the consumer side
@@ -402,6 +400,79 @@ async fn consumer(args: &Args) -> Result<()> {
     nm_onomyd.send::<String>(ibc_nom).await.stack()?;
     nm_onomyd.recv::<()>().await.stack()?;
     info!("restarted with new gas denom");
+
+    let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
+    let pubkey = pubkey.trim();
+    sh_cosmovisor_tx([
+        "staking",
+        "create-validator",
+        "--commission-max-change-rate",
+        "0.01",
+        "--commission-max-rate",
+        "0.10",
+        "--commission-rate",
+        "0.05",
+        "--from",
+        "validator",
+        "--min-self-delegation",
+        "1",
+        "--amount",
+        &token18(1.0e3, ONOMY_IBC_NOM),
+        "--fees",
+        &format!("1000000{ONOMY_IBC_NOM}"),
+        "--pubkey",
+        pubkey,
+        "-y",
+        "-b",
+        "block",
+    ])
+    .await
+    .stack()?;
+
+    wait_for_num_blocks(5).await.stack()?;
+
+    // upgrade first, then have the sanity checks afterwards to see if anything
+    // breaks
+
+    info!("current version: {current_version}, upgrade version: {upgrade_version}");
+
+    ensure_eq!(
+        sh_cosmovisor(["version"]).await.stack()?.trim(),
+        current_version
+    );
+
+    let upgrade_prepare_start = get_block_height().await.stack()?;
+    let upgrade_height = &format!("{}", upgrade_prepare_start + 4);
+
+    //sh(&format!("cosmovisor add-upgrade {upgrade_version} /logs/onexd
+    // --upgrade-height {upgrade_height}"), &[]).await.stack()?;
+
+    let description = &format!("\"upgrade {upgrade_version}\"");
+    cosmovisor_gov_proposal(
+        "software-upgrade",
+        &[
+            upgrade_version,
+            "--title",
+            description,
+            "--description",
+            description,
+            "--upgrade-height",
+            upgrade_height,
+        ],
+        &token18(500.0, ONOMY_IBC_NOM),
+        &format!("10{ONOMY_IBC_NOM}"),
+    )
+    .await
+    .stack()?;
+
+    wait_for_height(STD_TRIES, STD_DELAY, upgrade_prepare_start + 7)
+        .await
+        .stack()?;
+
+    ensure_eq!(
+        sh_cosmovisor(["version"]).await.stack()?.trim(),
+        upgrade_version
+    );
 
     // test normal transfer
     let dst_addr = &reprefix_bech32(
@@ -433,35 +504,58 @@ async fn consumer(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    wait_for_num_blocks(6).await.stack()?;
+    wait_for_num_blocks(5).await.stack()?;
 
-    let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
-    let pubkey = pubkey.trim();
-    sh_cosmovisor_tx([
-        "staking",
-        "create-validator",
-        "--commission-max-change-rate",
-        "0.01",
-        "--commission-max-rate",
-        "0.10",
-        "--commission-rate",
-        "0.05",
-        "--from",
-        "validator",
-        "--min-self-delegation",
-        "1",
-        "--amount",
-        &token18(500.0, ONOMY_IBC_NOM),
-        "--fees",
-        &format!("1000000{ONOMY_IBC_NOM}"),
-        "--pubkey",
-        pubkey,
-        "-y",
-        "-b",
-        "block",
-    ])
-    .await
-    .stack()?;
+    // market module specific sanity checks (need to check all tx commands
+    // specifically to make sure permissions are correct)
+
+    let coin_pair = CoinPair::new("anative", ibc_nom).stack()?;
+    let mut market = Market::new("validator", &format!("1000000{ibc_nom}"));
+    market.max_gas = Some(u256!(1000000));
+    market
+        .create_pool(&coin_pair, Market::MAX_COIN, Market::MAX_COIN)
+        .await
+        .stack()?;
+    market
+        .create_drop(&coin_pair, Market::MAX_COIN_SQUARED)
+        .await
+        .stack()?;
+    market.show_pool(&coin_pair).await.stack()?;
+    market.show_members(&coin_pair).await.stack()?;
+    market
+        .market_order(
+            coin_pair.coin_a(),
+            Market::MAX_COIN,
+            coin_pair.coin_b(),
+            Market::MAX_COIN,
+            5000,
+        )
+        .await
+        .stack()?;
+    market.redeem_drop(1).await.stack()?;
+    market
+        .create_order(
+            coin_pair.coin_a(),
+            coin_pair.coin_b(),
+            "stop",
+            Market::MAX_COIN,
+            (1100, 900),
+            (0, 0),
+        )
+        .await
+        .stack()?;
+    market
+        .create_order(
+            coin_pair.coin_a(),
+            coin_pair.coin_b(),
+            "limit",
+            Market::MAX_COIN,
+            (1100, 900),
+            (0, 0),
+        )
+        .await
+        .stack()?;
+    market.cancel_order(6).await.stack()?;
 
     // round trip signal
     nm_onomyd.send::<()>(&()).await.stack()?;
@@ -469,78 +563,12 @@ async fn consumer(args: &Args) -> Result<()> {
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
 
-    // interchain-security-cd does not support this proposal
-    /*
-    wait_for_num_blocks(1).await.stack()?;
-
-    // test a simple text proposal
-    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
-    let proposal = json!({
-        "title": "Text Proposal",
-        "description": "a text proposal",
-        "type": "Text",
-        "deposit": test_deposit
-    });
-    cosmovisor_gov_file_proposal(
-        daemon_home,
-        None,
-        &proposal.to_string(),
-        &format!("1{ibc_nom}"),
-    )
-    .await
-    .stack()?;
-    let proposals = sh_cosmovisor(["query gov proposals"]).await.stack()?;
-    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
-
-    // but first, test governance with IBC NOM as the token
-    let test_crisis_denom = ONOMY_IBC_NOM;
-    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
-    wait_for_num_blocks(1).await.stack()?;
-    cosmovisor_gov_file_proposal(
-        daemon_home,
-        Some("param-change"),
-        &format!(
-            r#"
-    {{
-        "title": "Parameter Change",
-        "description": "Making a parameter change",
-        "changes": [
-          {{
-            "subspace": "crisis",
-            "key": "ConstantFee",
-            "value": {{"denom":"{test_crisis_denom}","amount":"1337"}}
-          }}
-        ],
-        "deposit": "{test_deposit}"
-    }}
-    "#
-        ),
-        &format!("1{ibc_nom}"),
-    )
-    .await
-    .stack()?;
-    wait_for_num_blocks(5).await.stack()?;
-    // just running this for debug, param querying is weird because it is json
-    // inside of yaml, so we will instead test the exported genesis
-    sh_cosmovisor(["query params subspace crisis ConstantFee"])
-        .await
-        .stack()?;*/
-
     cosmovisor_runner.terminate(TIMEOUT).await.stack()?;
 
     let exported = sh_cosmovisor_no_debug(["export"]).await.stack()?;
     FileOptions::write_str(&format!("/logs/{chain_id}_export.json"), &exported)
         .await
         .stack()?;
-    /*let exported = yaml_str_to_json_value(&exported).stack()?;
-    ensure_eq!(
-        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["denom"]),
-        test_crisis_denom
-    );
-    ensure_eq!(
-        stacked_get!(exported["app_state"]["crisis"]["constant_fee"]["amount"]),
-        "1337"
-    );*/
 
     Ok(())
 }
