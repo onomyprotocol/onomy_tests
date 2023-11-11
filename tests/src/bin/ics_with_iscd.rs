@@ -120,7 +120,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 ),
             Container::new(
                 &consumer_binary_name(),
-                Dockerfile::Contents(onomy_std_cosmos_daemon(
+                Dockerfile::Contents(onomy_std_cosmos_daemon_with_arbitrary(
                     &consumer_binary_name(),
                     &consumer_directory(),
                     CONSUMER_VERSION,
