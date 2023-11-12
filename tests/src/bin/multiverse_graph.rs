@@ -2,14 +2,16 @@
 
 use std::time::Duration;
 
-use common::{dockerfile_onexd, dockerfile_onomyd, DOWNLOAD_ONEXD, ONEXD_FH_VERSION};
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_start, fast_block_times, get_self_peer_info,
         set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_debug, wait_for_num_blocks,
     },
-    dockerfiles::{dockerfile_hermes, COSMOVISOR, ONOMY_STD},
+    dockerfiles::{
+        dockerfile_hermes, dockerfile_onexd, dockerfile_onomyd, COSMOVISOR, DOWNLOAD_ONEXD,
+        ONEXD_FH_VERSION, ONOMY_STD,
+    },
     hermes::{hermes_start, sh_hermes, write_hermes_config, HermesChainConfig},
     ibc::IbcPair,
     market::{CoinPair, Market},

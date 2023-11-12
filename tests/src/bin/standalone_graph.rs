@@ -2,14 +2,16 @@
 
 use std::time::Duration;
 
-use common::{dockerfile_standalone_onexd, DOWNLOAD_STANDALONE_ONEXD, STANDALONE_ONEX_FH_VERSION};
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
         cosmovisor_get_addr, cosmovisor_get_balances, cosmovisor_start, fast_block_times,
         get_self_peer_info, set_persistent_peers, sh_cosmovisor, sh_cosmovisor_no_debug,
     },
-    dockerfiles::{COSMOVISOR, ONOMY_STD},
+    dockerfiles::{
+        dockerfile_standalone_onexd, COSMOVISOR, DOWNLOAD_STANDALONE_ONEXD, ONOMY_STD,
+        STANDALONE_ONEX_FH_VERSION,
+    },
     market::{CoinPair, Market},
     onomy_std_init,
     setups::market_standalone_setup,

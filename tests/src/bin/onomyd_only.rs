@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use common::{container_runner, dockerfile_onomyd};
+use common::container_runner;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -11,6 +11,7 @@ use onomy_test_lib::{
         get_delegations_to, get_staking_pool, get_treasury, get_treasury_inflation_annual,
         sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_num_blocks,
     },
+    dockerfiles::dockerfile_onomyd,
     onomy_std_init, reprefix_bech32,
     setups::{onomyd_setup, CosmosSetupOptions},
     super_orchestrator::{

@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -11,7 +10,7 @@ use onomy_test_lib::{
         set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
         wait_for_num_blocks,
     },
-    dockerfiles::{dockerfile_hermes, onomy_std_cosmos_daemon_with_arbitrary},
+    dockerfiles::{dockerfile_hermes, dockerfile_onomyd, onomy_std_cosmos_daemon_with_arbitrary},
     hermes::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,

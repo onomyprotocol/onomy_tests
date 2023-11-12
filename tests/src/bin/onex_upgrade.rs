@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use common::dockerfile_onomyd;
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -11,7 +10,7 @@ use onomy_test_lib::{
         sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_height,
         wait_for_num_blocks,
     },
-    dockerfiles::dockerfile_hermes,
+    dockerfiles::{dockerfile_hermes, dockerfile_onomyd},
     hermes::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,

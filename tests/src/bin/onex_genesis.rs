@@ -20,7 +20,6 @@ cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-tes
 
 use std::time::Duration;
 
-use common::{dockerfile_onexd, dockerfile_onomyd};
 use log::info;
 use onomy_test_lib::{
     cosmovisor::{
@@ -28,7 +27,7 @@ use onomy_test_lib::{
         cosmovisor_gov_file_proposal, cosmovisor_start, fast_block_times, set_minimum_gas_price,
         sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_num_blocks,
     },
-    dockerfiles::dockerfile_hermes,
+    dockerfiles::{dockerfile_hermes, dockerfile_onexd, dockerfile_onomyd},
     hermes::{
         hermes_set_gas_price_denom, hermes_start, sh_hermes, write_hermes_config,
         HermesChainConfig, IbcPair,
