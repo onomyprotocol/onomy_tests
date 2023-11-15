@@ -2,7 +2,7 @@
 //! problems.
 //!
 //! needs --proposal-path to the consumer addition proposal, --genesis-path to
-//! the partial genesis, and --mnemonic to some account that has funds for the
+//! the partial genesis, and --mnemonic-path to some account that has funds for the
 //! hermes thing to work
 //!
 //! NOTE: for the final final genesis you should check disabling the line that
