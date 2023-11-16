@@ -307,6 +307,7 @@ memo_prefix = ''
 # fee_granter = ''
 */
 
+#[derive(Debug, Clone)]
 pub struct HermesChainConfig {
     pub chain_id: String,
     pub rpc_addr: String,
