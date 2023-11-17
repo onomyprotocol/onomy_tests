@@ -16,9 +16,7 @@ use onomy_test_lib::{
     ibc::IbcPair,
     market::{CoinPair, Market},
     onomy_std_init,
-    setups::{
-        cosmovisor_add_consumer, marketd_setup, onomyd_setup, test_proposal, CosmosSetupOptions,
-    },
+    setups::{cosmovisor_add_consumer, cosmovisor_setup, test_proposal, CosmosSetupOptions},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -480,9 +478,10 @@ async fn hermes_runner() -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await.stack()?;
 
-    let ibc_pair = IbcPair::hermes_setup_ics_pair(CHAIN_ID, "onomy")
-        .await
-        .stack()?;
+    let ibc_pair =
+        IbcPair::hermes_setup_ics_pair(CHAIN_ID, "07-tendermint-0", "onomy", "07-tendermint-0")
+            .await
+            .stack()?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log")
         .await
         .stack()?;
@@ -514,11 +513,14 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
             .stack()
             .stack()?;
 
-    let mut options = CosmosSetupOptions::new(daemon_home);
+    let mut options = CosmosSetupOptions::onomy(daemon_home);
     options.large_test_amount = true;
-    let mnemonic = onomyd_setup(options).await.stack()?;
+    let cosmores = cosmovisor_setup(options).await.stack()?;
     // send mnemonic to hermes
-    nm_hermes.send::<String>(&mnemonic).await.stack()?;
+    nm_hermes
+        .send::<String>(&cosmores.hermes_mnemonic.stack()?)
+        .await
+        .stack()?;
 
     // keep these here for local testing purposes
     let _ = &cosmovisor_get_addr("validator").await.stack()?;
@@ -594,9 +596,15 @@ async fn onex_node(args: &Args) -> Result<()> {
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await.stack()?;
 
-    marketd_setup(daemon_home, chain_id, &ccvconsumer_state_s)
-        .await
-        .stack()?;
+    cosmovisor_setup(CosmosSetupOptions::new(
+        daemon_home,
+        chain_id,
+        "anative",
+        "anative",
+        Some(&ccvconsumer_state_s),
+    ))
+    .await
+    .stack()?;
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await.stack()?;

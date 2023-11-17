@@ -2,8 +2,11 @@
 //! problems.
 //!
 //! needs --proposal-path to the consumer addition proposal, --genesis-path to
-//! the partial genesis, and --mnemonic-path to some account that has funds for the
-//! hermes thing to work
+//! the partial genesis, and --mnemonic-path to some account that has funds for
+//! the hermes thing to work
+//!
+//! note: this uses the same validator mnemonic for hermes, so there is a chance
+//! of a spurious account mismatch error
 //!
 //! NOTE: for the final final genesis you should check disabling the line that
 //! overwrites "ccvconsumer", disabling the "genesis_time" overwrite, and check
@@ -34,7 +37,7 @@ use onomy_test_lib::{
     },
     market::{CoinPair, Market},
     onomy_std_init, reprefix_bech32,
-    setups::{cosmovisor_add_consumer, onomyd_setup, CosmosSetupOptions},
+    setups::{cosmovisor_add_consumer, cosmovisor_setup, CosmosSetupOptions},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -311,9 +314,10 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     // wait for setup
     nm_onomyd.recv::<()>().await.stack()?;
 
-    let ibc_pair = IbcPair::hermes_setup_ics_pair(consumer_id, "onomy")
-        .await
-        .stack()?;
+    let ibc_pair =
+        IbcPair::hermes_setup_ics_pair(consumer_id, "07-tendermint-0", "onomy", "07-tendermint-0")
+            .await
+            .stack()?;
     let mut hermes_runner = hermes_start("/logs/hermes_bootstrap_runner.log")
         .await
         .stack()?;
@@ -352,14 +356,17 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
             .await
             .stack()?;
 
-    let mut options = CosmosSetupOptions::new(daemon_home);
+    let mut options = CosmosSetupOptions::onomy(daemon_home);
     if let Some(ref mnemonic_path) = args.mnemonic_path {
         let mnemonic = FileOptions::read_to_string(mnemonic_path).await.stack()?;
-        options.mnemonic = Some(mnemonic);
+        options.validator_mnemonic = Some(mnemonic);
     }
-    let mnemonic = onomyd_setup(options).await.stack()?;
+    let cosmores = cosmovisor_setup(options).await.stack()?;
     // send mnemonic to hermes
-    nm_hermes.send::<String>(&mnemonic).await.stack()?;
+    nm_hermes
+        .send::<String>(&cosmores.validator_mnemonic.stack()?)
+        .await
+        .stack()?;
 
     // keep these here for local testing purposes
     let addr = &cosmovisor_get_addr("validator").await.stack()?;
@@ -425,7 +432,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .await
         .stack()?;
     // it takes time for the relayer to complete relaying
-    wait_for_num_blocks(5).await.stack()?;
+    wait_for_num_blocks(4).await.stack()?;
     // notify consumer that we have sent NOM
     nm_consumer.send::<IbcPair>(&ibc_pair).await.stack()?;
 
@@ -543,16 +550,13 @@ async fn consumer(args: &Args) -> Result<()> {
     .stack()?;
     info!("sending back to {}", test_addr);
 
-    // avoid conflict with hermes relayer
-    wait_for_num_blocks(5).await.stack()?;
-
     // send some IBC NOM back to origin chain using it as gas
     ibc_pair
         .a
         .cosmovisor_ibc_transfer("validator", test_addr, "5000", ibc_nom)
         .await
         .stack()?;
-    wait_for_num_blocks(5).await.stack()?;
+    wait_for_num_blocks(4).await.stack()?;
 
     // market module specific sanity checks (need to check all tx commands
     // specifically to make sure permissions are correct)

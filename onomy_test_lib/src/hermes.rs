@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use super_orchestrator::{
-    stacked_errors::{Error, Result, StackableErr},
+    stacked_errors::{Result, StackableErr},
     stacked_get, stacked_get_mut, Command, CommandRunner, FileOptions,
 };
 
@@ -70,34 +70,6 @@ where
     Ok(res)
 }
 
-/// Returns a single client if it exists. Returns an error if two redundant
-/// clients were found.
-pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<String> {
-    let clients = sh_hermes_no_debug(["query clients --host-chain", host_chain])
-        .await
-        .stack_err(|| "failed to query for host chain")?;
-    let clients = clients.as_array().stack()?;
-    let mut client_id = None;
-    for client in clients {
-        if json_inner(stacked_get!(client["chain_id"])) == reference_chain {
-            if client_id.is_some() {
-                // we have already seen this, we don't want to need to handle ambiguity
-                return Err(Error::from(format!(
-                    "found two clients associated with host_chain {host_chain} and \
-                     reference_chain {reference_chain}"
-                )))
-            }
-            client_id = Some(json_inner(stacked_get!(client["client_id"])));
-        }
-    }
-    client_id.stack_err(|| {
-        format!(
-            "could not find client associated with host_chain {host_chain} and reference_chain \
-             {reference_chain}"
-        )
-    })
-}
-
 /// Returns the 07-tendermint-x of `a_chain` tracking the state of `b_chain` and
 /// vice versa.
 ///
@@ -106,17 +78,6 @@ pub async fn get_client(host_chain: &str, reference_chain: &str) -> Result<Strin
 /// Note: for ICS pairs a client is created automatically by the process of
 /// setting up ICS.
 pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String, String)> {
-    // note: in case of frozen clients there may be a reason to create a new client
-    if get_client(a_chain, b_chain).await.is_ok() {
-        return Err(Error::from(format!(
-            "a client already exists between {a_chain} and {b_chain}"
-        )))
-    }
-    if get_client(b_chain, a_chain).await.is_ok() {
-        return Err(Error::from(format!(
-            "a client already exists between {b_chain} and {a_chain}"
-        )))
-    }
     let tmp = sh_hermes([
         "create client --host-chain",
         a_chain,
@@ -140,14 +101,11 @@ pub async fn create_client_pair(a_chain: &str, b_chain: &str) -> Result<(String,
 
 /// Returns the connection-x of the new connection on the side of `a_chain` and
 /// `b_chain`.
-pub async fn create_connection_pair(a_chain: &str, b_chain: &str) -> Result<(String, String)> {
-    let a_client = get_client(a_chain, b_chain).await.stack_err(|| {
-        format!("client hosted by {a_chain} not created before `create_connection_pair` was called")
-    })?;
-    let b_client = get_client(b_chain, a_chain).await.stack_err(|| {
-        format!("client hosted by {b_chain} not created before `create_connection_pair` was called")
-    })?;
-
+pub async fn create_connection_pair(
+    a_chain: &str,
+    a_client: &str,
+    b_client: &str,
+) -> Result<(String, String)> {
     let res = &sh_hermes([
         "create connection --a-chain",
         a_chain,

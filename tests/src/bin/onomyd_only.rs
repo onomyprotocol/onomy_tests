@@ -13,7 +13,7 @@ use onomy_test_lib::{
     },
     dockerfiles::dockerfile_onomyd,
     onomy_std_init, reprefix_bech32,
-    setups::{onomyd_setup, CosmosSetupOptions},
+    setups::{cosmovisor_setup, CosmosSetupOptions},
     super_orchestrator::{
         sh,
         stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
@@ -47,9 +47,9 @@ async fn main() -> Result<()> {
 
 async fn onomyd_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    let mut options = CosmosSetupOptions::new(daemon_home);
+    let mut options = CosmosSetupOptions::onomy(daemon_home);
     options.high_staking_level = true;
-    onomyd_setup(options).await.stack()?;
+    cosmovisor_setup(options).await.stack()?;
     let mut cosmovisor_runner = cosmovisor_start("onomyd_runner.log", None).await.stack()?;
 
     let addr = &cosmovisor_get_addr("validator").await.stack()?;

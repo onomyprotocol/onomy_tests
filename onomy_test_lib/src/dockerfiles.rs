@@ -10,7 +10,7 @@ ENV PATH=$PATH:/root/go/bin
 "#;
 
 #[rustfmt::skip]
-pub const HERMES: &str = r#"ADD https://github.com/informalsystems/hermes/releases/download/v1.6.0/hermes-v1.6.0-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
+pub const HERMES: &str = r#"ADD https://github.com/informalsystems/hermes/releases/download/v1.7.1/hermes-v1.7.1-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
 RUN cd /root/.hermes/bin/ && tar -vxf *
 ENV PATH=$PATH:/root/.hermes/bin
 ENV HERMES_HOME="/root/.hermes"

@@ -14,7 +14,7 @@ use onomy_test_lib::{
     },
     market::{CoinPair, Market},
     onomy_std_init,
-    setups::market_standalone_setup,
+    setups::{cosmovisor_setup, CosmosSetupOptions},
     super_orchestrator::{
         docker::{Container, ContainerNetwork, Dockerfile},
         net_message::NetMessenger,
@@ -406,9 +406,15 @@ async fn onex_node(args: &Args) -> Result<()> {
         .await
         .stack()?;
 
-    market_standalone_setup(daemon_home, CHAIN_ID)
-        .await
-        .stack()?;
+    cosmovisor_setup(CosmosSetupOptions::new(
+        daemon_home,
+        "onex",
+        "aonex",
+        "aonex",
+        None,
+    ))
+    .await
+    .stack()?;
 
     let genesis_s = FileOptions::read_to_string(&format!("{daemon_home}/config/genesis.json"))
         .await
