@@ -12,7 +12,7 @@ use onomy_test_lib::{
     dockerfiles::onomy_std_cosmos_daemon,
     market::{CoinPair, Market},
     onomy_std_init,
-    setups::market_standalone_setup,
+    setups::{cosmovisor_setup, CosmosSetupOptions},
     super_orchestrator::{
         sh,
         stacked_errors::{Error, Result, StackableErr},
@@ -65,9 +65,9 @@ async fn main() -> Result<()> {
 
 async fn standalone_runner(args: &Args) -> Result<()> {
     let daemon_home = args.daemon_home.as_ref().stack()?;
-    market_standalone_setup(daemon_home, CHAIN_ID)
-        .await
-        .stack()?;
+    let mut options = CosmosSetupOptions::new(daemon_home, CHAIN_ID, "anative", "anative", None);
+    options.large_test_amount = true;
+    cosmovisor_setup(options).await.stack()?;
     let mut cosmovisor_runner = cosmovisor_start(&format!("{CHAIN_ID}d_runner.log"), None).await?;
 
     let mut market = Market::new("validator", "1000000anative");

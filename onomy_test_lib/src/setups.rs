@@ -1,19 +1,16 @@
 use serde_json::{json, Value};
 use super_orchestrator::{
-    get_separated_val,
     stacked_errors::{Result, StackableErr},
     stacked_get, stacked_get_mut, Command, FileOptions,
 };
 use tokio::time::sleep;
 
 use crate::{
-    arc_test_denoms,
     cosmovisor::{
-        cosmovisor_get_addr, cosmovisor_gov_file_proposal, fast_block_times, force_chain_id,
-        set_minimum_gas_price, sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx,
-        wait_for_num_blocks,
+        cosmovisor_gov_file_proposal, fast_block_times, force_chain_id, set_minimum_gas_price,
+        sh_cosmovisor, sh_cosmovisor_no_debug, sh_cosmovisor_tx, wait_for_num_blocks,
     },
-    native_denom, nom, nom_denom, reprefix_bech32, token18, ONOMY_IBC_NOM, TEST_AMOUNT, TIMEOUT,
+    nom_denom, token18, TEST_AMOUNT, TIMEOUT,
 };
 
 // make sure some things are imported so we don't have to wrangle with this for
@@ -22,11 +19,24 @@ fn _unused() {
     drop(sleep(TIMEOUT));
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CosmosSetupOptions {
     pub chain_id: String,
 
     pub daemon_home: String,
+
+    pub gov_token: String,
+
+    pub gas_token: String,
+
+    pub ccvconsumer_state: Option<String>,
+
+    // mnemonic for the validator to use instead of randomly generating
+    pub validator_mnemonic: Option<String>,
+
+    pub hermes_mnemonic: Option<String>,
+
+    pub onex_testnet_amounts: bool,
 
     // used for APR tests, as normally there is a lot of undelegated tokens that would mess up
     // calculations
@@ -35,30 +45,57 @@ pub struct CosmosSetupOptions {
     // used for checking the numerical limits of the market
     pub large_test_amount: bool,
 
-    pub onex_testnet_amounts: bool,
-
-    // mnemonic for the validator to use instead of randomly generating
-    pub mnemonic: Option<String>,
+    // special Onomy main provider chain only modules
+    pub onomy_special: bool,
 }
 
 impl CosmosSetupOptions {
-    pub fn new(daemon_home: &str) -> Self {
+    pub fn new(
+        daemon_home: &str,
+        chain_id: &str,
+        gov_token: &str,
+        gas_token: &str,
+        ccvconsumer_state: Option<&str>,
+    ) -> Self {
         CosmosSetupOptions {
-            chain_id: "onomy".to_owned(),
+            chain_id: chain_id.to_owned(),
             daemon_home: daemon_home.to_owned(),
+            gov_token: gov_token.to_owned(),
+            gas_token: gas_token.to_owned(),
+            ccvconsumer_state: ccvconsumer_state.map(|s| s.to_string()),
             ..Default::default()
         }
     }
+
+    pub fn onomy(daemon_home: &str) -> Self {
+        CosmosSetupOptions {
+            chain_id: "onomy".to_owned(),
+            daemon_home: daemon_home.to_owned(),
+            gov_token: "anom".to_owned(),
+            onomy_special: true,
+            gas_token: "anom".to_owned(),
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct CosmosSetupResults {
+    pub validator_mnemonic: Option<String>,
+    // a mnemonic to a separate account intended for the hermes relayer, for avoiding an annoying
+    // issue with account sequence mismatches
+    pub hermes_mnemonic: Option<String>,
 }
 
 /// NOTE: this is stuff you would not want to run in production.
 /// NOTE: this is intended to be run inside containers only
 ///
 /// This additionally returns the single validator mnemonic
-pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
+pub async fn cosmovisor_setup(options: CosmosSetupOptions) -> Result<CosmosSetupResults> {
     let daemon_home = &options.daemon_home;
     let chain_id = &options.chain_id;
-    let global_min_self_delegation = &token18(225.0e3, "");
+    let gov_token = &options.gov_token;
+    let gas_token = &options.gas_token;
     sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
     sh_cosmovisor(["config keyring-backend test"])
         .await
@@ -73,28 +110,40 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         .stack()?;
 
     // rename all "stake" to "anom"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anom\"");
+    let genesis_s = genesis_s.replace("\"stake\"", &format!("\"{gov_token}\""));
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
     force_chain_id(daemon_home, &mut genesis, chain_id)
         .await
         .stack()?;
 
+    // for consumer chains
+    if let Some(ref ccvconsumer_state_s) = options.ccvconsumer_state {
+        let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
+        *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
+    }
+
     // put in the test `footoken` and the staking `anom`
     let denom_metadata = nom_denom();
     *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = denom_metadata;
 
-    // init DAO balance
-    let amount = token18(100.0e6, "");
-    let treasury_balance = json!([{"denom": "anom", "amount": amount}]);
-    *stacked_get_mut!(genesis["app_state"]["dao"]["treasury_balance"]) = treasury_balance;
+    if options.onomy_special {
+        // init DAO balance
+        let amount = token18(100.0e6, "");
+        let treasury_balance = json!([{"denom": "anom", "amount": amount}]);
+        *stacked_get_mut!(genesis["app_state"]["dao"]["treasury_balance"]) = treasury_balance;
+    }
 
     // disable community_tax
     *stacked_get_mut!(genesis["app_state"]["distribution"]["params"]["community_tax"]) = json!("0");
 
-    // min_global_self_delegation
-    *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["min_global_self_delegation"]) =
-        global_min_self_delegation.to_owned().into();
+    let global_min_self_delegation = &token18(225.0e3, "");
+    if options.onomy_special {
+        // min_global_self_delegation
+        *stacked_get_mut!(
+            genesis["app_state"]["staking"]["params"]["min_global_self_delegation"]
+        ) = global_min_self_delegation.to_owned().into();
+    }
 
     // decrease the governing period for fast tests
     let gov_period = "800ms";
@@ -104,6 +153,14 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
     *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
         gov_period;
 
+    // Set governance token
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"]) =
+        token18(500.0, "").into();
+    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"]) =
+        options.gov_token.as_str().into();
+    *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["bond_denom"]) =
+        options.gov_token.as_str().into();
+
     // write back genesis
     let genesis_s = serde_json::to_string(&genesis).stack()?;
     FileOptions::write_str(&genesis_file_path, &genesis_s)
@@ -112,9 +169,11 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
 
     fast_block_times(daemon_home).await.stack()?;
 
-    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
+    set_minimum_gas_price(daemon_home, &format!("1{gas_token}"))
+        .await
+        .stack()?;
 
-    let mnemonic = if let Some(mnemonic) = options.mnemonic {
+    let validator_mnemonic = if let Some(ref mnemonic) = options.validator_mnemonic {
         Command::new(format!(
             "{daemon_home}/cosmovisor/current/bin/onomyd keys add validator --recover"
         ))
@@ -123,8 +182,8 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
         .stack()?
         .assert_success()
         .stack()?;
-        mnemonic
-    } else {
+        Some(mnemonic.to_owned())
+    } else if options.ccvconsumer_state.as_deref().is_none() {
         // we need the stderr to get the mnemonic
         let comres = Command::new("cosmovisor run keys add validator")
             .run_to_completion()
@@ -140,7 +199,40 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
             .stack_err(|| "no last line")?
             .trim()
             .to_owned();
-        mnemonic
+        Some(mnemonic)
+    } else {
+        None
+    };
+
+    let hermes_mnemonic = if let Some(ref mnemonic) = options.hermes_mnemonic {
+        Command::new(format!(
+            "{daemon_home}/cosmovisor/current/bin/onomyd keys add hermes --recover"
+        ))
+        .run_with_input_to_completion(mnemonic.as_bytes())
+        .await
+        .stack()?
+        .assert_success()
+        .stack()?;
+        Some(mnemonic.to_owned())
+    } else if options.ccvconsumer_state.as_deref().is_none() {
+        // we need the stderr to get the mnemonic
+        let comres = Command::new("cosmovisor run keys add hermes")
+            .run_to_completion()
+            .await
+            .stack()?;
+        comres.assert_success().stack()?;
+        let mnemonic = comres
+            .stderr_as_utf8()
+            .stack()?
+            .trim()
+            .lines()
+            .last()
+            .stack_err(|| "no last line")?
+            .trim()
+            .to_owned();
+        Some(mnemonic)
+    } else {
+        None
     };
 
     let amount = if options.onex_testnet_amounts {
@@ -149,275 +241,47 @@ pub async fn onomyd_setup(options: CosmosSetupOptions) -> Result<String> {
          20000000000000000000000000wei"
             .to_owned()
     } else if options.large_test_amount {
-        format!("{TEST_AMOUNT}anom")
+        format!("{TEST_AMOUNT}{gov_token},{TEST_AMOUNT}afootoken")
     } else {
-        nom(2.0e6)
+        format!("2000000000000000000000000{gov_token},2000000000000000000000000afootoken")
     };
+
     sh_cosmovisor(["add-genesis-account validator", &amount])
         .await
         .stack()?;
+    sh_cosmovisor([
+        "add-genesis-account hermes",
+        &format!("100000000000000000000{gas_token}"),
+    ])
+    .await
+    .stack()?;
 
     let self_delegate = if options.high_staking_level {
         /*sh_cosmovisor("keys add orchestrator", &[]).await.stack()?;
         sh_cosmovisor("add-genesis-account orchestrator", &[&nom(2.0e6)])
             .await
             .stack()?;*/
-        nom(1.99e6)
+        token18(1.99e6, gov_token)
     } else {
-        nom(1.0e6)
+        token18(1.0e6, gov_token)
     };
 
-    sh_cosmovisor([
-        "gentx validator",
-        &self_delegate,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        global_min_self_delegation,
-    ])
-    .await
-    .stack()?;
-
-    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
-
-    FileOptions::write_str(
-        "/logs/genesis.json",
-        &FileOptions::read_to_string(&genesis_file_path)
-            .await
-            .stack()?,
-    )
-    .await
-    .stack()?;
-
-    Ok(mnemonic)
-}
-
-pub async fn market_standalone_setup(daemon_home: &str, chain_id: &str) -> Result<String> {
-    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
-    sh_cosmovisor(["config keyring-backend test"])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
-        .await
-        .stack()?;
-
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
-        .await
-        .stack()?;
-
-    // rename all "stake" to "native"
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id)
-        .await
-        .stack()?;
-
-    *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = native_denom();
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
-        gov_period.clone();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
-        gov_period;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s)
-        .await
-        .stack()?;
-    FileOptions::write_str("/logs/market_standalone_genesis.json", &genesis_s)
-        .await
-        .stack()?;
-
-    fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1anative")
-        .await
-        .stack()?;
-
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator")
-        .run_to_completion()
-        .await
-        .stack()?;
-    comres.assert_success().stack()?;
-    let mnemonic = comres
-        .stderr_as_utf8()
-        .stack()?
-        .trim()
-        .lines()
-        .last()
-        .stack_err(|| "no last line")?
-        .trim()
-        .to_owned();
-
-    //let gen_coins = token18(2.0e6, "anative") + "," + &token18(2.0e6,
-    // "afootoken");
-    let gen_coins = format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}afootoken");
-    let stake_coin = token18(1.0e6, "anative");
-    sh_cosmovisor(["add-genesis-account validator", &gen_coins])
-        .await
-        .stack()?;
-    sh_cosmovisor([
-        "gentx validator",
-        &stake_coin,
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        "1",
-    ])
-    .await
-    .stack()?;
-    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
-
-    Ok(mnemonic)
-}
-
-// NOTE: this uses the local tendermint consAddr for the bridge power
-pub async fn gravity_standalone_setup(
-    daemon_home: &str,
-    use_old_gentx: bool,
-    address_prefix: &str,
-) -> Result<String> {
-    let chain_id = "gravity";
-    let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
-    sh_cosmovisor(["config keyring-backend test"])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
-        .await
-        .stack()?;
-
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
-        .await
-        .stack()?;
-
-    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id)
-        .await
-        .stack()?;
-
-    let denom_metadata = arc_test_denoms();
-    *stacked_get_mut!(genesis["app_state"]["bank"]["denom_metadata"]) = denom_metadata;
-
-    // for airdrop tests
-    *stacked_get_mut!(genesis["app_state"]["distribution"]["fee_pool"]["community_pool"]) = json!(
-        [{"denom": "stake", "amount": "10000000000.0"}]
-    );
-    // SHA256 hash of distribution.ModuleName
-    let distribution_addr = reprefix_bech32(
-        "gravity1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8r0kyvh",
-        address_prefix,
-    )
-    .unwrap();
-    stacked_get_mut!(genesis["app_state"]["auth"]["accounts"])
-        .as_array_mut()
-        .stack()?
-        .push(json!(
-            [{"@type": "/cosmos.auth.v1beta1.ModuleAccount",
-            "base_account": { "account_number": "0", "address": distribution_addr,
-            "pub_key": null,"sequence": "0"},
-            "name": "distribution", "permissions": ["basic"]}]
-        ));
-    stacked_get_mut!(genesis["app_state"]["bank"]["balances"])
-        .as_array_mut()
-        .stack()?
-        .push(json!(
-            [{"address": distribution_addr, "coins": [{"amount": "10000000000", "denom": "stake"}]}]
-        ));
-
-    // decrease the governing period for fast tests
-    let gov_period = "10s";
-    let gov_period: Value = gov_period.into();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
-        gov_period.clone();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
-        gov_period;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s)
-        .await
-        .stack()?;
-
-    fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1footoken")
-        .await
-        .stack()?;
-
-    // we need the stderr to get the mnemonic
-    let comres = Command::new("cosmovisor run keys add validator")
-        .run_to_completion()
-        .await
-        .stack()?;
-    comres.assert_success().stack()?;
-    let mnemonic = comres
-        .stderr_as_utf8()
-        .stack()?
-        .trim()
-        .lines()
-        .last()
-        .stack_err(|| "no last line")?
-        .trim()
-        .to_owned();
-    // TODO for unknown reasons, add-genesis-account cannot find the keys
-    let addr = cosmovisor_get_addr("validator").await.stack()?;
-    sh_cosmovisor(["add-genesis-account", &addr, &nom(2.0e6)])
-        .await
-        .stack()?;
-
-    let eth_keys = sh_cosmovisor(["eth_keys add"]).await.stack()?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
-
-    let consaddr = sh_cosmovisor(["tendermint show-address"]).await?;
-    let consaddr = consaddr.trim();
-
-    if use_old_gentx {
-        // unconditionally needed for some Arc tests
-        sh_cosmovisor(["keys add orchestrator"]).await.stack()?;
-        let orch_addr = cosmovisor_get_addr("orchestrator").await.stack()?;
-        sh_cosmovisor(["add-genesis-account", &orch_addr, &nom(1.0e6)])
-            .await
-            .stack()?;
-
+    if options.ccvconsumer_state.is_none() {
         sh_cosmovisor([
-            "gentx",
-            "validator",
-            &nom(1.0e6),
-            eth_addr,
-            &orch_addr,
+            "gentx validator",
+            &self_delegate,
             "--chain-id",
             chain_id,
             "--min-self-delegation",
-            min_self_delegation,
+            global_min_self_delegation,
         ])
         .await
         .stack()?;
-    } else {
-        sh_cosmovisor([
-            "gentx",
-            &nom(1.0e6),
-            consaddr,
-            eth_addr,
-            "validator",
-            "--chain-id",
-            chain_id,
-            "--min-self-delegation",
-            min_self_delegation,
-        ])
-        .await
-        .stack()?;
+        sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
     }
-    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
 
     FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
+        format!("/logs/genesis_{chain_id}.json"),
         &FileOptions::read_to_string(&genesis_file_path)
             .await
             .stack()?,
@@ -425,7 +289,10 @@ pub async fn gravity_standalone_setup(
     .await
     .stack()?;
 
-    Ok(mnemonic)
+    Ok(CosmosSetupResults {
+        validator_mnemonic,
+        hermes_mnemonic,
+    })
 }
 
 pub fn test_proposal(consumer_id: &str, reward_denom: &str) -> String {
@@ -516,192 +383,4 @@ pub async fn cosmovisor_add_consumer(
     let ccvconsumer_state = serde_json::to_string(&state).stack()?;
 
     Ok(ccvconsumer_state)
-}
-
-pub async fn marketd_setup(
-    daemon_home: &str,
-    chain_id: &str,
-    ccvconsumer_state_s: &str,
-) -> Result<()> {
-    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
-    sh_cosmovisor(["config keyring-backend test"])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
-        .await
-        .stack()?;
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-
-    // add `ccvconsumer_state` to genesis
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
-        .await
-        .stack()?;
-
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id)
-        .await
-        .stack()?;
-
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
-    *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
-
-    // decrease the governing period for fast tests
-    let gov_period = "800ms";
-    let gov_period: Value = gov_period.into();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["voting_params"]["voting_period"]) =
-        gov_period.clone();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["max_deposit_period"]) =
-        gov_period;
-
-    // Set governance token (for param changes and upgrades) to IBC NOM
-    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["amount"]) =
-        token18(500.0, "").into();
-    *stacked_get_mut!(genesis["app_state"]["gov"]["deposit_params"]["min_deposit"][0]["denom"]) =
-        ONOMY_IBC_NOM.into();
-    *stacked_get_mut!(genesis["app_state"]["staking"]["params"]["bond_denom"]) =
-        ONOMY_IBC_NOM.into();
-
-    // TODO unify consumer setups
-    // Set market burn token to IBC NOM
-    //*stacked_get_mut!(genesis["app_state"]["market"]["params"]["burn_coin"])
-    // = ONOMY_IBC_NOM.into();
-
-    // NOTE: do not under any circumstance make a mint denom an IBC token.
-    // We will zero and reset inflation to anative just to make sure.
-    *stacked_get_mut!(genesis["app_state"]["mint"]["minter"]["inflation"]) = "0.0".into();
-    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["mint_denom"]) = "anative".into();
-    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_min"]) = "0.0".into();
-    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_max"]) = "0.0".into();
-    *stacked_get_mut!(genesis["app_state"]["mint"]["params"]["inflation_rate_change"]) =
-        "0.0".into();
-
-    let genesis_s = genesis.to_string();
-
-    FileOptions::write_str(&genesis_file_path, &genesis_s)
-        .await
-        .stack()?;
-    FileOptions::write_str(&format!("/logs/{chain_id}_genesis.json"), &genesis_s)
-        .await
-        .stack()?;
-
-    let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
-
-    // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor([
-        "add-genesis-account",
-        addr,
-        &format!("{TEST_AMOUNT}anative,{TEST_AMOUNT}anom"),
-    ])
-    .await
-    .stack()?;
-
-    fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1anative")
-        .await
-        .stack()?;
-
-    FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path)
-            .await
-            .stack()?,
-    )
-    .await
-    .stack()?;
-
-    Ok(())
-}
-
-pub async fn arc_consumer_setup(
-    daemon_home: &str,
-    chain_id: &str,
-    ccvconsumer_state_s: &str,
-) -> Result<()> {
-    sh_cosmovisor(["config chain-id", chain_id]).await.stack()?;
-    sh_cosmovisor(["config keyring-backend test"])
-        .await
-        .stack()?;
-    sh_cosmovisor_no_debug(["init --overwrite", chain_id])
-        .await
-        .stack()?;
-    let genesis_file_path = format!("{daemon_home}/config/genesis.json");
-
-    // add `ccvconsumer_state` to genesis
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
-        .await
-        .stack()?;
-
-    let genesis_s = genesis_s.replace("\"stake\"", "\"anative\"");
-    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-
-    force_chain_id(daemon_home, &mut genesis, chain_id)
-        .await
-        .stack()?;
-
-    let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
-    *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
-
-    // write back genesis
-    let genesis_s = serde_json::to_string(&genesis).stack()?;
-    FileOptions::write_str(&genesis_file_path, &genesis_s)
-        .await
-        .stack()?;
-
-    let addr: &String = &cosmovisor_get_addr("validator").await.stack()?;
-
-    // we need some native token in the bank, and don't need gentx
-    sh_cosmovisor(["add-genesis-account", addr, &token18(2.0e6, "anative")])
-        .await
-        .stack()?;
-
-    let consaddr = sh_cosmovisor(["tendermint show-address"]).await?;
-    let consaddr = consaddr.trim();
-
-    let eth_keys = sh_cosmovisor(["eth_keys add"]).await.stack()?;
-    let eth_addr = &get_separated_val(&eth_keys, "\n", "address", ":").stack()?;
-    let min_self_delegation = &token18(1.0, "");
-    sh_cosmovisor([
-        "gentx",
-        &token18(1.0e6, "anative"),
-        consaddr,
-        eth_addr,
-        "validator",
-        "--chain-id",
-        chain_id,
-        "--min-self-delegation",
-        min_self_delegation,
-    ])
-    .await
-    .stack()?;
-    sh_cosmovisor_no_debug(["collect-gentxs"]).await.stack()?;
-
-    // TODO it seems that this works, shouldn't it fail because of the signature?
-    // Arc only: remove `MsgCreateValidator`
-    let genesis_s = FileOptions::read_to_string(&genesis_file_path)
-        .await
-        .stack()?;
-    let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
-    stacked_get_mut!(genesis["app_state"]["genutil"]["gen_txs"][0]["body"]["messages"])
-        .as_array_mut()
-        .unwrap()
-        .remove(0);
-    let genesis_s = genesis.to_string();
-    FileOptions::write_str(&genesis_file_path, &genesis_s)
-        .await
-        .stack()?;
-
-    fast_block_times(daemon_home).await.stack()?;
-
-    FileOptions::write_str(
-        &format!("/logs/{chain_id}_genesis.json"),
-        &FileOptions::read_to_string(&genesis_file_path)
-            .await
-            .stack()?,
-    )
-    .await
-    .stack()?;
-
-    Ok(())
 }

@@ -88,6 +88,8 @@ pub struct Args {
     #[arg(long)]
     pub test_type: Option<String>,
     #[arg(long)]
+    pub partial_genesis_path: Option<String>,
+    #[arg(long)]
     pub genesis_path: Option<String>,
     #[arg(long)]
     pub proposal_path: Option<String>,
@@ -95,6 +97,8 @@ pub struct Args {
     pub mnemonic_path: Option<String>,
     #[arg(long)]
     pub peer_info: Option<String>,
+    #[arg(long)]
+    pub node: Option<String>,
     #[arg(long)]
     pub consumer_id: Option<String>,
 }

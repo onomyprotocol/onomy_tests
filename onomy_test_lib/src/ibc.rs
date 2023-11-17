@@ -102,7 +102,12 @@ impl IbcPair {
     /// function that happens on chain startup, it hard codes the transfer
     /// channel number. Additionally, `hermes start` should be run _after_
     /// this function is called.
-    pub async fn hermes_setup_ics_pair(consumer: &str, provider: &str) -> Result<IbcPair> {
+    pub async fn hermes_setup_ics_pair(
+        consumer: &str,
+        consumer_client: &str,
+        provider: &str,
+        provider_client: &str,
+    ) -> Result<IbcPair> {
         // https://hermes.informal.systems/tutorials/local-chains/add-a-new-relay-path.html
 
         // Note: For ICS, there is a point where a handshake must be initiated by the
@@ -115,7 +120,9 @@ impl IbcPair {
         //let client_pair = create_client_pair(a_chain, b_chain).await.stack()?;
         // create one client and connection pair that will be used for IBC transfer and
         // ICS communication
-        let connection_pair = create_connection_pair(&a_chain, &b_chain).await.stack()?;
+        let connection_pair = create_connection_pair(&a_chain, consumer_client, provider_client)
+            .await
+            .stack()?;
 
         // a_chain<->b_chain consumer<->provider
         let ics_channel_pair =
@@ -129,25 +136,49 @@ impl IbcPair {
         //let transfer_channel_pair = create_channel_pair(&a_chain, &connection_pair.0,
         // "transfer", "transfer", false).await.stack()?;
 
+        // the transfer channel should be the ICS channel plus one
+        let a_channel_i = ics_channel_pair
+            .0
+            .rsplit_once('-')
+            .stack()?
+            .1
+            .parse::<u64>()
+            .stack()?
+            .checked_add(1)
+            .stack()?;
+        let b_channel_i = ics_channel_pair
+            .1
+            .rsplit_once('-')
+            .stack()?
+            .1
+            .parse::<u64>()
+            .stack()?
+            .checked_add(1)
+            .stack()?;
+
         // FIXME this is hard coded
-        let transfer_channel_pair = ("channel-1".to_string(), "channel-1".to_string());
+        let transfer_channel_pair = (
+            format!("channel-{a_channel_i}"),
+            format!("channel-{b_channel_i}"),
+        );
         sh_hermes([format!(
-            "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection \
-             connection-0 --dst-port transfer --src-port transfer --src-channel channel-1"
+            "tx chan-open-try --dst-chain {provider} --src-chain {consumer} --dst-connection {} \
+             --dst-port transfer --src-port transfer --src-channel {}",
+            connection_pair.1, transfer_channel_pair.0
         )])
         .await
         .stack()?;
         sh_hermes([format!(
-            "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection \
-             connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
-             --src-channel channel-1"
+            "tx chan-open-ack --dst-chain {consumer} --src-chain {provider} --dst-connection {} \
+             --dst-port transfer --src-port transfer --dst-channel {} --src-channel {}",
+            connection_pair.0, transfer_channel_pair.0, transfer_channel_pair.1
         )])
         .await
         .stack()?;
         sh_hermes([format!(
             "tx chan-open-confirm --dst-chain {provider} --src-chain {consumer} --dst-connection \
-             connection-0 --dst-port transfer --src-port transfer --dst-channel channel-1 \
-             --src-channel channel-1"
+             {} --dst-port transfer --src-port transfer --dst-channel {} --src-channel {}",
+            connection_pair.1, transfer_channel_pair.1, transfer_channel_pair.0
         )])
         .await
         .stack()?;
