@@ -355,7 +355,7 @@ async fn consumer(args: &Args) -> Result<()> {
     cosmovisor_setup(CosmosSetupOptions::new(
         daemon_home,
         chain_id,
-        ONOMY_IBC_NOM,
+        "anative",
         "anative",
         Some(&ccvconsumer_state_s),
     ))
@@ -455,7 +455,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(500.0, ONOMY_IBC_NOM),
+        &token18(500.0, "anative"),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
@@ -478,7 +478,7 @@ async fn consumer(args: &Args) -> Result<()> {
     wait_for_num_blocks(1).await.stack()?;
 
     // test a simple text proposal
-    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
+    let test_deposit = token18(500.0, "anative");
     let proposal = json!({
         "title": "Text Proposal",
         "description": "a text proposal",
@@ -498,7 +498,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ONOMY_IBC_NOM;
-    let test_deposit = token18(500.0, ONOMY_IBC_NOM);
+    let test_deposit = token18(500.0, "anative");
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
