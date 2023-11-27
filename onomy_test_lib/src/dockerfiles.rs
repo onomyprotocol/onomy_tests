@@ -1,8 +1,8 @@
-pub const ONOMY_BASE: &str = "fedora:38";
+pub const ONOMY_BASE: &str = "fedora:39";
 
 #[rustfmt::skip]
-pub const ONOMY_STD: &str = r#"FROM fedora:38
-RUN dnf install -y git make cmake gcc gcc-c++ which iproute iputils procps-ng vim-minimal tmux net-tools htop tar jq npm openssl-devel perl rust cargo golang
+pub const ONOMY_STD: &str = r#"FROM fedora:39
+RUN dnf install -y git rust cargo make cmake gcc gcc-c++ golang perl npm which iproute iputils net-tools procps-ng vim-minimal tmux htop tar jq openssl-devel pass
 "#;
 
 pub const COSMOVISOR: &str = r#"RUN go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@latest
