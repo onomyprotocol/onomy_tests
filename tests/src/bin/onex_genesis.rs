@@ -596,7 +596,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // market module specific sanity checks (need to check all tx commands
     // specifically to make sure permissions are correct)
-/*
+
     let amount = u256!(100000000000000000);
     let amount_sqr = amount.checked_mul(amount).unwrap();
     let coin_pair = CoinPair::new("aonex", ibc_nom).stack()?;
@@ -636,7 +636,7 @@ async fn consumer(args: &Args) -> Result<()> {
         )
         .await
         .stack()?;
-    //market.cancel_order(6).await.stack()?;*/
+    //market.cancel_order(6).await.stack()?;
 
     let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let pubkey = pubkey.trim();
