@@ -17,7 +17,7 @@
 /*
 e.x.
 
-cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-3/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-3/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
 */
 
@@ -57,6 +57,10 @@ use tokio::time::sleep;
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
 
+const HERMES_MNEMONIC: &str = "suspect glove east just retreat relax south garment ketchup salmon \
+                               chicken toilet nasty coach stairs logic churn solve super seminar \
+                               dune midnight monitor peace";
+
 pub async fn onexd_setup(
     daemon_home: &str,
     chain_id: &str,
@@ -88,12 +92,40 @@ pub async fn onexd_setup(
     for balance in array {
         if balance["address"].as_str().unwrap() == "onomy1yks83spz6lvrrys8kh0untt22399tskk6jafcv" {
             balance["coins"].as_array_mut().unwrap().insert(
-                2,
+                1,
                 json!({"denom": "aonex", "amount": "20000000000000000000000000000"}),
             );
             break
         }
     }
+
+    // need to add the hermes account manually
+    stacked_get_mut!(genesis["app_state"]["auth"]["accounts"])
+        .as_array_mut()
+        .stack()?
+        .push(json!(
+            {
+                "@type": "/cosmos.auth.v1beta1.BaseAccount",
+                "address": "onomy1p8zprjj83p7elv0dpjeefexrdjpqhj29tw7gre",
+                "pub_key": null,
+                "account_number": "0",
+                "sequence": "0"
+            }
+        ));
+    stacked_get_mut!(genesis["app_state"]["bank"]["balances"])
+        .as_array_mut()
+        .stack()?
+        .push(json!(
+            {
+            "address": "onomy1p8zprjj83p7elv0dpjeefexrdjpqhj29tw7gre",
+            "coins": [
+                {
+                    "denom": "aonex",
+                    "amount": "100000000000000000000"
+                }
+            ]
+            }
+        ));
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
     *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
@@ -116,7 +148,7 @@ pub async fn onexd_setup(
         .stack()?;
 
     fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
+    set_minimum_gas_price(daemon_home, "1aonex").await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
@@ -274,7 +306,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 &format!("consumer_{uuid}"),
                 CONSUMER_ACCOUNT_PREFIX,
                 true,
-                "anom",
+                "aonex",
                 true,
             ),
         ],
@@ -305,8 +337,11 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     sh_hermes(["keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt"])
         .await
         .stack()?;
+    FileOptions::write_str("/mnemonic.txt", HERMES_MNEMONIC)
+        .await
+        .stack()?;
     sh_hermes([format!(
-        "keys add --chain {consumer_id} --mnemonic-file /root/.hermes/mnemonic.txt"
+        "keys add --chain {consumer_id} --mnemonic-file /mnemonic.txt"
     )])
     .await
     .stack()?;
@@ -359,7 +394,8 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let mut options = CosmosSetupOptions::onomy(daemon_home);
     if let Some(ref mnemonic_path) = args.mnemonic_path {
         let mnemonic = FileOptions::read_to_string(mnemonic_path).await.stack()?;
-        options.validator_mnemonic = Some(mnemonic);
+        options.validator_mnemonic = Some(mnemonic.clone());
+        options.hermes_mnemonic = Some(HERMES_MNEMONIC.to_owned());
     }
     let cosmores = cosmovisor_setup(options).await.stack()?;
     // send mnemonic to hermes
@@ -563,7 +599,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     let amount = u256!(100000000000000000);
     let amount_sqr = amount.checked_mul(amount).unwrap();
-    let coin_pair = CoinPair::new("anom", ibc_nom).stack()?;
+    let coin_pair = CoinPair::new("aonex", ibc_nom).stack()?;
     let mut market = Market::new("validator", &format!("1000000{ibc_nom}"));
     market.max_gas = Some(u256!(1000000));
     market
@@ -639,7 +675,7 @@ async fn consumer(args: &Args) -> Result<()> {
     // TODO go back to using IBC NOM
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ibc_nom.as_str();
-    let test_deposit = token18(2000.0, "aonex");
+    let test_deposit = token18(500.0, "aonex");
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
