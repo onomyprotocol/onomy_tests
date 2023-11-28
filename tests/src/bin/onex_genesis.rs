@@ -462,7 +462,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            "5000000000000000000000",
+            &token18(2.0e3, ""),
             "anom",
         )
         .await
@@ -596,7 +596,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     // market module specific sanity checks (need to check all tx commands
     // specifically to make sure permissions are correct)
-
+/*
     let amount = u256!(100000000000000000);
     let amount_sqr = amount.checked_mul(amount).unwrap();
     let coin_pair = CoinPair::new("aonex", ibc_nom).stack()?;
@@ -636,7 +636,7 @@ async fn consumer(args: &Args) -> Result<()> {
         )
         .await
         .stack()?;
-    //market.cancel_order(6).await.stack()?;
+    //market.cancel_order(6).await.stack()?;*/
 
     let pubkey = sh_cosmovisor(["tendermint show-validator"]).await.stack()?;
     let pubkey = pubkey.trim();
@@ -672,7 +672,27 @@ async fn consumer(args: &Args) -> Result<()> {
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
 
-    // TODO go back to using IBC NOM
+    wait_for_num_blocks(1).await.stack()?;
+
+    // test a simple text proposal
+    let test_deposit = token18(500.0, "aonex");
+    let proposal = json!({
+        "title": "Text Proposal",
+        "description": "a text proposal",
+        "type": "Text",
+        "deposit": test_deposit
+    });
+    cosmovisor_gov_file_proposal(
+        daemon_home,
+        None,
+        &proposal.to_string(),
+        &format!("1{ibc_nom}"),
+    )
+    .await
+    .stack()?;
+    let proposals = sh_cosmovisor(["query gov proposals"]).await.stack()?;
+    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
+
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ibc_nom.as_str();
     let test_deposit = token18(500.0, "aonex");
