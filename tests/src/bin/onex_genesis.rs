@@ -43,7 +43,7 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
-        stacked_get, stacked_get_mut, FileOptions,
+        stacked_get, stacked_get_mut, Command, FileOptions,
     },
     token18,
     u64_array_bigints::{
@@ -398,6 +398,21 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         options.hermes_mnemonic = Some(HERMES_MNEMONIC.to_owned());
     }
     let cosmores = cosmovisor_setup(options).await.stack()?;
+
+    // used to manually test vesting and other things
+    Command::new(format!(
+        "{daemon_home}/cosmovisor/current/bin/onomyd keys add special --recover"
+    ))
+    .run_with_input_to_completion(
+        "connect movie hen hamster carpet knock insect penalty level dilemma south train artwork \
+         track obvious team brisk illness hazard atom clap entry leaf mechanic"
+            .as_bytes(),
+    )
+    .await
+    .stack()?
+    .assert_success()
+    .stack()?;
+
     // send mnemonic to hermes
     nm_hermes
         .send::<String>(&cosmores.validator_mnemonic.stack()?)
@@ -578,6 +593,14 @@ async fn consumer(args: &Args) -> Result<()> {
         cosmovisor_get_balances(dst_addr).await.stack()?[ibc_nom],
         u256!(5000)
     );
+    cosmovisor_bank_send(
+        addr,
+        "onomy1y3c6q58vvuxr5tcmesay74wvhrey3pqv8g6y3r",
+        "50000000",
+        ibc_nom,
+    )
+    .await
+    .stack()?;
 
     let test_addr = &reprefix_bech32(
         "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
