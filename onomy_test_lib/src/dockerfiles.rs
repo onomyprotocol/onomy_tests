@@ -72,8 +72,8 @@ pub fn onomy_std_cosmos_daemon(
 }
 
 pub const ONOMYD_VERSION: &str = "v1.1.4";
-pub const ONEXD_VERSION: &str = "v1.0.2-onex";
-pub const ONEXD_FH_VERSION: &str = "v1.0.2-onex-fh";
+pub const ONEXD_VERSION: &str = "v1.0.3-onex";
+pub const ONEXD_FH_VERSION: &str = "v1.0.3-onex-fh";
 pub const STANDALONE_ONEX_VERSION: &str = "v1.1.0";
 pub const STANDALONE_ONEX_FH_VERSION: &str = "v1.1.0-fh";
 
