@@ -19,6 +19,9 @@ e.x.
 
 cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
+// run with and without the two "NOTE"s commented out
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+
 */
 
 use std::time::Duration;
@@ -75,7 +78,6 @@ pub async fn onexd_setup(
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
-    // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string("/resources/tmp/genesis.json")
         .await
         .stack()?;
@@ -83,6 +85,8 @@ pub async fn onexd_setup(
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
     let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // NOTE comment this out for the last test
     *stacked_get_mut!(genesis["genesis_time"]) = time.into();
 
     // put some aONEX balance on our account so it can be bonded
@@ -128,6 +132,8 @@ pub async fn onexd_setup(
         ));
 
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
+
+    // NOTE comment this out for the last test
     *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
 
     // decrease the governing period for fast tests
