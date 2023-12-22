@@ -1,8 +1,8 @@
-pub const ONOMY_BASE: &str = "fedora:38";
+pub const ONOMY_BASE: &str = "fedora:39";
 
 #[rustfmt::skip]
-pub const ONOMY_STD: &str = r#"FROM fedora:38
-RUN dnf install -y git make cmake gcc gcc-c++ which iproute iputils procps-ng vim-minimal tmux net-tools htop tar jq npm openssl-devel perl rust cargo golang
+pub const ONOMY_STD: &str = r#"FROM fedora:39
+RUN dnf install -y git rust cargo make cmake gcc gcc-c++ golang perl npm which iproute iputils net-tools procps-ng vim-minimal tmux htop tar jq openssl-devel pass
 "#;
 
 pub const COSMOVISOR: &str = r#"RUN go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@latest
@@ -10,7 +10,7 @@ ENV PATH=$PATH:/root/go/bin
 "#;
 
 #[rustfmt::skip]
-pub const HERMES: &str = r#"ADD https://github.com/informalsystems/hermes/releases/download/v1.7.1/hermes-v1.7.1-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
+pub const HERMES: &str = r#"ADD https://github.com/informalsystems/hermes/releases/download/v1.7.4/hermes-v1.7.4-x86_64-unknown-linux-gnu.tar.gz /root/.hermes/bin/
 RUN cd /root/.hermes/bin/ && tar -vxf *
 ENV PATH=$PATH:/root/.hermes/bin
 ENV HERMES_HOME="/root/.hermes"
@@ -72,8 +72,8 @@ pub fn onomy_std_cosmos_daemon(
 }
 
 pub const ONOMYD_VERSION: &str = "v1.1.4";
-pub const ONEXD_VERSION: &str = "v1.0.2-onex";
-pub const ONEXD_FH_VERSION: &str = "v1.0.2-onex-fh";
+pub const ONEXD_VERSION: &str = "v1.0.3-onex";
+pub const ONEXD_FH_VERSION: &str = "v1.0.3-onex-fh";
 pub const STANDALONE_ONEX_VERSION: &str = "v1.1.0";
 pub const STANDALONE_ONEX_FH_VERSION: &str = "v1.1.0-fh";
 

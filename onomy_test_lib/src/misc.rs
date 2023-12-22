@@ -100,6 +100,8 @@ pub struct Args {
     #[arg(long)]
     pub node: Option<String>,
     #[arg(long)]
+    pub grpc: Option<String>,
+    #[arg(long)]
     pub consumer_id: Option<String>,
 }
 

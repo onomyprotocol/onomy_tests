@@ -17,7 +17,10 @@
 /*
 e.x.
 
-cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-3/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-3/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+
+// run with and without the two "NOTE"s commented out
+cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
 */
 
@@ -43,7 +46,7 @@ use onomy_test_lib::{
         net_message::NetMessenger,
         remove_files_in_dir, sh,
         stacked_errors::{ensure, ensure_eq, Error, Result, StackableErr},
-        stacked_get, stacked_get_mut, FileOptions,
+        stacked_get, stacked_get_mut, Command, FileOptions,
     },
     token18,
     u64_array_bigints::{
@@ -56,6 +59,10 @@ use tokio::time::sleep;
 
 const PROVIDER_ACCOUNT_PREFIX: &str = "onomy";
 const CONSUMER_ACCOUNT_PREFIX: &str = "onomy";
+
+const HERMES_MNEMONIC: &str = "suspect glove east just retreat relax south garment ketchup salmon \
+                               chicken toilet nasty coach stairs logic churn solve super seminar \
+                               dune midnight monitor peace";
 
 pub async fn onexd_setup(
     daemon_home: &str,
@@ -71,7 +78,6 @@ pub async fn onexd_setup(
         .stack()?;
     let genesis_file_path = format!("{daemon_home}/config/genesis.json");
 
-    // add `ccvconsumer_state` to genesis
     let genesis_s = FileOptions::read_to_string("/resources/tmp/genesis.json")
         .await
         .stack()?;
@@ -79,6 +85,8 @@ pub async fn onexd_setup(
     let mut genesis: Value = serde_json::from_str(&genesis_s).stack()?;
 
     let time = chrono::offset::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // NOTE comment this out for the last test
     *stacked_get_mut!(genesis["genesis_time"]) = time.into();
 
     // put some aONEX balance on our account so it can be bonded
@@ -88,14 +96,44 @@ pub async fn onexd_setup(
     for balance in array {
         if balance["address"].as_str().unwrap() == "onomy1yks83spz6lvrrys8kh0untt22399tskk6jafcv" {
             balance["coins"].as_array_mut().unwrap().insert(
-                2,
+                1,
                 json!({"denom": "aonex", "amount": "20000000000000000000000000000"}),
             );
             break
         }
     }
 
+    // need to add the hermes account manually
+    stacked_get_mut!(genesis["app_state"]["auth"]["accounts"])
+        .as_array_mut()
+        .stack()?
+        .push(json!(
+            {
+                "@type": "/cosmos.auth.v1beta1.BaseAccount",
+                "address": "onomy1p8zprjj83p7elv0dpjeefexrdjpqhj29tw7gre",
+                "pub_key": null,
+                "account_number": "0",
+                "sequence": "0"
+            }
+        ));
+    stacked_get_mut!(genesis["app_state"]["bank"]["balances"])
+        .as_array_mut()
+        .stack()?
+        .push(json!(
+            {
+            "address": "onomy1p8zprjj83p7elv0dpjeefexrdjpqhj29tw7gre",
+            "coins": [
+                {
+                    "denom": "aonex",
+                    "amount": "100000000000000000000"
+                }
+            ]
+            }
+        ));
+
     let ccvconsumer_state: Value = serde_json::from_str(ccvconsumer_state_s).stack()?;
+
+    // NOTE comment this out for the last test
     *stacked_get_mut!(genesis["app_state"]["ccvconsumer"]) = ccvconsumer_state;
 
     // decrease the governing period for fast tests
@@ -116,7 +154,7 @@ pub async fn onexd_setup(
         .stack()?;
 
     fast_block_times(daemon_home).await.stack()?;
-    set_minimum_gas_price(daemon_home, "1anom").await.stack()?;
+    set_minimum_gas_price(daemon_home, "1aonex").await.stack()?;
 
     FileOptions::write_str(
         &format!("/logs/{chain_id}_genesis.json"),
@@ -274,7 +312,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 &format!("consumer_{uuid}"),
                 CONSUMER_ACCOUNT_PREFIX,
                 true,
-                "anom",
+                "aonex",
                 true,
             ),
         ],
@@ -305,8 +343,11 @@ async fn hermes_runner(args: &Args) -> Result<()> {
     sh_hermes(["keys add --chain onomy --mnemonic-file /root/.hermes/mnemonic.txt"])
         .await
         .stack()?;
+    FileOptions::write_str("/mnemonic.txt", HERMES_MNEMONIC)
+        .await
+        .stack()?;
     sh_hermes([format!(
-        "keys add --chain {consumer_id} --mnemonic-file /root/.hermes/mnemonic.txt"
+        "keys add --chain {consumer_id} --mnemonic-file /mnemonic.txt"
     )])
     .await
     .stack()?;
@@ -359,9 +400,25 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let mut options = CosmosSetupOptions::onomy(daemon_home);
     if let Some(ref mnemonic_path) = args.mnemonic_path {
         let mnemonic = FileOptions::read_to_string(mnemonic_path).await.stack()?;
-        options.validator_mnemonic = Some(mnemonic);
+        options.validator_mnemonic = Some(mnemonic.clone());
+        options.hermes_mnemonic = Some(HERMES_MNEMONIC.to_owned());
     }
     let cosmores = cosmovisor_setup(options).await.stack()?;
+
+    // used to manually test vesting and other things
+    Command::new(format!(
+        "{daemon_home}/cosmovisor/current/bin/onomyd keys add special --recover"
+    ))
+    .run_with_input_to_completion(
+        "connect movie hen hamster carpet knock insect penalty level dilemma south train artwork \
+         track obvious team brisk illness hazard atom clap entry leaf mechanic"
+            .as_bytes(),
+    )
+    .await
+    .stack()?
+    .assert_success()
+    .stack()?;
+
     // send mnemonic to hermes
     nm_hermes
         .send::<String>(&cosmores.validator_mnemonic.stack()?)
@@ -426,7 +483,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
         .cosmovisor_ibc_transfer(
             "validator",
             &reprefix_bech32(addr, CONSUMER_ACCOUNT_PREFIX).stack()?,
-            "5000000000000000000000",
+            &token18(2.0e3, ""),
             "anom",
         )
         .await
@@ -542,6 +599,14 @@ async fn consumer(args: &Args) -> Result<()> {
         cosmovisor_get_balances(dst_addr).await.stack()?[ibc_nom],
         u256!(5000)
     );
+    cosmovisor_bank_send(
+        addr,
+        "onomy1y3c6q58vvuxr5tcmesay74wvhrey3pqv8g6y3r",
+        "50000000",
+        ibc_nom,
+    )
+    .await
+    .stack()?;
 
     let test_addr = &reprefix_bech32(
         "onomy1gk7lg5kd73mcr8xuyw727ys22t7mtz9gh07ul3",
@@ -563,7 +628,7 @@ async fn consumer(args: &Args) -> Result<()> {
 
     let amount = u256!(100000000000000000);
     let amount_sqr = amount.checked_mul(amount).unwrap();
-    let coin_pair = CoinPair::new("anom", ibc_nom).stack()?;
+    let coin_pair = CoinPair::new("aonex", ibc_nom).stack()?;
     let mut market = Market::new("validator", &format!("1000000{ibc_nom}"));
     market.max_gas = Some(u256!(1000000));
     market
@@ -618,7 +683,7 @@ async fn consumer(args: &Args) -> Result<()> {
         "--min-self-delegation",
         "1",
         "--amount",
-        &token18(1.0e3, "aonex"),
+        &token18(500.0, "aonex"),
         "--fees",
         &format!("1000000{ONOMY_IBC_NOM}"),
         "--pubkey",
@@ -636,10 +701,30 @@ async fn consumer(args: &Args) -> Result<()> {
     // termination signal
     nm_onomyd.recv::<()>().await.stack()?;
 
-    // TODO go back to using IBC NOM
+    wait_for_num_blocks(1).await.stack()?;
+
+    // test a simple text proposal
+    let test_deposit = token18(500.0, "aonex");
+    let proposal = json!({
+        "title": "Text Proposal",
+        "description": "a text proposal",
+        "type": "Text",
+        "deposit": test_deposit
+    });
+    cosmovisor_gov_file_proposal(
+        daemon_home,
+        None,
+        &proposal.to_string(),
+        &format!("1{ibc_nom}"),
+    )
+    .await
+    .stack()?;
+    let proposals = sh_cosmovisor(["query gov proposals"]).await.stack()?;
+    assert!(proposals.contains("PROPOSAL_STATUS_PASSED"));
+
     // but first, test governance with IBC NOM as the token
     let test_crisis_denom = ibc_nom.as_str();
-    let test_deposit = token18(2000.0, "aonex");
+    let test_deposit = token18(500.0, "aonex");
     wait_for_num_blocks(1).await.stack()?;
     cosmovisor_gov_file_proposal(
         daemon_home,
