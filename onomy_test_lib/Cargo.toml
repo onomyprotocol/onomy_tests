@@ -5,10 +5,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-awint = { version = "0.12", default-features = false, features = ["std"] }
+awint = { version = "0.15", default-features = false, features = ["std"] }
 bech32 = "0.9.1"
 clap = { version = "4", features = ["derive", "env"] }
-env_logger = "0.10"
+env_logger = "0.11"
 lazy_static = "1.4"
 log = "0.4"
 serde = "1.0"
@@ -16,9 +16,9 @@ serde-transcode = "1.1"
 serde_derive = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.9"
-super_orchestrator = { version = "0.9", default-features = false, features = ["env_logger_support", "ctrlc_support", "nix_support"] }
-#super_orchestrator = { git = "https://github.com/AaronKutch/super_orchestrator", rev = "c1b1fc4837d9d54b7f0ca2edcc3daa76ac63481f", default-features = false, features = ["env_logger_support", "ctrlc_support", "nix_support"] }
-#super_orchestrator = { path = "../../super_orchestrator", default-features = false, features = [ "env_logger_support", "ctrlc_support", "nix_support"] }
+super_orchestrator = { version = "0.10", default-features = false, features = ["nix_support"] }
+#super_orchestrator = { git = "https://github.com/AaronKutch/super_orchestrator", rev = "e74bb56be8b37f95f91d9d5842a7dc9698e5e686", default-features = false, features = ["nix_support"] }
+#super_orchestrator = { path = "../../super_orchestrator", default-features = false, features = ["nix_support"] }
 tokio = { version = "1", features = ["full"] }
 toml = "0.7"
 u64_array_bigints = { version = "0.3", default-features = false, features = ["std"] }
