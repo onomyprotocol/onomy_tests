@@ -17,10 +17,10 @@
 /*
 e.x.
 
-cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+cargo r --bin onex_genesis -- --proposal-path ./../environments/mainnet/onex-mainnet/genesis-proposal.json --genesis-path ./../environments/mainnet/onex-mainnet/partial-genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
 // run with and without the two "NOTE"s commented out
-cargo r --bin onex_genesis -- --proposal-path ./../environments/testnet/onex-testnet-4/genesis-proposal.json --genesis-path ./../environments/testnet/onex-testnet-4/genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
+cargo r --bin onex_genesis -- --proposal-path ./../environments/mainnet/onex-mainnet/genesis-proposal.json --genesis-path ./../environments/mainnet/onex-mainnet/genesis.json --mnemonic-path ./../testnet_dealer_mnemonic.txt
 
 */
 

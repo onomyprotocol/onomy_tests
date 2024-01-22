@@ -99,18 +99,18 @@ RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 RUN npm install -g @graphprotocol/graph-cli
 
 # firehose
-RUN git clone --depth 1 --branch v0.6.0 https://github.com/figment-networks/firehose-cosmos
+RUN git clone --depth 1 --branch v0.7.1 https://github.com/figment-networks/firehose-cosmos
 # not working for me, too flaky
 #RUN cd /firehose-cosmos && make install
 ADD https://github.com/graphprotocol/firehose-cosmos/releases/download/v0.6.0/firecosmos_linux_amd64 /usr/bin/firecosmos
 RUN chmod +x /usr/bin/firecosmos
 
 # graph-node
-RUN git clone --depth 1 --branch v0.32.0 https://github.com/graphprotocol/graph-node
+RUN git clone --depth 1 --branch v0.33.0 https://github.com/graphprotocol/graph-node
 RUN cd /graph-node && cargo build --release -p graph-node
 
 # ipfs
-ADD https://dist.ipfs.tech/kubo/v0.23.0/kubo_v0.23.0_linux-amd64.tar.gz /tmp/kubo.tar.gz
+ADD https://dist.ipfs.tech/kubo/v0.25.0/kubo_v0.25.0_linux-amd64.tar.gz /tmp/kubo.tar.gz
 RUN cd /tmp && tar -xf /tmp/kubo.tar.gz && mv /tmp/kubo/ipfs /usr/bin/ipfs
 RUN ipfs init
 
@@ -248,7 +248,7 @@ async fn container_runner(args: &Args) -> Result<()> {
                 &format!("onex_node_{uuid}"),
                 "onomy",
                 true,
-                "anative",
+                "aonex",
                 true,
             ),
         ],
@@ -531,7 +531,7 @@ async fn onomyd_runner(args: &Args) -> Result<()> {
     let ccvconsumer_state = cosmovisor_add_consumer(
         daemon_home,
         consumer_id,
-        &test_proposal(consumer_id, "anative"),
+        &test_proposal(consumer_id, "aonex"),
     )
     .await
     .stack()?;
@@ -596,15 +596,15 @@ async fn onex_node(args: &Args) -> Result<()> {
     // we need the initial consumer state
     let ccvconsumer_state_s: String = nm_onomyd.recv().await.stack()?;
 
-    cosmovisor_setup(CosmosSetupOptions::new(
+    let mut options = CosmosSetupOptions::new(
         daemon_home,
         chain_id,
-        "anative",
-        "anative",
+        "aonex",
+        "aonex",
         Some(&ccvconsumer_state_s),
-    ))
-    .await
-    .stack()?;
+    );
+    options.large_test_amount = true;
+    cosmovisor_setup(options).await.stack()?;
 
     // get keys
     let node_key = nm_onomyd.recv::<String>().await.stack()?;
@@ -649,8 +649,8 @@ async fn onex_node(args: &Args) -> Result<()> {
     // wait for Hermes to be done
     wait_for_num_blocks(5).await.stack()?;
 
-    let coin_pair = CoinPair::new("anative", "anom").stack()?;
-    let mut market = Market::new("validator", "1000000anative");
+    let coin_pair = CoinPair::new("afootoken", "aonex").stack()?;
+    let mut market = Market::new("validator", "1000000aonex");
     market.max_gas = Some(u256!(1000000));
     market
         .create_pool(&coin_pair, Market::MAX_COIN, Market::MAX_COIN)
